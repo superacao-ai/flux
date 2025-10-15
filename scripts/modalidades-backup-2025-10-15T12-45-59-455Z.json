@@ -1,0 +1,25 @@
+[
+  {
+    "_id": "68eed7fc0eb254de7192b0f4",
+    "nome": "Personal - UP",
+    "descricao": "",
+    "cor": "#F59E0B",
+    "duracao": 30,
+    "limiteAlunos": 5,
+    "horarioFuncionamento": {
+      "manha": {
+        "inicio": "05:30",
+        "fim": "11:00"
+      },
+      "tarde": {
+        "inicio": "12:30",
+        "fim": "20:00"
+      }
+    },
+    "ativo": false,
+    "horariosDisponiveis": [],
+    "createdAt": "2025-10-14T23:08:44.831Z",
+    "updatedAt": "2025-10-14T23:10:45.312Z",
+    "__v": 0
+  }
+]

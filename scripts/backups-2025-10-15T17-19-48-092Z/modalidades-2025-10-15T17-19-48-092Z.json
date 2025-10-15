@@ -1,0 +1,69 @@
+[
+  {
+    "_id": "68ef9d8bf541a2192bcdced6",
+    "nome": "Personal - UP",
+    "descricao": "",
+    "cor": "#F59E0B",
+    "duracao": 30,
+    "limiteAlunos": 5,
+    "horarioFuncionamento": {
+      "manha": {
+        "inicio": "05:30",
+        "fim": "09:00"
+      },
+      "tarde": {
+        "inicio": "12:30",
+        "fim": "20:00"
+      }
+    },
+    "ativo": true,
+    "horariosDisponiveis": [
+      {
+        "diasSemana": [],
+        "horaInicio": "08:50",
+        "horaFim": "09:20",
+        "_id": "68efbb9287d11c3e00961d13"
+      }
+    ],
+    "createdAt": "2025-10-15T13:11:39.468Z",
+    "updatedAt": "2025-10-15T15:19:46.582Z",
+    "__v": 2,
+    "diasSemana": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ]
+  },
+  {
+    "_id": "68efa96b13dda31c879f4185",
+    "nome": "Personal - SKY",
+    "descricao": "",
+    "cor": "#10B981",
+    "duracao": 30,
+    "limiteAlunos": 5,
+    "diasSemana": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "horarioFuncionamento": {
+      "manha": {
+        "inicio": "06:00",
+        "fim": "09:00"
+      },
+      "tarde": {
+        "inicio": "16:00",
+        "fim": "20:00"
+      }
+    },
+    "ativo": true,
+    "horariosDisponiveis": [],
+    "createdAt": "2025-10-15T14:02:19.180Z",
+    "updatedAt": "2025-10-15T14:02:24.853Z",
+    "__v": 0
+  }
+]

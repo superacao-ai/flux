@@ -1,13 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import { HorarioFixo } from '@/models/HorarioFixo';
+import mongoose from 'mongoose';
 
 // GET - Listar todos os horários
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     await connectDB();
-    
-    const horarios = await HorarioFixo.find({ ativo: true })
+    const { searchParams } = new URL(request.url);
+    const modalidadeFilter = searchParams.get('modalidadeId');
+
+    const query: any = { ativo: true };
+    // We will not restrict by horario.modalidadeId here because the selected modalidade
+    // can belong to the aluno referenced by alunoId. We'll apply modalidade filtering
+    // after populating so we can consider both HorarioFixo.modalidadeId and aluno.modalidadeId.
+    // Excluir documentos que não têm professorId populado (registros inválidos)
+    query.professorId = { $exists: true, $ne: null };
+
+    let horarios = await HorarioFixo.find(query)
       .populate({
         path: 'alunoId',
         select: 'nome email modalidadeId',
@@ -20,7 +30,26 @@ export async function GET() {
       })
       .populate('professorId', 'nome especialidade')
       .sort({ diaSemana: 1, horarioInicio: 1 })
-      .select('-__v');
+      .select('-__v')
+      .lean();
+
+    // If the client requested a modalidade filter, include horarios where either
+    // the HorarioFixo.modalidadeId equals the filter OR the populated alunoId.modalidadeId equals it.
+    if (modalidadeFilter) {
+      const mId = String(modalidadeFilter);
+      horarios = horarios.filter((h: any) => {
+        if (h.modalidadeId) {
+          const mid = typeof h.modalidadeId === 'string' ? h.modalidadeId : String(h.modalidadeId._id || h.modalidadeId);
+          if (mid === mId) return true;
+        }
+        if (h.alunoId && h.alunoId.modalidadeId) {
+          const am = h.alunoId.modalidadeId;
+          const amid = typeof am === 'string' ? am : String(am._id || am);
+          if (amid === mId) return true;
+        }
+        return false;
+      });
+    }
     
     return NextResponse.json({
       success: true,
@@ -44,7 +73,52 @@ export async function POST(request: NextRequest) {
     await connectDB();
     
     const body = await request.json();
-    const { alunoId, professorId, diaSemana, horarioInicio, horarioFim, observacoes } = body;
+  let { alunoId, professorId, diaSemana, horarioInicio, horarioFim, observacoes, modalidadeId } = body;
+
+  // Normalize alunoId: treat empty string as not provided
+  if (typeof alunoId === 'string' && alunoId.trim() === '') {
+    alunoId = undefined;
+  }
+
+  // If an alunoId was provided, validate it's a proper ObjectId
+  if (alunoId !== undefined && alunoId !== null) {
+    const isValid = mongoose.Types.ObjectId.isValid(alunoId);
+    if (!isValid) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'alunoId inválido'
+        },
+        { status: 400 }
+      );
+    }
+  }
+
+  // Validate and coerce professorId early to give clearer errors
+  if (!professorId) {
+    // professorId required check will also fire later, but return early with clear message
+    return NextResponse.json(
+      { success: false, error: 'professorId é obrigatório' },
+      { status: 400 }
+    );
+  }
+  if (typeof professorId === 'string' && !mongoose.Types.ObjectId.isValid(professorId)) {
+    return NextResponse.json(
+      { success: false, error: 'professorId inválido' },
+      { status: 400 }
+    );
+  }
+
+    // Coerce alunoId/professorId/modalityId to ObjectId instances for queries and creation
+  if (alunoId) {
+    alunoId = new mongoose.Types.ObjectId(alunoId);
+  }
+  if (professorId) {
+    professorId = new mongoose.Types.ObjectId(professorId);
+  }
+    if (modalidadeId) {
+      modalidadeId = new mongoose.Types.ObjectId(modalidadeId);
+    }
 
     console.log('📍 Dados recebidos para criar horário:', {
       alunoId,
@@ -56,88 +130,188 @@ export async function POST(request: NextRequest) {
     });
 
     // Validações básicas
-    if (!alunoId || !professorId || diaSemana === undefined || !horarioInicio || !horarioFim) {
-      console.log('❌ Validação falhou - campos obrigatórios:', {
-        alunoId: !!alunoId,
-        professorId: !!professorId,
-        diaSemana: diaSemana !== undefined,
-        horarioInicio: !!horarioInicio,
-        horarioFim: !!horarioFim
+    // professorId, diaSemana, horarioInicio and horarioFim are required.
+    // alunoId is optional: when absent, we create a horario 'template' (turma) that can later receive alunos.
+    if (!professorId || diaSemana === undefined || !horarioInicio || !horarioFim) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Campos obrigatórios: professorId, diaSemana, horarioInicio, horarioFim'
+        },
+        { status: 400 }
+      );
+    }
+
+    // Se alunoId foi fornecido, fazemos validações específicas de conflito para o aluno
+  if (alunoId) {
+      // Build base query for conflicts including modalidadeId if provided.
+      const baseQuery: any = {
+        alunoId,
+        diaSemana,
+        ativo: true
+      };
+
+      // If modalidadeId is provided, only consider records with the same modalidadeId.
+      // If not provided, consider records where modalidadeId is missing/null to avoid false conflicts across modalidades.
+      if (modalidadeId) {
+        baseQuery.modalidadeId = modalidadeId;
+      } else {
+        baseQuery.$or = [ { modalidadeId: { $exists: false } }, { modalidadeId: null } ];
+      }
+
+      const conflitoAluno = await HorarioFixo.findOne({
+        ...baseQuery,
+        $or: [
+          {
+            $and: [
+              { horarioInicio: { $lte: horarioInicio } },
+              { horarioFim: { $gt: horarioInicio } }
+            ]
+          },
+          {
+            $and: [
+              { horarioInicio: { $lt: horarioFim } },
+              { horarioFim: { $gte: horarioFim } }
+            ]
+          }
+        ]
       });
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Todos os campos obrigatórios devem ser preenchidos'
-        },
-        { status: 400 }
-      );
-    }
 
-    // Verificar conflito de horário do ALUNO (um aluno não pode ter dois horários no mesmo momento)
-    const conflitoAluno = await HorarioFixo.findOne({
-      alunoId,
-      diaSemana,
-      ativo: true,
-      $or: [
-        {
-          $and: [
-            { horarioInicio: { $lte: horarioInicio } },
-            { horarioFim: { $gt: horarioInicio } }
-          ]
-        },
-        {
-          $and: [
-            { horarioInicio: { $lt: horarioFim } },
-            { horarioFim: { $gte: horarioFim } }
-          ]
-        }
-      ]
-    });
+      if (conflitoAluno) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Aluno já tem aula agendada neste horário'
+          },
+          { status: 400 }
+        );
+      }
 
-    if (conflitoAluno) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Aluno já tem aula agendada neste horário'
-        },
-        { status: 400 }
-      );
-    }
+      // Verificar se já existe exatamente o mesmo registro (mesmo aluno, professor, horário e modalidade)
+      const duplicataExataQuery: any = {
+        alunoId,
+        professorId,
+        diaSemana,
+        horarioInicio,
+        horarioFim,
+        ativo: true
+      };
+      if (modalidadeId) duplicataExataQuery.modalidadeId = modalidadeId;
+      else duplicataExataQuery.$or = [ { modalidadeId: { $exists: false } }, { modalidadeId: null } ];
 
-    // Verificar se já existe exatamente o mesmo registro (mesmo aluno, professor e horário)
-    const duplicataExata = await HorarioFixo.findOne({
-      alunoId,
-      professorId,
-      diaSemana,
-      horarioInicio,
-      horarioFim,
-      ativo: true
-    });
+      const duplicataExata = await HorarioFixo.findOne(duplicataExataQuery);
 
-    if (duplicataExata) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Este aluno já está cadastrado neste horário com este professor'
-        },
-        { status: 400 }
-      );
+      if (duplicataExata) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Este aluno já está cadastrado neste horário com este professor'
+          },
+          { status: 400 }
+        );
+      }
     }
 
     // Múltiplos alunos podem ter o mesmo horário com o mesmo professor (conceito de turma)
     // Não verificamos mais conflito de professor no mesmo horário
 
     // Criar horário
-    const novoHorario = new HorarioFixo({
-      alunoId,
+    const payload: any = {
       professorId,
       diaSemana,
       horarioInicio,
       horarioFim,
       observacoes
-    });
+    };
+    if (alunoId) payload.alunoId = alunoId;
+    if (modalidadeId) payload.modalidadeId = modalidadeId;
 
-    const horarioSalvo = await novoHorario.save();
+    // Ensure we don't set alunoId to null (convert falsy to undefined) so partial unique index works
+    if (!payload.alunoId) delete payload.alunoId;
+
+    // Before saving, detect if the database still has the old unique index
+    // { alunoId:1, diaSemana:1, horarioInicio:1 } and try to migrate it to include modalidadeId
+    try {
+      const indexes = await HorarioFixo.collection.indexes();
+      // find an index whose key exactly matches the old pattern (order may vary)
+      const oldIdx = indexes.find((ix: any) => {
+        const keys = ix.key || {};
+        const keyNames = Object.keys(keys).join(',');
+        return (keys.alunoId === 1 || keys.alunoId === '1') && (keys.diaSemana === 1 || keys.diaSemana === '1') && (keys.horarioInicio === 1 || keys.horarioInicio === '1') && !keys.modalidadeId;
+      });
+      if (oldIdx) {
+        const idxName = typeof oldIdx.name === 'string' ? oldIdx.name : undefined;
+        console.log('🔁 Índice antigo detectado em horariofixos:', idxName, '— atualizando para incluir modalidadeId');
+        try {
+          // drop the old index by name (if we have a name)
+          if (idxName) await HorarioFixo.collection.dropIndex(idxName);
+        } catch (dropErr:any) {
+          console.warn('⚠️ Falha ao dropar índice antigo (continuando):', String(dropErr?.message || dropErr));
+        }
+        try {
+          await HorarioFixo.collection.createIndex(
+            { alunoId: 1, diaSemana: 1, horarioInicio: 1, modalidadeId: 1 },
+            { unique: true, partialFilterExpression: { alunoId: { $exists: true, $ne: null }, ativo: true } }
+          );
+          console.log('✅ Índice migrado: agora inclui modalidadeId');
+        } catch (createErr:any) {
+          console.warn('⚠️ Falha ao criar novo índice com modalidadeId (continuando):', String(createErr?.message || createErr));
+        }
+      }
+    } catch (idxErr:any) {
+      console.warn('⚠️ Não foi possível listar índices de horariofixos (continuando):', String(idxErr?.message || idxErr));
+    }
+
+    const novoHorario = new HorarioFixo(payload);
+
+    let horarioSalvo;
+    try {
+      horarioSalvo = await novoHorario.save();
+    } catch (saveErr: any) {
+      // Handle duplicate key error (E11000) defensively and give more context
+      if (saveErr && saveErr.code === 11000) {
+        // Log details for debugging
+        console.error('🔒 Duplicate key error on HorarioFixo.save:', {
+          message: saveErr.message,
+          keyValue: saveErr.keyValue,
+          keyPattern: saveErr.keyPattern
+        });
+
+        // Try to find the existing conflicting document to return a clearer response
+        try {
+          const keyValue = saveErr.keyValue || {};
+          const conflictQuery: any = { ativo: true };
+          // copy known fields from keyValue into a query
+          for (const k of Object.keys(keyValue)) {
+            // convert string ids to ObjectId where appropriate
+            if ((k === 'alunoId' || k === 'professorId' || k === 'modalidadeId') && mongoose.Types.ObjectId.isValid(keyValue[k])) {
+              conflictQuery[k] = new mongoose.Types.ObjectId(keyValue[k]);
+            } else {
+              conflictQuery[k] = keyValue[k];
+            }
+          }
+          // include diaSemana and horarioInicio if provided in the payload (common unique combo)
+          if (diaSemana !== undefined) conflictQuery.diaSemana = diaSemana;
+          if (horarioInicio) conflictQuery.horarioInicio = horarioInicio;
+
+          const existing = await HorarioFixo.findOne(conflictQuery).select('_id alunoId professorId diaSemana horarioInicio horarioFim');
+          if (existing) {
+            return NextResponse.json(
+              { success: false, error: 'Conflito: registro duplicado', existingId: existing._id, existing },
+              { status: 409 }
+            );
+          }
+        } catch (innerErr) {
+          console.error('Erro ao buscar documento conflitante após E11000:', innerErr);
+        }
+
+        return NextResponse.json(
+          { success: false, error: 'Conflito: registro duplicado' },
+          { status: 409 }
+        );
+      }
+      throw saveErr;
+    }
     
     // Buscar com populate para retornar dados completos
     const horarioCompleto = await HorarioFixo.findById(horarioSalvo._id)

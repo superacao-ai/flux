@@ -27,6 +27,16 @@ interface Aluno {
   plano?: string;
   observacoes?: string;
   ativo: boolean;
+  modalidades?: { _id: string; nome: string; cor?: string }[];
+  horarios?: AlunoHorario[];
+}
+
+interface AlunoHorario {
+  diaSemana: number;
+  horarioInicio: string;
+  horarioFim: string;
+  professorNome?: string;
+  modalidadeNome?: string;
 }
 
 export default function AlunosPage() {
@@ -51,15 +61,69 @@ export default function AlunosPage() {
     fetchProfessores();
   }, []);
 
+  // Fetch alunos from horarios: list only students that have HorarioFixo entries
   const fetchAlunos = async () => {
     try {
-      const response = await fetch('/api/alunos');
+      const response = await fetch('/api/horarios');
       const data = await response.json();
       if (data.success) {
-        setAlunos(data.data);
+        // horarios are populated with alunoId (or null for templates)
+        const horarios = data.data as any[];
+        const alunosMap: Record<string, any> = {};
+        horarios.forEach(h => {
+          const aluno = h.alunoId;
+          if (aluno && aluno._id) {
+            // accumulate aluno info and their horarios/modalidades
+            if (!alunosMap[aluno._id]) {
+              alunosMap[aluno._id] = {
+                _id: aluno._id,
+                nome: aluno.nome,
+                email: aluno.email || '',
+                telefone: aluno.telefone || 'Não informado',
+                endereco: aluno.endereco || '',
+                modalidadeId: aluno.modalidadeId || { _id: '', nome: 'N/A', cor: '#3B82F6', duracao: 0, limiteAlunos: 0 },
+                plano: aluno.plano,
+                observacoes: aluno.observacoes,
+                ativo: aluno.ativo !== undefined ? aluno.ativo : true,
+                modalidades: new Map<string, { _id: string; nome: string; cor?: string }>(),
+                horarios: [] as AlunoHorario[]
+              };
+            }
+
+            // determine modalidade for this horario (could be on the horario or on aluno)
+            const mod = (h.modalidadeId && (h.modalidadeId.nome || h.modalidadeId._id)) ? h.modalidadeId : (aluno.modalidadeId || null);
+            if (mod && mod._id) {
+              const existing = alunosMap[aluno._id].modalidades as Map<string, any>;
+              existing.set(String(mod._id), { _id: String(mod._id), nome: mod.nome || 'N/A', cor: mod.cor || '#3B82F6' });
+            }
+
+            // collect horario entry
+            const professorNome = h.professorId && (h.professorId.nome || h.professorId) ? (h.professorId.nome || String(h.professorId)) : '';
+            const horarioEntry: AlunoHorario = {
+              diaSemana: h.diaSemana,
+              horarioInicio: h.horarioInicio,
+              horarioFim: h.horarioFim,
+              professorNome: professorNome,
+              modalidadeNome: mod ? (mod.nome || '') : ''
+            };
+            (alunosMap[aluno._id].horarios as AlunoHorario[]).push(horarioEntry);
+          }
+        });
+
+        // Convert modalidades maps to arrays and finalize aluno objects
+        const alunosFinal = Object.values(alunosMap).map((a: any) => {
+          const modsArr = Array.from((a.modalidades as Map<string, any>).values());
+          return {
+            ...a,
+            modalidades: modsArr,
+            horarios: a.horarios as AlunoHorario[]
+          };
+        });
+
+        setAlunos(alunosFinal);
       }
     } catch (error) {
-      console.error('Erro ao buscar alunos:', error);
+      console.error('Erro ao buscar alunos a partir dos horários:', error);
     } finally {
       setLoading(false);
     }
@@ -89,13 +153,9 @@ export default function AlunosPage() {
     }
   };
 
-  // Função para padronizar nomes (primeira letra maiúscula)
+  // Função para padronizar nomes: converter para MAIÚSCULAS
   const padronizarNome = (nome: string): string => {
-    return nome
-      .toLowerCase()
-      .split(' ')
-      .map(palavra => palavra.charAt(0).toUpperCase() + palavra.slice(1))
-      .join(' ');
+    return String(nome || '').trim().toUpperCase();
   };
 
   const processarImportacao = async () => {
@@ -196,8 +256,8 @@ export default function AlunosPage() {
         }
       }
       
-      alert(mensagem);
-      
+      // resumo da importação: registrar no console e atualizar UI silenciosamente
+      console.log('Importação concluída', { sucessos, erros, detalhesErros });
       if (sucessos > 0) {
         setShowImportModal(false);
         setImportData({
@@ -267,7 +327,7 @@ export default function AlunosPage() {
       if (data.success) {
         await fetchAlunos();
         setShowEditModal(false);
-        alert('Aluno atualizado com sucesso!');
+        // sucesso silencioso: modal fechado e lista atualizada
       } else {
         alert(`Erro: ${data.error}`);
       }
@@ -292,7 +352,7 @@ export default function AlunosPage() {
 
       if (data.success) {
         await fetchAlunos();
-        alert('Aluno excluído com sucesso!');
+        // sucesso silencioso: lista recarregada
       } else {
         alert(`Erro: ${data.error}`);
       }
@@ -350,11 +410,8 @@ export default function AlunosPage() {
       setSelectedAlunos([]);
       setSelectAll(false);
 
-      if (erros === 0) {
-        alert(`${sucessos} aluno(s) excluído(s) com sucesso!`);
-      } else {
-        alert(`${sucessos} aluno(s) excluído(s) com sucesso. ${erros} erro(s).`);
-      }
+      // sucesso silencioso para exclusão em massa — registrar no console
+      console.log('Exclusão em massa:', { sucessos, erros });
     } catch (error) {
       console.error('Erro ao excluir alunos:', error);
       alert('Erro ao excluir alunos selecionados');
@@ -388,12 +445,7 @@ export default function AlunosPage() {
             >
               📋 Importar Alunos
             </button>
-            <button
-              type="button"
-              className="inline-flex items-center justify-center rounded-md border border-transparent bg-primary-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 sm:w-auto"
-            >
-              Novo Aluno
-            </button>
+            {/* 'Novo Aluno' removed: this page now lists alunos presentes nos horários */}
           </div>
         </div>
 
@@ -419,7 +471,10 @@ export default function AlunosPage() {
                         Email
                       </th>
                       <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
-                        Modalidade
+                        Modalidades
+                      </th>
+                      <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                        Horários
                       </th>
                       <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
                         Telefone
@@ -463,16 +518,37 @@ export default function AlunosPage() {
                             {aluno.email}
                           </td>
                           <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-                            <div className="flex items-center">
-                              <div
-                                className="w-3 h-3 rounded-full mr-2"
-                                style={{ backgroundColor: aluno.modalidadeId?.cor || '#3B82F6' }}
-                              ></div>
-                              <span>{aluno.modalidadeId?.nome || 'N/A'}</span>
-                              {aluno.plano && (
-                                <span className="ml-1 text-xs text-gray-400">({aluno.plano})</span>
+                            <div className="flex items-center space-x-2">
+                              {(aluno.modalidades && aluno.modalidades.length > 0) ? (
+                                aluno.modalidades.map(m => (
+                                  <div key={m._id} className="flex items-center space-x-2">
+                                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: m.cor || '#3B82F6' }}></div>
+                                    <span className="text-sm">{m.nome}</span>
+                                  </div>
+                                ))
+                              ) : (
+                                <div className="flex items-center">
+                                  <div className="w-3 h-3 rounded-full mr-2" style={{ backgroundColor: aluno.modalidadeId?.cor || '#3B82F6' }}></div>
+                                  <span>{aluno.modalidadeId?.nome || 'N/A'}</span>
+                                </div>
                               )}
                             </div>
+                          </td>
+
+                          <td className="px-3 py-4 text-sm text-gray-500">
+                            {aluno.horarios && aluno.horarios.length > 0 ? (
+                              <div className="space-y-1">
+                                <div className="text-xs font-semibold text-gray-700">Treinos: {aluno.horarios.length}</div>
+                                {aluno.horarios.slice(0,3).map((h,i) => (
+                                  <div key={i} className="text-xs text-gray-600">
+                                    {['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'][h.diaSemana]} {h.horarioInicio}–{h.horarioFim} {h.professorNome ? `· ${h.professorNome}` : ''}
+                                  </div>
+                                ))}
+                                {aluno.horarios.length > 3 && <div className="text-xs text-gray-400">+{aluno.horarios.length - 3} outros</div>}
+                              </div>
+                            ) : (
+                              <div className="text-xs text-gray-400">—</div>
+                            )}
                           </td>
                           <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
                             {aluno.telefone}

@@ -137,7 +137,7 @@ async function seedDatabase() {
         ]
       },
       {
-        nome: 'RUNNER - CORRIDA',
+        nome: 'Personal Runner',
         descricao: 'Treino de corrida e condicionamento (1h) 🚀',
         cor: '#EF4444',
         duracao: 60,
@@ -180,7 +180,7 @@ async function seedDatabase() {
         ]
       },
       {
-        nome: 'HIDROGINÁSTICA SUPERAÇÃO',
+        nome: 'Hidroginastica',
         descricao: 'Exercícios aquáticos de baixo impacto (1h)',
         cor: '#8B5CF6',
         duracao: 60,

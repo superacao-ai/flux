@@ -1,0 +1,114 @@
+[
+  {
+    "_id": "68efd9459d97086066bf1a96",
+    "nome": "Personal - UP",
+    "descricao": "",
+    "cor": "#F59E0B",
+    "duracao": 30,
+    "limiteAlunos": 5,
+    "diasSemana": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "horarioFuncionamento": {
+      "manha": {
+        "inicio": "05:30",
+        "fim": "11:00"
+      },
+      "tarde": {
+        "inicio": "12:30",
+        "fim": "20:00"
+      }
+    },
+    "ativo": false,
+    "horariosDisponiveis": [],
+    "createdAt": "2025-10-15T17:26:29.747Z",
+    "updatedAt": "2025-10-15T17:54:36.572Z",
+    "__v": 0
+  },
+  {
+    "_id": "68efda43fb79d06fd60cf0f3",
+    "nome": "Personal - SKY",
+    "descricao": "",
+    "cor": "#10B981",
+    "duracao": 30,
+    "limiteAlunos": 10,
+    "diasSemana": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "horarioFuncionamento": {
+      "manha": {
+        "inicio": "06:00",
+        "fim": "09:00"
+      },
+      "tarde": {
+        "inicio": "16:00",
+        "fim": "20:00"
+      }
+    },
+    "ativo": false,
+    "horariosDisponiveis": [],
+    "createdAt": "2025-10-15T17:30:43.977Z",
+    "updatedAt": "2025-10-15T17:59:55.965Z",
+    "__v": 0
+  },
+  {
+    "_id": "68efe59bfb79d06fd60cf157",
+    "nome": "asddsa",
+    "descricao": "",
+    "cor": "#3B82F6",
+    "duracao": 60,
+    "limiteAlunos": 5,
+    "diasSemana": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "horariosDisponiveis": [
+      {
+        "diasSemana": [
+          1,
+          2
+        ],
+        "horaInicio": "05:30",
+        "horaFim": "09:00",
+        "_id": "68efe59bfb79d06fd60cf158"
+      },
+      {
+        "diasSemana": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "horaInicio": "12:00",
+        "horaFim": "20:00",
+        "_id": "68efe59bfb79d06fd60cf159"
+      }
+    ],
+    "horarioFuncionamento": {
+      "manha": {
+        "inicio": "05:30",
+        "fim": "09:00"
+      },
+      "tarde": {
+        "inicio": "12:00",
+        "fim": "20:00"
+      }
+    },
+    "ativo": true,
+    "createdAt": "2025-10-15T18:19:07.566Z",
+    "updatedAt": "2025-10-15T18:19:07.566Z",
+    "__v": 0
+  }
+]

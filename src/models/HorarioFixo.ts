@@ -3,7 +3,8 @@ import mongoose, { Schema, model, models } from 'mongoose';
 // Interface para Horário Fixo
 export interface IHorarioFixo {
   _id?: string;
-  alunoId: mongoose.Types.ObjectId;
+  alunoId?: mongoose.Types.ObjectId | null;
+  modalidadeId?: mongoose.Types.ObjectId | null;
   professorId: mongoose.Types.ObjectId;
   diaSemana: 0 | 1 | 2 | 3 | 4 | 5 | 6; // 0 = Domingo
   horarioInicio: string; // HH:MM
@@ -19,7 +20,12 @@ const HorarioFixoSchema = new Schema<IHorarioFixo>({
   alunoId: {
     type: Schema.Types.ObjectId,
     ref: 'Aluno',
-    required: [true, 'ID do aluno é obrigatório']
+    required: false
+  },
+  modalidadeId: {
+    type: Schema.Types.ObjectId,
+    ref: 'Modalidade',
+    required: false
   },
   professorId: {
     type: Schema.Types.ObjectId,
@@ -62,11 +68,15 @@ HorarioFixoSchema.index({ diaSemana: 1, horarioInicio: 1 });
 HorarioFixoSchema.index({ ativo: 1 });
 
 // Validação para evitar que o MESMO ALUNO tenha conflito de horário (não professor)
+// Unique constraint only when alunoId exists (prevents duplicate aluno entries for same slot)
+// Make the unique constraint include modalidadeId so the same aluno can have
+// slots at the same dia/hora for different modalidades without hitting a duplicate key.
 HorarioFixoSchema.index(
-  { alunoId: 1, diaSemana: 1, horarioInicio: 1 },
+  { alunoId: 1, diaSemana: 1, horarioInicio: 1, modalidadeId: 1 },
   { 
     unique: true,
-    partialFilterExpression: { ativo: true }
+    // Only apply uniqueness when alunoId exists and is not null, and the record is active.
+    partialFilterExpression: { alunoId: { $exists: true, $ne: null }, ativo: true }
   }
 );
 

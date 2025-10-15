@@ -1,0 +1,46 @@
+[
+  {
+    "_id": "68ed5ef955d25b1679e5026a",
+    "nome": "Administrador",
+    "email": "admin@superagenda.com",
+    "senha": "$2a$12$7QOn1CSWH2xQgXUEltSWWOBTf5bMAjarg1vsyjIfbX324BEHyzBSi",
+    "tipo": "admin",
+    "ativo": true,
+    "criadoEm": "2025-10-13T20:20:09.712Z",
+    "atualizadoEm": "2025-10-13T20:20:09.712Z",
+    "__v": 0
+  },
+  {
+    "_id": "68ed5efa55d25b1679e50270",
+    "nome": "Carlos Oliveira",
+    "email": "carlos@superagenda.com",
+    "senha": "$2a$12$YHLXAS7j3xdQ01EbDjnyXeYP0IRJtxbqdFhJb92AlE8jCwyWnYf.6",
+    "tipo": "professor",
+    "ativo": true,
+    "criadoEm": "2025-10-13T20:20:10.009Z",
+    "atualizadoEm": "2025-10-13T20:20:10.009Z",
+    "__v": 0
+  },
+  {
+    "_id": "68ed5efa55d25b1679e50272",
+    "nome": "Ana Paula Silva",
+    "email": "ana@superagenda.com",
+    "senha": "$2a$12$JpxFy/PiQ1ed9GUK3v4hQuv7e9VsHi1UQ1doooar9jpyDEjzvqxcS",
+    "tipo": "professor",
+    "ativo": true,
+    "criadoEm": "2025-10-13T20:20:10.272Z",
+    "atualizadoEm": "2025-10-13T20:20:10.272Z",
+    "__v": 0
+  },
+  {
+    "_id": "68ed5efa55d25b1679e50274",
+    "nome": "Roberto Santos",
+    "email": "roberto@superagenda.com",
+    "senha": "$2a$12$2iN3vTvYbzk6fRrvqG3H9uEbnRF8ZkxsSt4q32JWRsCAjz4g8Gwla",
+    "tipo": "professor",
+    "ativo": true,
+    "criadoEm": "2025-10-13T20:20:10.531Z",
+    "atualizadoEm": "2025-10-13T20:20:10.531Z",
+    "__v": 0
+  }
+]

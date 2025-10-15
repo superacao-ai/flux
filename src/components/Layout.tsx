@@ -4,9 +4,10 @@ import Logo from './Logo';
 interface LayoutProps {
   children: React.ReactNode;
   title?: string;
+  fullWidth?: boolean;
 }
 
-export default function Layout({ children, title = 'Superação Flux' }: LayoutProps) {
+export default function Layout({ children, title = 'Superação Flux', fullWidth = false }: LayoutProps) {
   return (
     <div className="min-h-screen bg-gray-50">
       <nav className="bg-dark-900 shadow-sm border-b border-dark-800">
@@ -49,7 +50,7 @@ export default function Layout({ children, title = 'Superação Flux' }: LayoutP
         </div>
       </nav>
       
-      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+      <main className={fullWidth ? 'w-full px-4 py-6 sm:px-6 lg:px-8' : 'max-w-7xl mx-auto py-6 sm:px-6 lg:px-8'}>
         {children}
       </main>
     </div>

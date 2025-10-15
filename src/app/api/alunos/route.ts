@@ -47,6 +47,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Normalize name: trim and convert to uppercase for consistency
+    const nomeNormalizado = String(nome).trim().toUpperCase();
+
     // Validar modalidadeId se fornecido
     if (modalidadeId && !modalidadeId.match(/^[0-9a-fA-F]{24}$/)) {
       return NextResponse.json(
@@ -74,7 +77,7 @@ export async function POST(request: NextRequest) {
 
     // Criar dados do aluno
     const dadosAluno: any = {
-      nome,
+      nome: nomeNormalizado,
       telefone: telefone && telefone.trim() ? telefone : 'Não informado',
       endereco,
       modalidadeId,

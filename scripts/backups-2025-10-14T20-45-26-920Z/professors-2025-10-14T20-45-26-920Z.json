@@ -1,0 +1,57 @@
+[
+  {
+    "_id": "68ed731def47a7510223c637",
+    "nome": "Murilo",
+    "especialidades": [
+      "68ed6f5b40f1fd52ff3b3142"
+    ],
+    "ativo": true,
+    "__v": 0,
+    "criadoEm": "2025-10-13T21:46:05.609Z",
+    "atualizadoEm": "2025-10-13T22:03:56.460Z"
+  },
+  {
+    "_id": "68ed731def47a7510223c638",
+    "nome": "Bruno",
+    "especialidades": [
+      "68ed6f5b40f1fd52ff3b3142"
+    ],
+    "ativo": true,
+    "__v": 0,
+    "criadoEm": "2025-10-13T21:46:05.609Z",
+    "atualizadoEm": "2025-10-13T22:04:12.469Z"
+  },
+  {
+    "_id": "68ed77328d4b79539dc320d4",
+    "nome": "Karine",
+    "especialidades": [
+      "68ed6f5b40f1fd52ff3b3141"
+    ],
+    "ativo": true,
+    "criadoEm": "2025-10-13T22:03:30.416Z",
+    "atualizadoEm": "2025-10-13T22:03:30.416Z",
+    "__v": 0
+  },
+  {
+    "_id": "68ed77678d4b79539dc320e4",
+    "nome": "Miguel",
+    "especialidades": [
+      "68ed6f5b40f1fd52ff3b3142"
+    ],
+    "ativo": true,
+    "criadoEm": "2025-10-13T22:04:23.695Z",
+    "atualizadoEm": "2025-10-13T22:04:23.695Z",
+    "__v": 0
+  },
+  {
+    "_id": "68ed77758d4b79539dc320e8",
+    "nome": "Lucas",
+    "especialidades": [
+      "68ed6f5b40f1fd52ff3b3142"
+    ],
+    "ativo": true,
+    "criadoEm": "2025-10-13T22:04:37.140Z",
+    "atualizadoEm": "2025-10-13T22:04:37.140Z",
+    "__v": 0
+  }
+]

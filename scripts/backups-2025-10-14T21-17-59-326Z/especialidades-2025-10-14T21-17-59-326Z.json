@@ -1,0 +1,37 @@
+[
+  {
+    "_id": "68ed6f5b40f1fd52ff3b3140",
+    "nome": "Corrida",
+    "descricao": "Treinos de corrida e preparação física para corredores",
+    "ativo": true,
+    "__v": 0,
+    "criadoEm": "2025-10-13T21:30:03.887Z",
+    "atualizadoEm": "2025-10-13T21:30:03.887Z"
+  },
+  {
+    "_id": "68ed6f5b40f1fd52ff3b3141",
+    "nome": "Natação",
+    "descricao": "Aulas de natação para todas as idades e níveis",
+    "ativo": true,
+    "__v": 0,
+    "criadoEm": "2025-10-13T21:30:03.888Z",
+    "atualizadoEm": "2025-10-13T21:30:03.888Z"
+  },
+  {
+    "_id": "68ed6f5b40f1fd52ff3b3142",
+    "nome": "Personal",
+    "descricao": "Treinamento personalizado individual",
+    "ativo": true,
+    "__v": 0,
+    "criadoEm": "2025-10-13T21:30:03.888Z",
+    "atualizadoEm": "2025-10-13T21:30:03.888Z"
+  },
+  {
+    "_id": "68ed757fd76ee9cf565a0cdd",
+    "nome": "Outro",
+    "ativo": true,
+    "criadoEm": "2025-10-13T21:56:15.140Z",
+    "atualizadoEm": "2025-10-13T21:56:15.140Z",
+    "__v": 0
+  }
+]

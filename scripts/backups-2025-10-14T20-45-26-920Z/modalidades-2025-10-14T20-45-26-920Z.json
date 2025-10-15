@@ -1,0 +1,239 @@
+[
+  {
+    "_id": "68ed5ef955d25b1679e50256",
+    "nome": "SKY",
+    "descricao": "Treino funcional de alta intensidade (30 min)",
+    "cor": "#3B82F6",
+    "duracao": 30,
+    "limiteAlunos": 10,
+    "horariosDisponiveis": [
+      {
+        "diasSemana": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "horaInicio": "06:00",
+        "horaFim": "09:00",
+        "_id": "68ed5ef955d25b1679e50257"
+      },
+      {
+        "diasSemana": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "horaInicio": "16:00",
+        "horaFim": "20:00",
+        "_id": "68ed5ef955d25b1679e50258"
+      }
+    ],
+    "ativo": true,
+    "__v": 0,
+    "createdAt": "2025-10-13T20:20:09.425Z",
+    "updatedAt": "2025-10-13T20:20:09.425Z"
+  },
+  {
+    "_id": "68ed5ef955d25b1679e50259",
+    "nome": "UP",
+    "descricao": "Treino funcional intermediário (30 min)",
+    "cor": "#10B981",
+    "duracao": 30,
+    "limiteAlunos": 5,
+    "horariosDisponiveis": [
+      {
+        "diasSemana": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "horaInicio": "05:30",
+        "horaFim": "11:00",
+        "_id": "68ed5ef955d25b1679e5025a"
+      },
+      {
+        "diasSemana": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "horaInicio": "12:30",
+        "horaFim": "20:00",
+        "_id": "68ed5ef955d25b1679e5025b"
+      }
+    ],
+    "ativo": true,
+    "__v": 0,
+    "createdAt": "2025-10-13T20:20:09.426Z",
+    "updatedAt": "2025-10-13T20:20:09.426Z"
+  },
+  {
+    "_id": "68ed5ef955d25b1679e5025c",
+    "nome": "START",
+    "descricao": "Treino inicial e condicionamento (1h)",
+    "cor": "#F59E0B",
+    "duracao": 60,
+    "limiteAlunos": 5,
+    "horariosDisponiveis": [
+      {
+        "diasSemana": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "horaInicio": "06:00",
+        "horaFim": "11:00",
+        "_id": "68ed5ef955d25b1679e5025d"
+      },
+      {
+        "diasSemana": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "horaInicio": "15:00",
+        "horaFim": "20:00",
+        "_id": "68ed5ef955d25b1679e5025e"
+      }
+    ],
+    "ativo": true,
+    "__v": 0,
+    "createdAt": "2025-10-13T20:20:09.427Z",
+    "updatedAt": "2025-10-13T20:20:09.427Z"
+  },
+  {
+    "_id": "68ed5ef955d25b1679e5025f",
+    "nome": "RUNNER - CORRIDA",
+    "descricao": "Treino de corrida e condicionamento (1h) 🚀",
+    "cor": "#EF4444",
+    "duracao": 60,
+    "limiteAlunos": 8,
+    "horariosDisponiveis": [
+      {
+        "diasSemana": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "horaInicio": "05:00",
+        "horaFim": "07:00",
+        "_id": "68ed5ef955d25b1679e50260"
+      },
+      {
+        "diasSemana": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "horaInicio": "17:00",
+        "horaFim": "20:00",
+        "_id": "68ed5ef955d25b1679e50261"
+      },
+      {
+        "diasSemana": [
+          6
+        ],
+        "horaInicio": "07:00",
+        "horaFim": "08:00",
+        "_id": "68ed5ef955d25b1679e50262"
+      }
+    ],
+    "ativo": true,
+    "__v": 0,
+    "createdAt": "2025-10-13T20:20:09.427Z",
+    "updatedAt": "2025-10-13T20:20:09.427Z"
+  },
+  {
+    "_id": "68ed5ef955d25b1679e50263",
+    "nome": "NATAÇÃO INFANTIL",
+    "descricao": "Aulas de natação para crianças (30 min) 🛟",
+    "cor": "#06B6D4",
+    "duracao": 30,
+    "limiteAlunos": 5,
+    "horariosDisponiveis": [
+      {
+        "diasSemana": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ],
+        "horaInicio": "09:00",
+        "horaFim": "12:00",
+        "_id": "68ed5ef955d25b1679e50264"
+      },
+      {
+        "diasSemana": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "horaInicio": "13:00",
+        "horaFim": "20:00",
+        "_id": "68ed5ef955d25b1679e50265"
+      }
+    ],
+    "ativo": true,
+    "__v": 0,
+    "createdAt": "2025-10-13T20:20:09.427Z",
+    "updatedAt": "2025-10-13T20:20:09.427Z"
+  },
+  {
+    "_id": "68ed5ef955d25b1679e50266",
+    "nome": "HIDROGINÁSTICA SUPERAÇÃO",
+    "descricao": "Exercícios aquáticos de baixo impacto (1h)",
+    "cor": "#8B5CF6",
+    "duracao": 60,
+    "limiteAlunos": 8,
+    "horariosDisponiveis": [
+      {
+        "diasSemana": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "horaInicio": "08:00",
+        "horaFim": "09:00",
+        "_id": "68ed5ef955d25b1679e50267"
+      },
+      {
+        "diasSemana": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "horaInicio": "12:00",
+        "horaFim": "13:00",
+        "_id": "68ed5ef955d25b1679e50268"
+      }
+    ],
+    "ativo": true,
+    "__v": 0,
+    "createdAt": "2025-10-13T20:20:09.427Z",
+    "updatedAt": "2025-10-13T20:20:09.427Z"
+  }
+]

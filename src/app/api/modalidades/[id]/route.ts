@@ -11,7 +11,7 @@ export async function PUT(
     await connectDB();
     const { id } = await params;
     const body = await request.json();
-    const { nome, descricao, cor, duracao, preco } = body;
+  const { nome, descricao, cor, duracao, preco, diasSemana, limiteAlunos, horarioFuncionamento } = body;
 
     // Validações básicas
     if (!nome) {
@@ -49,7 +49,19 @@ export async function PUT(
         descricao: descricao?.trim() || '',
         cor: cor || '#3B82F6',
         duracao: duracao || 60,
-        preco: preco || 0
+        limiteAlunos: limiteAlunos || 5,
+        diasSemana: diasSemana || [],
+        preco: preco || 0,
+        horarioFuncionamento: {
+          manha: {
+            inicio: horarioFuncionamento?.manha?.inicio || null,
+            fim: horarioFuncionamento?.manha?.fim || null
+          },
+          tarde: {
+            inicio: horarioFuncionamento?.tarde?.inicio || null,
+            fim: horarioFuncionamento?.tarde?.fim || null
+          }
+        }
       },
       { new: true }
     );
@@ -73,6 +85,16 @@ export async function PUT(
   } catch (error: any) {
     console.error('Erro ao atualizar modalidade:', error);
     
+    if (error.code === 11000) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Já existe outra modalidade com este nome'
+        },
+        { status: 400 }
+      );
+    }
+
     if (error.name === 'ValidationError') {
       const errors = Object.values(error.errors).map((err: any) => err.message);
       return NextResponse.json(
@@ -103,6 +125,24 @@ export async function DELETE(
   try {
     await connectDB();
     const { id } = await params;
+    const url = new URL(request.url);
+    const hard = url.searchParams.get('hard') === 'true';
+
+    if (hard) {
+      // Hard delete (remove document from collection)
+      const removed = await Modalidade.findByIdAndDelete(id);
+      if (!removed) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Modalidade não encontrada'
+          },
+          { status: 404 }
+        );
+      }
+
+      return NextResponse.json({ success: true, message: 'Modalidade apagada permanentemente', data: removed });
+    }
 
     const modalidade = await Modalidade.findByIdAndUpdate(
       id,

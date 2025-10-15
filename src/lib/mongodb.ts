@@ -43,6 +43,25 @@ async function connectDB(): Promise<mongoose.Connection> {
     throw e;
   }
 
+  // Ensure key models are imported/registered with mongoose to avoid
+  // MissingSchemaError when calling populate() in API routes. Dynamic
+  // imports here avoid potential circular import issues and ensure the
+  // model definitions run after a successful DB connection.
+  try {
+    await Promise.all([
+      import('@/models/Aluno'),
+      import('@/models/Professor'),
+      import('@/models/Especialidade'),
+      import('@/models/Modalidade'),
+      import('@/models/HorarioFixo')
+    ]);
+  } catch (err) {
+    // Non-fatal: models import failures will surface elsewhere, but log for debugging
+    // Keep the connection usable even if model imports fail here.
+    // eslint-disable-next-line no-console
+    console.warn('Warning importing models after DB connect:', err);
+  }
+
   return cached.conn;
 }
 

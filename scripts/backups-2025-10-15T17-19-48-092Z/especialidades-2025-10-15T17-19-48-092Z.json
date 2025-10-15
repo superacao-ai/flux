@@ -1,0 +1,18 @@
+[
+  {
+    "_id": "68eebe1b031eebfa3c99d497",
+    "nome": "Personal",
+    "ativo": true,
+    "criadoEm": "2025-10-14T21:18:19.616Z",
+    "atualizadoEm": "2025-10-14T21:18:19.616Z",
+    "__v": 0
+  },
+  {
+    "_id": "68eece8d9fb76c43edfd6318",
+    "nome": "Natação",
+    "ativo": true,
+    "criadoEm": "2025-10-14T22:28:29.582Z",
+    "atualizadoEm": "2025-10-14T22:28:29.582Z",
+    "__v": 0
+  }
+]

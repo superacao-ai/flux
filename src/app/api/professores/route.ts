@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import { Professor, IProfessor } from '@/models/Professor';
-import { Especialidade } from '@/models/Especialidade';
 
 // GET - Listar todos os professores
 export async function GET() {
   try {
     await connectDB();
+    // Garantir que o modelo Especialidade esteja registrado antes de usar populate
+    try {
+      await import('@/models/Especialidade');
+    } catch (err) {
+      console.warn('Aviso: falha ao importar Especialidade dinamicamente:', err);
+    }
     
     const professores = await Professor.find({})
       .populate('especialidades', 'nome')

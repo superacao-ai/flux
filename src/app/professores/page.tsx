@@ -122,7 +122,7 @@ export default function ProfessoresPage() {
 
       if (data.success) {
         await carregarEspecialidades(); // Recarregar lista
-        alert('Especialidade criada com sucesso!');
+        // sucesso silencioso: lista recarregada
       } else {
         alert(`Erro: ${data.error}`);
       }
@@ -148,7 +148,7 @@ export default function ProfessoresPage() {
           ...prev,
           especialidades: prev.especialidades.filter(espId => espId !== id)
         }));
-        alert('Especialidade excluída com sucesso!');
+        // sucesso silencioso: lista recarregada
       } else {
         alert(`Erro: ${data.error}`);
       }
@@ -208,7 +208,7 @@ export default function ProfessoresPage() {
       if (data.success) {
         await carregarProfessores();
         setShowModal(false);
-        alert(data.message || 'Professor salvo com sucesso!');
+        // sucesso silencioso: modal fechado e lista recarregada
       } else {
         alert(`Erro: ${data.error}`);
       }
@@ -233,7 +233,7 @@ export default function ProfessoresPage() {
 
       if (data.success) {
         await carregarProfessores();
-        alert(data.message || 'Professor excluído com sucesso!');
+        // sucesso silencioso: lista recarregada
       } else {
         alert(`Erro: ${data.error}`);
       }

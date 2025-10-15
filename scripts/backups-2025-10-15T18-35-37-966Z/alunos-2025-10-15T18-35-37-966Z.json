@@ -1,0 +1,212 @@
+[
+  {
+    "_id": "68efe68cfb79d06fd60cf1b6",
+    "nome": "PAULA RIGOTO",
+    "telefone": "Não informado",
+    "modalidadeId": "68efe603fb79d06fd60cf162",
+    "ativo": true,
+    "criadoEm": "2025-10-15T18:23:08.839Z",
+    "atualizadoEm": "2025-10-15T18:23:08.839Z",
+    "__v": 0
+  },
+  {
+    "_id": "68efe68dfb79d06fd60cf1bf",
+    "nome": "KARINE BITTENCOURT",
+    "telefone": "Não informado",
+    "modalidadeId": "68efe603fb79d06fd60cf162",
+    "ativo": true,
+    "criadoEm": "2025-10-15T18:23:09.014Z",
+    "atualizadoEm": "2025-10-15T18:23:09.014Z",
+    "__v": 0
+  },
+  {
+    "_id": "68efe68dfb79d06fd60cf1c8",
+    "nome": "JACKELINE ARANTES",
+    "telefone": "Não informado",
+    "modalidadeId": "68efe603fb79d06fd60cf162",
+    "ativo": true,
+    "criadoEm": "2025-10-15T18:23:09.184Z",
+    "atualizadoEm": "2025-10-15T18:23:09.184Z",
+    "__v": 0
+  },
+  {
+    "_id": "68efe68dfb79d06fd60cf1d1",
+    "nome": "RENAN VEGGI",
+    "telefone": "Não informado",
+    "modalidadeId": "68efe603fb79d06fd60cf162",
+    "ativo": true,
+    "criadoEm": "2025-10-15T18:23:09.360Z",
+    "atualizadoEm": "2025-10-15T18:23:09.360Z",
+    "__v": 0
+  },
+  {
+    "_id": "68efe68dfb79d06fd60cf1da",
+    "nome": "ALINE SHIMIDT",
+    "telefone": "Não informado",
+    "modalidadeId": "68efe603fb79d06fd60cf162",
+    "ativo": true,
+    "criadoEm": "2025-10-15T18:23:09.583Z",
+    "atualizadoEm": "2025-10-15T18:23:09.583Z",
+    "__v": 0
+  },
+  {
+    "_id": "68efe68dfb79d06fd60cf1e3",
+    "nome": "LAIS FERNANDA",
+    "telefone": "Não informado",
+    "modalidadeId": "68efe603fb79d06fd60cf162",
+    "ativo": true,
+    "criadoEm": "2025-10-15T18:23:09.781Z",
+    "atualizadoEm": "2025-10-15T18:23:09.781Z",
+    "__v": 0
+  },
+  {
+    "_id": "68efe7acfb79d06fd60cf22d",
+    "nome": "AMANDA SUELEN (TOTALPASS)",
+    "telefone": "Não informado",
+    "modalidadeId": "68efe62ffb79d06fd60cf176",
+    "ativo": true,
+    "criadoEm": "2025-10-15T18:27:56.972Z",
+    "atualizadoEm": "2025-10-15T18:27:56.972Z",
+    "__v": 0
+  },
+  {
+    "_id": "68efe7adfb79d06fd60cf236",
+    "nome": "TANIA CRISTINA",
+    "telefone": "Não informado",
+    "modalidadeId": "68efe62ffb79d06fd60cf176",
+    "ativo": true,
+    "criadoEm": "2025-10-15T18:27:57.250Z",
+    "atualizadoEm": "2025-10-15T18:27:57.250Z",
+    "__v": 0
+  },
+  {
+    "_id": "68efe7adfb79d06fd60cf23f",
+    "nome": "CARLOS RODRIGUES",
+    "telefone": "Não informado",
+    "modalidadeId": "68efe62ffb79d06fd60cf176",
+    "ativo": true,
+    "criadoEm": "2025-10-15T18:27:57.429Z",
+    "atualizadoEm": "2025-10-15T18:27:57.429Z",
+    "__v": 0
+  },
+  {
+    "_id": "68efe7adfb79d06fd60cf248",
+    "nome": "RENATA RODRIGUES",
+    "telefone": "Não informado",
+    "modalidadeId": "68efe62ffb79d06fd60cf176",
+    "ativo": true,
+    "criadoEm": "2025-10-15T18:27:57.621Z",
+    "atualizadoEm": "2025-10-15T18:27:57.621Z",
+    "__v": 0
+  },
+  {
+    "_id": "68efe7adfb79d06fd60cf251",
+    "nome": "MAIARA CÂNDIDA",
+    "telefone": "Não informado",
+    "modalidadeId": "68efe62ffb79d06fd60cf176",
+    "ativo": true,
+    "criadoEm": "2025-10-15T18:27:57.789Z",
+    "atualizadoEm": "2025-10-15T18:27:57.789Z",
+    "__v": 0
+  },
+  {
+    "_id": "68efe7aefb79d06fd60cf25a",
+    "nome": "ESVETLANA GREGUER",
+    "telefone": "Não informado",
+    "modalidadeId": "68efe62ffb79d06fd60cf176",
+    "ativo": true,
+    "criadoEm": "2025-10-15T18:27:58.076Z",
+    "atualizadoEm": "2025-10-15T18:27:58.076Z",
+    "__v": 0
+  },
+  {
+    "_id": "68efe7aefb79d06fd60cf263",
+    "nome": "VALENTINA GREGUER",
+    "telefone": "Não informado",
+    "modalidadeId": "68efe62ffb79d06fd60cf176",
+    "ativo": true,
+    "criadoEm": "2025-10-15T18:27:58.273Z",
+    "atualizadoEm": "2025-10-15T18:27:58.273Z",
+    "__v": 0
+  },
+  {
+    "_id": "68efe7aefb79d06fd60cf26c",
+    "nome": "LAURA NERI",
+    "telefone": "Não informado",
+    "modalidadeId": "68efe62ffb79d06fd60cf176",
+    "ativo": true,
+    "criadoEm": "2025-10-15T18:27:58.436Z",
+    "atualizadoEm": "2025-10-15T18:27:58.436Z",
+    "__v": 0
+  },
+  {
+    "_id": "68efe7aefb79d06fd60cf275",
+    "nome": "EDUARDO POLESEL",
+    "telefone": "Não informado",
+    "modalidadeId": "68efe62ffb79d06fd60cf176",
+    "ativo": true,
+    "criadoEm": "2025-10-15T18:27:58.592Z",
+    "atualizadoEm": "2025-10-15T18:27:58.592Z",
+    "__v": 0
+  },
+  {
+    "_id": "68efe7aefb79d06fd60cf27e",
+    "nome": "Pedro Lucas de Jesus Souza",
+    "telefone": "Não informado",
+    "modalidadeId": "68efe62ffb79d06fd60cf176",
+    "ativo": true,
+    "criadoEm": "2025-10-15T18:27:58.818Z",
+    "atualizadoEm": "2025-10-15T18:27:58.818Z",
+    "__v": 0
+  },
+  {
+    "_id": "68efe7aefb79d06fd60cf287",
+    "nome": "LEONARDO ASTOLPHO (Total Pass)",
+    "telefone": "Não informado",
+    "modalidadeId": "68efe62ffb79d06fd60cf176",
+    "ativo": true,
+    "criadoEm": "2025-10-15T18:27:58.979Z",
+    "atualizadoEm": "2025-10-15T18:27:58.979Z",
+    "__v": 0
+  },
+  {
+    "_id": "68efe7affb79d06fd60cf290",
+    "nome": "Decio Herrera",
+    "telefone": "Não informado",
+    "modalidadeId": "68efe62ffb79d06fd60cf176",
+    "ativo": true,
+    "criadoEm": "2025-10-15T18:27:59.144Z",
+    "atualizadoEm": "2025-10-15T18:27:59.144Z",
+    "__v": 0
+  },
+  {
+    "_id": "68efe7affb79d06fd60cf299",
+    "nome": "Cassia Herrera",
+    "telefone": "Não informado",
+    "modalidadeId": "68efe62ffb79d06fd60cf176",
+    "ativo": true,
+    "criadoEm": "2025-10-15T18:27:59.309Z",
+    "atualizadoEm": "2025-10-15T18:27:59.309Z",
+    "__v": 0
+  },
+  {
+    "_id": "68efe7affb79d06fd60cf2a2",
+    "nome": "Taina Heloisa Pires de Carmargo Brito",
+    "telefone": "Não informado",
+    "modalidadeId": "68efe62ffb79d06fd60cf176",
+    "ativo": true,
+    "criadoEm": "2025-10-15T18:27:59.497Z",
+    "atualizadoEm": "2025-10-15T18:27:59.497Z",
+    "__v": 0
+  },
+  {
+    "_id": "68efe7affb79d06fd60cf2ab",
+    "nome": "Bruno",
+    "telefone": "Não informado",
+    "modalidadeId": "68efe62ffb79d06fd60cf176",
+    "ativo": true,
+    "criadoEm": "2025-10-15T18:27:59.653Z",
+    "atualizadoEm": "2025-10-15T18:27:59.653Z",
+    "__v": 0
+  }
+]

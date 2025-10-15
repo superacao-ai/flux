@@ -3,19 +3,20 @@
 import { useState, useEffect } from 'react';
 import Layout from '@/components/Layout';
 
-interface HorarioDisponivel {
+export interface HorarioDisponivel {
   diasSemana: number[];
   horaInicio: string;
   horaFim: string;
 }
 
-interface Modalidade {
+export interface Modalidade {
   _id: string;
   nome: string;
   descricao?: string;
   cor: string;
   duracao: number;
   limiteAlunos: number;
+  diasSemana?: number[]; // Dias da semana que a modalidade tem aula
   horariosDisponiveis: HorarioDisponivel[];
   ativo: boolean;
 }
@@ -29,7 +30,14 @@ export default function ModalidadesPage() {
     descricao: '',
     cor: '#3B82F6',
     duracao: 60,
-    limiteAlunos: 5
+    limiteAlunos: 5,
+    diasSemana: [] as number[], // Array de dias da semana (0=Domingo, 6=Sábado) - kept for compatibility
+    diasSemanaManha: [] as number[],
+    diasSemanaTarde: [] as number[],
+    horarioFuncionamento: {
+      manha: { inicio: '', fim: '' },
+      tarde: { inicio: '', fim: '' }
+    }
   });
   const [loading, setLoading] = useState(false);
 
@@ -54,9 +62,26 @@ export default function ModalidadesPage() {
   const fetchModalidades = async () => {
     try {
       const response = await fetch('/api/modalidades');
+
+      // Se a resposta não for OK, logue o corpo (pode ser HTML de erro)
+      if (!response.ok) {
+        const text = await response.text();
+        console.error('Erro na requisição /api/modalidades:', response.status, text);
+        return;
+      }
+
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        const text = await response.text();
+        console.error('Resposta /api/modalidades não é JSON:', text);
+        return;
+      }
+
       const data = await response.json();
-      if (data.success) {
-        setModalidades(data.data);
+      if (data && data.success) {
+        setModalidades(data.data || []);
+      } else {
+        console.error('API /api/modalidades retornou erro ou formato inesperado:', data);
       }
     } catch (error) {
       console.error('Erro ao buscar modalidades:', error);
@@ -68,23 +93,97 @@ export default function ModalidadesPage() {
     setLoading(true);
 
     try {
-      const url = editingModalidade 
-        ? `/api/modalidades/${editingModalidade._id}` 
+      // Client-side validation
+      const nomeTrim = (formData.nome || '').trim();
+      if (!nomeTrim) {
+        alert('Nome é obrigatório');
+        setLoading(false);
+        return;
+      }
+
+      // If morning days selected, require morning start/end
+      const diasManha = (formData as any).diasSemanaManha || [];
+      const diasTarde = (formData as any).diasSemanaTarde || [];
+      const manhaInicio = (formData as any).horarioFuncionamento?.manha?.inicio || '';
+      const manhaFim = (formData as any).horarioFuncionamento?.manha?.fim || '';
+      const tardeInicio = (formData as any).horarioFuncionamento?.tarde?.inicio || '';
+      const tardeFim = (formData as any).horarioFuncionamento?.tarde?.fim || '';
+
+      if (diasManha.length > 0 && (!manhaInicio || !manhaFim)) {
+        alert('Você selecionou dias para a Manhã, defina o horário de Início e Fim para Manhã (ou desmarque os dias).');
+        setLoading(false);
+        return;
+      }
+
+      if (diasTarde.length > 0 && (!tardeInicio || !tardeFim)) {
+        alert('Você selecionou dias para a Tarde, defina o horário de Início e Fim para Tarde (ou desmarque os dias).');
+        setLoading(false);
+        return;
+      }
+      if (editingModalidade) {
+        const id = (editingModalidade as any).id || (editingModalidade as any)._id;
+        if (!id) {
+          console.error('Tentativa de atualizar modalidade sem ID válido:', editingModalidade);
+          alert('Erro interno: modalidade sem ID. Reabra o modal e tente novamente.');
+          setLoading(false);
+          return;
+        }
+      }
+      const url = editingModalidade
+        ? `/api/modalidades/${(editingModalidade as any).id || (editingModalidade as any)._id}`
         : '/api/modalidades';
       const method = editingModalidade ? 'PUT' : 'POST';
+
+      // Log do payload para debug (será visível no console do navegador)
+      try { console.debug('POST /api/modalidades payload:', formData); } catch (e) {}
+
+      // Build payload: include horariosDisponiveis from morning/tarde selections
+      const payload: any = {
+        nome: nomeTrim,
+        descricao: formData.descricao,
+        cor: formData.cor,
+        duracao: formData.duracao,
+        limiteAlunos: formData.limiteAlunos,
+        // keep top-level diasSemana as the union of both selections for backward compatibility
+        diasSemana: Array.from(new Set([...(formData.diasSemana || []), ...(formData.diasSemanaManha || []), ...(formData.diasSemanaTarde || [])])).sort(),
+        horarioFuncionamento: formData.horarioFuncionamento,
+        horariosDisponiveis: [] as any[],
+      };
+
+      // If morning times and days provided, add to horariosDisponiveis
+      if ((formData as any).horarioFuncionamento?.manha?.inicio && (formData as any).horarioFuncionamento?.manha?.fim && (formData as any).diasSemanaManha && (formData as any).diasSemanaManha.length > 0) {
+        payload.horariosDisponiveis.push({ diasSemana: (formData as any).diasSemanaManha, horaInicio: (formData as any).horarioFuncionamento.manha.inicio, horaFim: (formData as any).horarioFuncionamento.manha.fim });
+      }
+
+      // If afternoon times and days provided, add to horariosDisponiveis
+      if ((formData as any).horarioFuncionamento?.tarde?.inicio && (formData as any).horarioFuncionamento?.tarde?.fim && (formData as any).diasSemanaTarde && (formData as any).diasSemanaTarde.length > 0) {
+        payload.horariosDisponiveis.push({ diasSemana: (formData as any).diasSemanaTarde, horaInicio: (formData as any).horarioFuncionamento.tarde.inicio, horaFim: (formData as any).horarioFuncionamento.tarde.fim });
+      }
+
+      try { console.debug('POST /api/modalidades payload:', payload); } catch (e) {}
 
       const response = await fetch(url, {
         method,
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(payload),
       });
+
+      // Handle non-OK responses with clearer messaging
+      if (!response.ok) {
+        let errBody: any = null;
+        try { errBody = await response.json(); } catch (e) { errBody = await response.text(); }
+        console.error('API /api/modalidades returned error', response.status, errBody);
+        const message = (errBody && (errBody.error || errBody.message)) ? (errBody.error || errBody.message) : `HTTP ${response.status}`;
+        alert('Erro ao salvar modalidade: ' + message);
+        return;
+      }
 
       const data = await response.json();
 
-      if (data.success) {
-        alert(editingModalidade ? 'Modalidade atualizada com sucesso!' : 'Modalidade criada com sucesso!');
+      if (data && data.success) {
+        // sucesso silencioso: fechar modal e recarregar lista
         setShowModal(false);
         setEditingModalidade(null);
         setFormData({
@@ -92,11 +191,15 @@ export default function ModalidadesPage() {
           descricao: '',
           cor: '#3B82F6',
           duracao: 60,
-          limiteAlunos: 5
+          limiteAlunos: 5,
+          diasSemana: [],
+          diasSemanaManha: [],
+          diasSemanaTarde: [],
+          horarioFuncionamento: { manha: { inicio: '', fim: '' }, tarde: { inicio: '', fim: '' } }
         });
         fetchModalidades();
       } else {
-        alert('Erro: ' + data.error);
+        alert('Erro: ' + (data?.error || 'Resposta inesperada do servidor'));
       }
     } catch (error) {
       console.error('Erro ao salvar modalidade:', error);
@@ -113,12 +216,26 @@ export default function ModalidadesPage() {
       descricao: modalidade.descricao || '',
       cor: modalidade.cor,
       duracao: modalidade.duracao,
-      limiteAlunos: modalidade.limiteAlunos
+      limiteAlunos: modalidade.limiteAlunos,
+      diasSemana: modalidade.diasSemana || [],
+      // Derive morning/afternoon day selections from horariosDisponiveis if present
+      diasSemanaManha: ((modalidade as any).horariosDisponiveis || []).length > 0 ? (((modalidade as any).horariosDisponiveis[0]?.diasSemana) || []) : (modalidade.diasSemana || []),
+      diasSemanaTarde: ((modalidade as any).horariosDisponiveis || []).length > 1 ? (((modalidade as any).horariosDisponiveis[1]?.diasSemana) || []) : [],
+      horarioFuncionamento: {
+        manha: { inicio: (modalidade as any).horarioFuncionamento?.manha?.inicio || '', fim: (modalidade as any).horarioFuncionamento?.manha?.fim || '' },
+        tarde: { inicio: (modalidade as any).horarioFuncionamento?.tarde?.inicio || '', fim: (modalidade as any).horarioFuncionamento?.tarde?.fim || '' }
+      }
     });
     setShowModal(true);
   };
 
   const deleteModalidade = async (id: string) => {
+    if (!id) {
+      console.error('deleteModalidade chamado sem id válido:', id);
+      alert('Erro interno: id da modalidade inválido. Recarregue a página e tente novamente.');
+      return;
+    }
+
     if (confirm('Tem certeza que deseja desativar esta modalidade?')) {
       try {
         const response = await fetch(`/api/modalidades/${id}`, {
@@ -127,7 +244,7 @@ export default function ModalidadesPage() {
 
         const data = await response.json();
         if (data.success) {
-          alert('Modalidade desativada com sucesso!');
+          // sucesso silencioso: recarregar lista
           fetchModalidades();
         } else {
           alert('Erro ao desativar modalidade');
@@ -136,6 +253,35 @@ export default function ModalidadesPage() {
         console.error('Erro ao desativar modalidade:', error);
         alert('Erro ao desativar modalidade');
       }
+    }
+  };
+
+  // Hard delete helper for card-level deletion (permanent)
+  const deleteModalidadeHard = async (id: string) => {
+    if (!id) {
+      console.error('deleteModalidadeHard chamado sem id válido:', id);
+      alert('Erro interno: id da modalidade inválido. Recarregue a página e tente novamente.');
+      return;
+    }
+
+    if (!confirm('Tem certeza que deseja apagar esta modalidade permanentemente? Esta ação não pode ser desfeita.')) return;
+    try {
+      // Use the hard=true query param to request permanent deletion on the server
+      const response = await fetch(`/api/modalidades/${id}?hard=true`, { method: 'DELETE' });
+      let data: any = null;
+      try { data = await response.json(); } catch (e) { data = null; }
+      if (response.ok && data && data.success) {
+        // sucesso silencioso: recarregar lista
+        fetchModalidades();
+      } else if (!response.ok) {
+        const msg = data?.error || data?.message || `HTTP ${response.status}`;
+        alert('Erro ao apagar modalidade: ' + msg);
+      } else {
+        alert('Erro ao apagar modalidade');
+      }
+    } catch (err) {
+      console.error('Erro ao apagar modalidade:', err);
+      alert('Erro ao apagar modalidade');
     }
   };
 
@@ -154,11 +300,11 @@ export default function ModalidadesPage() {
               Gerencie as modalidades disponíveis no seu studio.
             </p>
           </div>
-          <div className="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
+          <div className="mt-4 sm:mt-0 sm:ml-4">
             <button
               type="button"
               onClick={() => setShowModal(true)}
-              className="inline-flex items-center justify-center rounded-md border border-transparent bg-primary-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 sm:w-auto"
+              className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
             >
               Nova Modalidade
             </button>
@@ -167,8 +313,8 @@ export default function ModalidadesPage() {
 
         {/* Grid de modalidades */}
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {modalidades.map((modalidade) => (
-            <div key={modalidade._id} className="bg-white rounded-lg shadow border border-gray-200 p-6">
+          {modalidades.map((modalidade, idx) => (
+            <div key={(modalidade as any).id || (modalidade as any)._id || idx} className="bg-white rounded-lg shadow border border-gray-200 p-6">
               <div className="flex items-center">
                 <div
                   className="w-4 h-4 rounded-full mr-3"
@@ -191,19 +337,35 @@ export default function ModalidadesPage() {
                   <span className="text-gray-500">Limite de alunos:</span>
                   <span className="font-medium">{modalidade.limiteAlunos} alunos</span>
                 </div>
-                
-                {modalidade.horariosDisponiveis && modalidade.horariosDisponiveis.length > 0 && (
-                  <div className="mt-3">
-                    <span className="text-gray-500 text-sm block mb-2">Horários disponíveis:</span>
+
+                {/* Exibir dias da semana */}
+                {modalidade.diasSemana && modalidade.diasSemana.length > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500">Dias de aula:</span>
+                    <span className="font-medium text-xs">
+                      {([...modalidade.diasSemana].sort()).map(dia =>
+                        ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'][dia]
+                      ).join(', ')}
+                    </span>
+                  </div>
+                )}
+
+                {/* Mostrar horário de funcionamento da modalidade, se definido */}
+                {((modalidade as any).horarioFuncionamento && (((modalidade as any).horarioFuncionamento.manha?.inicio) || ((modalidade as any).horarioFuncionamento.tarde?.inicio))) && (
+                  <div className="mt-2 text-sm text-gray-600">
+                    <div className="text-xs text-gray-500 mb-1">Horário de funcionamento:</div>
                     <div className="space-y-1">
-                      {modalidade.horariosDisponiveis.map((horario, index) => (
-                        <div key={index} className="text-xs text-gray-600 bg-gray-50 p-2 rounded">
-                          {getDiasSemanaNomes(horario.diasSemana)}: {horario.horaInicio} às {horario.horaFim}
-                        </div>
-                      ))}
+                      {(modalidade as any).horarioFuncionamento.manha?.inicio && (modalidade as any).horarioFuncionamento.manha?.fim && (
+                        <div className="text-xs bg-gray-50 p-2 rounded">Manhã: {(modalidade as any).horarioFuncionamento.manha.inicio} — {(modalidade as any).horarioFuncionamento.manha.fim}</div>
+                      )}
+                      {(modalidade as any).horarioFuncionamento.tarde?.inicio && (modalidade as any).horarioFuncionamento.tarde?.fim && (
+                        <div className="text-xs bg-gray-50 p-2 rounded">Tarde: {(modalidade as any).horarioFuncionamento.tarde.inicio} — {(modalidade as any).horarioFuncionamento.tarde.fim}</div>
+                      )}
                     </div>
                   </div>
                 )}
+                
+                {/* Horários disponíveis removidos do card para simplificar a visualização */}
               </div>
               
               <div className="mt-4 flex justify-end space-x-2">
@@ -214,10 +376,16 @@ export default function ModalidadesPage() {
                   Editar
                 </button>
                 <button 
-                  onClick={() => deleteModalidade(modalidade._id)}
+                  onClick={() => deleteModalidade((modalidade as any).id || (modalidade as any)._id)}
                   className="text-red-600 hover:text-red-900 text-sm font-medium"
                 >
                   Desativar
+                </button>
+                <button
+                  onClick={() => deleteModalidadeHard((modalidade as any).id || (modalidade as any)._id)}
+                  className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-md"
+                >
+                  Apagar permanentemente
                 </button>
               </div>
             </div>
@@ -325,6 +493,137 @@ export default function ModalidadesPage() {
                   </div>
                 </div>
 
+                {/* Blocos separados: Manhã e Tarde (cada um com dias + horários abaixo) */}
+                <div className="space-y-4">
+                  {/* Manhã block */}
+                  <div className="border rounded-md p-3 bg-gray-50">
+                    <div className="mb-2 flex items-center justify-between">
+                      <label className="text-sm font-medium text-gray-700">Manhã</label>
+                      <span className="text-xs text-gray-500">Selecione dias e horário</span>
+                    </div>
+                    <div className="grid grid-cols-7 gap-2 mb-3">
+                      {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((dia, index) => (
+                        <button
+                          key={`manha-${index}`}
+                          type="button"
+                          onClick={() => {
+                            const dias = (formData as any).diasSemanaManha || [];
+                            if (dias.includes(index)) {
+                              setFormData({ ...formData, diasSemanaManha: dias.filter((d: number) => d !== index) });
+                            } else {
+                              setFormData({ ...formData, diasSemanaManha: [...[...dias, index].sort()] });
+                            }
+                          }}
+                          className={`px-2 py-2 text-xs font-medium rounded-md transition-colors ${
+                            ((formData as any).diasSemanaManha || []).includes(index)
+                              ? 'bg-primary-600 text-white border-2 border-primary-600'
+                              : 'bg-white text-gray-700 border-2 border-gray-300 hover:bg-gray-50'
+                          }`}
+                        >
+                          {dia}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">Início</label>
+                        <input
+                          type="time"
+                          value={(formData as any).horarioFuncionamento?.manha?.inicio || ''}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              horarioFuncionamento: {
+                                ...(formData as any).horarioFuncionamento,
+                                manha: {
+                                  ...( (formData as any).horarioFuncionamento?.manha || {} ),
+                                  inicio: e.target.value,
+                                },
+                              },
+                            })
+                          }
+                          className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">Fim</label>
+                        <input
+                          type="time"
+                          value={(formData as any).horarioFuncionamento?.manha?.fim || ''}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              horarioFuncionamento: {
+                                ...(formData as any).horarioFuncionamento,
+                                manha: {
+                                  ...( (formData as any).horarioFuncionamento?.manha || {} ),
+                                  fim: e.target.value,
+                                },
+                              },
+                            })
+                          }
+                          className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Tarde block */}
+                  <div className="border rounded-md p-3 bg-gray-50">
+                    <div className="mb-2 flex items-center justify-between">
+                      <label className="text-sm font-medium text-gray-700">Tarde</label>
+                      <span className="text-xs text-gray-500">Selecione dias e horário</span>
+                    </div>
+                    <div className="grid grid-cols-7 gap-2 mb-3">
+                      {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((dia, index) => (
+                        <button
+                          key={`tarde-${index}`}
+                          type="button"
+                          onClick={() => {
+                            const dias = (formData as any).diasSemanaTarde || [];
+                            if (dias.includes(index)) {
+                              setFormData({ ...formData, diasSemanaTarde: dias.filter((d: number) => d !== index) });
+                            } else {
+                              setFormData({ ...formData, diasSemanaTarde: [...[...dias, index].sort()] });
+                            }
+                          }}
+                          className={`px-2 py-2 text-xs font-medium rounded-md transition-colors ${
+                            ((formData as any).diasSemanaTarde || []).includes(index)
+                              ? 'bg-primary-600 text-white border-2 border-primary-600'
+                              : 'bg-white text-gray-700 border-2 border-gray-300 hover:bg-gray-50'
+                          }`}
+                        >
+                          {dia}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">Início</label>
+                        <input
+                          type="time"
+                          value={(formData as any).horarioFuncionamento?.tarde?.inicio || ''}
+                          onChange={(e) => setFormData({...formData, horarioFuncionamento: { ...(formData as any).horarioFuncionamento, tarde: { ...(formData as any).horarioFuncionamento?.tarde, inicio: e.target.value } } })}
+                          className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">Fim</label>
+                        <input
+                          type="time"
+                          value={(formData as any).horarioFuncionamento?.tarde?.fim || ''}
+                          onChange={(e) => setFormData({...formData, horarioFuncionamento: { ...(formData as any).horarioFuncionamento, tarde: { ...(formData as any).horarioFuncionamento?.tarde, fim: e.target.value } } })}
+                          className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* (Horários já apresentados nos blocos Manhã e Tarde acima) */}
+
                 <div className="flex justify-end space-x-3 pt-4">
                   <button
                     type="button"
@@ -336,7 +635,11 @@ export default function ModalidadesPage() {
                         descricao: '',
                         cor: '#3B82F6',
                         duracao: 60,
-                        limiteAlunos: 5
+                        limiteAlunos: 5,
+                        diasSemana: [],
+                        diasSemanaManha: [],
+                        diasSemanaTarde: [],
+                        horarioFuncionamento: { manha: { inicio: '', fim: '' }, tarde: { inicio: '', fim: '' } }
                       });
                     }}
                     className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
