@@ -7,10 +7,11 @@ import mongoose from 'mongoose';
 // GET - Buscar professor por ID
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: any
 ) {
   try {
     await connectDB();
+    const params = context?.params || {};
     
     if (!mongoose.Types.ObjectId.isValid(params.id)) {
       return NextResponse.json(
@@ -46,10 +47,11 @@ export async function GET(
 // PUT - Atualizar professor
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: any
 ) {
   try {
     await connectDB();
+    const params = context?.params || {};
     
     if (!mongoose.Types.ObjectId.isValid(params.id)) {
       return NextResponse.json(
@@ -149,10 +151,11 @@ export async function PUT(
 // DELETE - Excluir professor
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: any
 ) {
   try {
     await connectDB();
+    const params = context?.params || {};
     
     if (!mongoose.Types.ObjectId.isValid(params.id)) {
       return NextResponse.json(

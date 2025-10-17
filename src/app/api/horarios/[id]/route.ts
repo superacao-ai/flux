@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import { HorarioFixo } from '@/models/HorarioFixo';
+import { Aluno } from '@/models/Aluno';
+import mongoose from 'mongoose';
 
 // DELETE - Excluir horário
 export async function DELETE(
@@ -25,6 +27,24 @@ export async function DELETE(
         },
         { status: 404 }
       );
+    }
+
+    // If this horario was linked to an aluno, check whether that aluno has any
+    // other active horários. If not, soft-delete the aluno (mark ativo=false).
+    try {
+      const alunoId = horario.alunoId as any;
+      if (alunoId) {
+        const alunoObjectId = mongoose.Types.ObjectId.isValid(String(alunoId)) ? new mongoose.Types.ObjectId(String(alunoId)) : null;
+        if (alunoObjectId) {
+          const remaining = await HorarioFixo.countDocuments({ alunoId: alunoObjectId, ativo: true });
+          if (remaining === 0) {
+            await Aluno.findByIdAndUpdate(alunoObjectId, { ativo: false, atualizadoEm: new Date() });
+          }
+        }
+      }
+    } catch (e) {
+      // don't block deletion on aluno cleanup failures
+      console.warn('Aviso: falha ao verificar/excluir aluno órfão após excluir horário', e);
     }
 
     return NextResponse.json({

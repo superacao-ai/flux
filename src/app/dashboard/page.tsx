@@ -62,16 +62,7 @@ export default function Dashboard() {
     router.push('/login');
   };
 
-  if (!user) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary-500 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Carregando...</p>
-        </div>
-      </div>
-    );
-  }
+  // Render the dashboard immediately; client-side effect will redirect if there's no user.
 
   return (
     <Layout title="Dashboard - Superação Flux">
@@ -82,10 +73,10 @@ export default function Dashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <h1 className="text-2xl font-bold text-gray-900">
-                  Bem-vindo, {user.nome}!
+                  Bem-vindo, {user?.nome ?? 'Usuário'}!
                 </h1>
                 <p className="text-sm text-gray-600">
-                  {user.tipo === 'admin' ? 'Administrador' : 'Professor'} • {user.email}
+                  {(user?.tipo === 'admin' ? 'Administrador' : 'Professor')} • {user?.email ?? ''}
                 </p>
               </div>
               <button

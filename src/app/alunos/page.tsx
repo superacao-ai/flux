@@ -44,16 +44,7 @@ export default function AlunosPage() {
   const [modalidades, setModalidades] = useState<Modalidade[]>([]);
   const [professores, setProfessores] = useState<Professor[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showImportModal, setShowImportModal] = useState(false);
-  const [importData, setImportData] = useState({
-    listaAlunos: '',
-    modalidadeId: '',
-    professorId: '',
-    diaSemana: 1,
-    horarioInicio: '',
-    horarioFim: ''
-  });
-  const [importLoading, setImportLoading] = useState(false);
+  
 
   useEffect(() => {
     fetchAlunos();
@@ -158,126 +149,7 @@ export default function AlunosPage() {
     return String(nome || '').trim().toUpperCase();
   };
 
-  const processarImportacao = async () => {
-    if (!importData.listaAlunos.trim() || !importData.modalidadeId || !importData.professorId || !importData.horarioInicio || !importData.horarioFim) {
-      alert('Por favor, preencha todos os campos obrigatórios');
-      return;
-    }
-
-    setImportLoading(true);
-
-    try {
-      const linhas = importData.listaAlunos
-        .split('\n')
-        .map(linha => linha.trim())
-        .filter(linha => linha.length > 0);
-
-      let sucessos = 0;
-      let erros = 0;
-      const detalhesErros: string[] = [];
-
-      for (const linha of linhas) {
-        try {
-          // Processar linha: formato esperado "Nome do Aluno | email@exemplo.com | (11) 99999-9999"
-          const partes = linha.split('|').map(parte => parte.trim());
-          
-          if (partes.length < 1) {
-            detalhesErros.push(`Linha inválida: ${linha}`);
-            erros++;
-            continue;
-          }
-
-          const nomeOriginal = partes[0];
-          const nome = padronizarNome(nomeOriginal);
-          
-          // Email e telefone opcionais - usar apenas se fornecidos
-          const email = partes[1]?.trim() || ''; // Vazio se não fornecido
-          const telefone = partes[2]?.trim() || 'Não informado';
-          const endereco = partes[3]?.trim() || '';
-
-          // Criar aluno
-          const alunoResponse = await fetch('/api/alunos', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              nome,
-              email,
-              telefone,
-              endereco,
-              modalidadeId: importData.modalidadeId,
-            }),
-          });
-
-          const alunoData = await alunoResponse.json();
-          
-          if (alunoData.success) {
-            // Criar horário fixo para o aluno
-            const horarioResponse = await fetch('/api/horarios', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                alunoId: alunoData.data._id,
-                professorId: importData.professorId,
-                diaSemana: importData.diaSemana,
-                horarioInicio: importData.horarioInicio,
-                horarioFim: importData.horarioFim,
-                observacoes: 'Importado em lote'
-              }),
-            });
-
-            const horarioData = await horarioResponse.json();
-            
-            if (horarioData.success) {
-              sucessos++;
-            } else {
-              detalhesErros.push(`${nome}: Aluno criado, mas erro no horário - ${horarioData.error}`);
-              erros++;
-            }
-          } else {
-            detalhesErros.push(`${nome}: ${alunoData.error}`);
-            erros++;
-          }
-        } catch (error) {
-          detalhesErros.push(`${linha}: Erro inesperado`);
-          erros++;
-        }
-      }
-
-      // Mostrar resultado
-      let mensagem = `Importação concluída!\n✅ ${sucessos} alunos criados com sucesso`;
-      if (erros > 0) {
-        mensagem += `\n❌ ${erros} erros encontrados:\n${detalhesErros.slice(0, 5).join('\n')}`;
-        if (detalhesErros.length > 5) {
-          mensagem += `\n... e mais ${detalhesErros.length - 5} erros`;
-        }
-      }
-      
-      // resumo da importação: registrar no console e atualizar UI silenciosamente
-      console.log('Importação concluída', { sucessos, erros, detalhesErros });
-      if (sucessos > 0) {
-        setShowImportModal(false);
-        setImportData({
-          listaAlunos: '',
-          modalidadeId: '',
-          professorId: '',
-          diaSemana: 1,
-          horarioInicio: '',
-          horarioFim: ''
-        });
-        fetchAlunos();
-      }
-
-    } catch (error) {
-      console.error('Erro na importação:', error);
-      alert('Erro inesperado durante a importação');
-    } finally {
-      setImportLoading(false);
-    }
-  };
+  
 
   // Estados para edição
   const [showEditModal, setShowEditModal] = useState(false);
@@ -438,13 +310,6 @@ export default function AlunosPage() {
                 🗑️ Excluir Selecionados ({selectedAlunos.length})
               </button>
             )}
-            <button
-              type="button"
-              onClick={() => setShowImportModal(true)}
-              className="inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 sm:w-auto"
-            >
-              📋 Importar Alunos
-            </button>
             {/* 'Novo Aluno' removed: this page now lists alunos presentes nos horários */}
           </div>
         </div>
@@ -589,147 +454,7 @@ export default function AlunosPage() {
         </div>
       </div>
 
-      {/* Modal de Importação de Alunos */}
-      {showImportModal && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-          <div className="relative top-10 mx-auto p-5 border w-[800px] shadow-lg rounded-md bg-white">
-            <div className="mt-3">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Importar Alunos em Lote</h3>
-              
-              <div className="bg-blue-50 border border-blue-200 rounded-md p-4 mb-4">
-                <h4 className="text-sm font-medium text-blue-800 mb-2">📋 Formato de Importação:</h4>
-                <p className="text-sm text-blue-700 mb-2">Cole uma lista de alunos, um por linha. Formatos aceitos:</p>
-                <div className="text-xs font-mono bg-blue-100 p-2 rounded border">
-                  <div>João Silva</div>
-                  <div>Maria Santos | maria@email.com</div>
-                  <div>Pedro Costa | pedro@email.com | (11) 99999-9999</div>
-                  <div>Ana Clara | ana@email.com | (11) 88888-8888 | Rua A, 123</div>
-                </div>
-                <p className="text-xs text-blue-600 mt-2">
-                  * Apenas o nome é obrigatório. Email é opcional. Telefone será "Não informado" se não fornecido.
-                  * Formato: Nome | email@opcional.com | (11) 99999-9999 | Endereço opcional
-                  * Múltiplos alunos podem ser adicionados ao mesmo horário (conceito de turma).
-                </p>
-              </div>
-
-              <div className="space-y-4">
-                {/* Lista de Alunos */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Lista de Alunos *
-                  </label>
-                  <textarea
-                    value={importData.listaAlunos}
-                    onChange={(e) => setImportData({...importData, listaAlunos: e.target.value})}
-                    className="block w-full h-32 border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                    placeholder="Cole aqui a lista de alunos, um por linha..."
-                    required
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    {importData.listaAlunos.split('\n').filter(l => l.trim()).length} alunos na lista
-                  </p>
-                </div>
-
-                {/* Configurações da Turma */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Modalidade *</label>
-                    <select
-                      value={importData.modalidadeId}
-                      onChange={(e) => setImportData({...importData, modalidadeId: e.target.value})}
-                      className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                      required
-                    >
-                      <option value="">Selecione uma modalidade</option>
-                      {modalidades.map((modalidade) => (
-                        <option key={modalidade._id} value={modalidade._id}>
-                          {modalidade.nome}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Professor *</label>
-                    <select
-                      value={importData.professorId}
-                      onChange={(e) => setImportData({...importData, professorId: e.target.value})}
-                      className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                      required
-                    >
-                      <option value="">Selecione um professor</option>
-                      {professores.map((professor) => (
-                        <option key={professor._id} value={professor._id}>
-                          {professor.nome}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                {/* Horário da Turma */}
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Dia da Semana *</label>
-                    <select
-                      value={importData.diaSemana}
-                      onChange={(e) => setImportData({...importData, diaSemana: parseInt(e.target.value)})}
-                      className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                      required
-                    >
-                      {['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'].map((dia, index) => (
-                        <option key={index} value={index}>
-                          {dia}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Horário Início *</label>
-                    <input
-                      type="time"
-                      value={importData.horarioInicio}
-                      onChange={(e) => setImportData({...importData, horarioInicio: e.target.value})}
-                      className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Horário Fim *</label>
-                    <input
-                      type="time"
-                      value={importData.horarioFim}
-                      onChange={(e) => setImportData({...importData, horarioFim: e.target.value})}
-                      className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div className="flex justify-end space-x-3 pt-4">
-                  <button
-                    type="button"
-                    onClick={() => setShowImportModal(false)}
-                    className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="button"
-                    onClick={processarImportacao}
-                    disabled={importLoading}
-                    className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50"
-                  >
-                    {importLoading ? 'Importando...' : '📋 Importar Alunos'}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      
 
       {/* Modal de Edição */}
       {showEditModal && (
@@ -770,7 +495,7 @@ export default function AlunosPage() {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Telefone <span className="text-gray-400 text-xs">(pode ser "Não informado")</span>
+                    Telefone <span className="text-gray-400 text-xs">(pode ser &quot;Não informado&quot;)</span>
                   </label>
                   <input
                     type="tel"

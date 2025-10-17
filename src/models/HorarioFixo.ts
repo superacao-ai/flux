@@ -11,6 +11,7 @@ export interface IHorarioFixo {
   horarioFim: string; // HH:MM
   ativo: boolean;
   observacoes?: string;
+  observacaoTurma?: string;
   criadoEm?: Date;
   atualizadoEm?: Date;
 }
@@ -56,6 +57,12 @@ const HorarioFixoSchema = new Schema<IHorarioFixo>({
     type: String,
     trim: true,
     maxlength: [300, 'Observações devem ter no máximo 300 caracteres']
+  }
+  ,
+  observacaoTurma: {
+    type: String,
+    trim: true,
+    maxlength: [300, 'Observações da turma devem ter no máximo 300 caracteres']
   }
 }, {
   timestamps: { createdAt: 'criadoEm', updatedAt: 'atualizadoEm' }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import { HorarioFixo } from '@/models/HorarioFixo';
 import mongoose from 'mongoose';
+import { Aluno } from '@/models/Aluno';
 
 export async function PATCH(request: NextRequest) {
   try {
@@ -29,7 +30,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     const updates: any = {};
-    const allowed = ['professorId', 'diaSemana', 'horarioInicio', 'horarioFim', 'observacoes'];
+  const allowed = ['professorId', 'diaSemana', 'horarioInicio', 'horarioFim', 'observacoes', 'observacaoTurma'];
     for (const key of allowed) {
       if (body[key] !== undefined) {
         if (key === 'professorId') {
@@ -79,6 +80,27 @@ export async function DELETE(request: NextRequest) {
     }
 
     const res = await HorarioFixo.updateMany(filter, { $set: { ativo: false } });
+
+    // After deactivating the horarios, find distinct alunoIds affected and
+    // soft-delete any aluno that no longer has active horarios.
+    try {
+      const affected = await HorarioFixo.find(filter).select('alunoId').lean();
+      const alunoIds = Array.from(new Set(affected.map((a: any) => a.alunoId).filter(Boolean)));
+      for (const aid of alunoIds) {
+        try {
+          const aidObj = mongoose.Types.ObjectId.isValid(String(aid)) ? new mongoose.Types.ObjectId(String(aid)) : null;
+          if (!aidObj) continue;
+          const remaining = await HorarioFixo.countDocuments({ alunoId: aidObj, ativo: true });
+          if (remaining === 0) {
+            await Aluno.findByIdAndUpdate(aidObj, { ativo: false, atualizadoEm: new Date() });
+          }
+        } catch (inner) {
+          console.warn('Aviso: falha ao limpar aluno órfão após remoção de turma', inner);
+        }
+      }
+    } catch (e) {
+      console.warn('Aviso: falha ao buscar alunos afetados ao deletar turma', e);
+    }
 
     return NextResponse.json({ success: true, data: { modifiedCount: res.modifiedCount } });
   } catch (error) {
