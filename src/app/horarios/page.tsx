@@ -125,9 +125,49 @@ export default function HorariosPage() {
   const [loading, setLoading] = useState(false);
   const [bulkAlunoText, setBulkAlunoText] = useState('');
   const [showAddAlunoModal, setShowAddAlunoModal] = useState(false);
+  const [showAddSingleAlunoModal, setShowAddSingleAlunoModal] = useState(false);
+  const [singleAlunoSearch, setSingleAlunoSearch] = useState('');
+  const [singleAlunoSelectedId, setSingleAlunoSelectedId] = useState<string | null>(null);
+  const [singleAlunoName, setSingleAlunoName] = useState('');
+  const [singleAlunoObservacoes, setSingleAlunoObservacoes] = useState('');
+  const [singleAddMode, setSingleAddMode] = useState<'select' | 'create'>('select');
+  const [showStudentDetailModal, setShowStudentDetailModal] = useState(false);
+  const [selectedStudentHorario, setSelectedStudentHorario] = useState<any | null>(null);
+  const [modalEditing, setModalEditing] = useState<boolean>(false);
+  const [modalEditName, setModalEditName] = useState<string>('');
+  const [modalEditObservacoes, setModalEditObservacoes] = useState<string>('');
+  
+  // Initialize modal edit fields when selection changes (top-level to respect Hooks rules)
+  useEffect(() => {
+    if (!selectedStudentHorario) return;
+    const alunoName = selectedStudentHorario.alunoId?.nome || selectedStudentHorario.aluno?.nome || selectedStudentHorario.nome || '';
+    setModalEditName(alunoName);
+    setModalEditObservacoes(String(selectedStudentHorario.observacoes || ''));
+    setModalEditing(false);
+  }, [selectedStudentHorario]);
+  
   const [novoHorarioAlunosText, setNovoHorarioAlunosText] = useState('');
   const [addAlunoTurma, setAddAlunoTurma] = useState<{professorId?: string, diaSemana?: number, horarioInicio?: string, horarioFim?: string} | null>(null);
   const [bulkAlunoTextAdd, setBulkAlunoTextAdd] = useState('');
+  // parsed entries for the per-turma bulk add modal
+  const [bulkImportEntries, setBulkImportEntries] = useState<Array<{ id: string; name: string; obs?: string; selected: boolean; alunoId?: string }>>([]);
+  const [bulkAllowCreateNew, setBulkAllowCreateNew] = useState(false);
+
+  // parse bulkAlunoTextAdd into bulkImportEntries when modal opens or text changes
+  useEffect(() => {
+    if (!showAddAlunoModal) return;
+    const lines = String(bulkAlunoTextAdd || '').split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+    const parsed = lines.map((ln, idx) => {
+      // support optional 'NAME | OBS' format
+      const parts = ln.split('|');
+      const name = String(parts[0] || '').trim();
+      const obs = parts.slice(1).join('|').trim();
+      const found = alunos.find(a => String(a.nome || '').trim().toLowerCase() === name.toLowerCase());
+      return { id: `bulk-${idx}-${Math.random().toString(36).slice(2,8)}`, name, obs, selected: true, alunoId: found ? found._id : undefined };
+    });
+    setBulkImportEntries(parsed);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showAddAlunoModal, bulkAlunoTextAdd]);
   // Estado para modal de lote
   const [showModalLote, setShowModalLote] = useState<{open: boolean, turma?: any, diaSemana?: number, horarioInicio?: string, horarioFim?: string}>({open: false});
   const [alunosSelecionadosLote, setAlunosSelecionadosLote] = useState<string[]>([]);
@@ -141,6 +181,21 @@ export default function HorariosPage() {
   const [importHorarioFim, setImportHorarioFim] = useState<string>('');
   const [importing, setImporting] = useState(false);
   const [importResults, setImportResults] = useState<{successes: number, failures: Array<{name:string, reason:string}>} | null>(null);
+  // parsed entries for import modal: allow selecting which lines to import and mapping to existing alunos
+  const [importEntries, setImportEntries] = useState<Array<{ id: string; name: string; selected: boolean; alunoId?: string }>>([]);
+
+  // parse importText into importEntries when text changes or modal opens
+  useEffect(() => {
+    if (!showImportModal) return;
+    const lines = String(importText || '').split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+    const parsed = lines.map((ln, idx) => {
+      // try to find an exact aluno match
+      const found = alunos.find(a => String(a.nome || '').trim().toLowerCase() === ln.trim().toLowerCase());
+      return { id: `entry-${idx}-${Math.random().toString(36).slice(2,8)}`, name: ln, selected: true, alunoId: found ? found._id : undefined };
+    });
+    setImportEntries(parsed);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showImportModal, importText]);
   const [mounted, setMounted] = useState(false);
   // local visual flags for quick toggles (not persisted) keyed by horarioId
   const [localFlags, setLocalFlags] = useState<Record<string, { congelado?: boolean; ausente?: boolean }>>({});
@@ -231,6 +286,39 @@ export default function HorariosPage() {
     } catch (e) {
       return horariosDisponiveis;
     }
+  };
+
+  // compute available days and times for the currently selected modalidade in the modal
+  const getModalidadeAvailability = (modalidadeId?: string) => {
+    const mid = modalidadeId || formData.modalidadeId || modalidadeSelecionada || '';
+    if (!mid) return { days: diasSemana.map((_, i) => i), times: horariosDisponiveis };
+    const mod = modalidades.find(m => getMid(m) === mid) as any;
+    if (!mod) return { days: diasSemana.map((_, i) => i), times: horariosDisponiveis };
+    // normalize diasSemana to 0..6 if needed
+    let modDays: number[] = [];
+    if (Array.isArray(mod.diasSemana) && mod.diasSemana.length > 0) {
+      modDays = mod.diasSemana.map((d: number) => (d > 6 ? d - 1 : d));
+    }
+    // If modalidade defines horariosDisponiveis (array of {diasSemana, horaInicio, horaFim}), build times intersection
+    if (Array.isArray(mod.horariosDisponiveis) && mod.horariosDisponiveis.length > 0) {
+      // Collect times that belong to any matching horarioDisponivel entry
+      const timesSet = new Set<string>();
+      for (const hd of mod.horariosDisponiveis) {
+        const hdDays = Array.isArray(hd.diasSemana) && hd.diasSemana.length > 0 ? hd.diasSemana.map((d:number)=> d>6? d-1: d) : (modDays.length>0 ? modDays : diasSemana.map((_,i)=>i));
+        for (const d of hdDays) {
+          // add all half-hour slots between horaInicio (inclusive) and horaFim (exclusive)
+          const start = hd.horaInicio || hd.horaInicio || hd.hora_inicio || '';
+          const end = hd.horaFim || hd.horaFim || hd.hora_fim || '';
+          if (!start || !end) continue;
+          const slots = generateTimes(start, end, 30);
+          for (const s of slots) timesSet.add(s);
+        }
+      }
+      const timesArr = Array.from(timesSet).sort((a,b)=> timeToMinutes(a)-timeToMinutes(b));
+      return { days: (modDays.length>0 ? modDays : diasSemana.map((_,i)=>i)), times: timesArr.length>0 ? timesArr : horariosDisponiveis };
+    }
+    // fallback: if mod has horarioFuncionamento or no specific horariosDisponiveis, keep full times range
+    return { days: (modDays.length>0 ? modDays : diasSemana.map((_,i)=>i)), times: horariosDisponiveis };
   };
 
   const visibleHorarios = getVisibleHorarios();
@@ -356,10 +444,12 @@ export default function HorariosPage() {
       const data = await response.json();
       if (data.success) {
         setHorarios(data.data);
+        return data.data;
       }
     } catch (error) {
       console.error('Erro ao buscar horários:', error);
     }
+    return null;
   };
 
   const fetchAlunos = async () => {
@@ -798,20 +888,25 @@ export default function HorariosPage() {
   };
 
   // Atualizar observações de um horário (tipicamente usado para anotações por aluno)
-  const updateHorarioObservacoes = async (id: string, currentObservacoes?: string) => {
-    // Prompt simples para edição; null = cancelar, '' = remover observação
-    const novo = prompt('Observações para este aluno (deixe vazio para remover):', currentObservacoes || '');
-    if (novo === null) return; // usuário cancelou
+  const updateHorarioObservacoes = async (id: string, newObservacoes?: string) => {
+    // If caller omitted newObservacoes, do nothing (preserve behavior)
+    if (typeof newObservacoes === 'undefined') return;
     try {
       const resp = await fetch(`/api/horarios/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ observacoes: novo })
+        body: JSON.stringify({ observacoes: newObservacoes })
       });
       const data = await resp.json();
       if (data.success) {
-        // Recarregar horários para refletir a alteração
-        fetchHorarios();
+        // Recarregar horários para refletir a alteração e update selectedStudentHorario
+        const updated = await fetchHorarios();
+        if (updated) {
+          const refreshed = (updated as any).find((h: any) => String(h._id) === String(id));
+          if (refreshed && selectedStudentHorario && String(selectedStudentHorario._id) === String(id)) {
+            setSelectedStudentHorario(refreshed);
+          }
+        }
       } else {
         alert('Erro ao atualizar observações: ' + (data.error || 'erro'));
       }
@@ -853,8 +948,14 @@ export default function HorariosPage() {
           } catch (e) {}
           return h;
         }));
-        // Refresh horarios from server to ensure consistency
-        fetchHorarios();
+        // Refresh horarios from server to ensure consistency and keep modal open
+        const updated = await fetchHorarios();
+        if (updated) {
+          const refreshed = (updated as any).find((h: any) => (h.alunoId && ((h.alunoId as any)._id === aluno._id || String((h.alunoId as any)?._id || h.alunoId) === String(aluno._id))));
+          if (refreshed && selectedStudentHorario && String(selectedStudentHorario._id) === String(refreshed._id)) {
+            setSelectedStudentHorario(refreshed);
+          }
+        }
       } else {
         alert('Erro ao atualizar aluno: ' + (data && data.error ? data.error : 'erro'));
       }
@@ -877,24 +978,23 @@ export default function HorariosPage() {
   };
 
   const toggleCongelado = (id: string) => {
-    // Optimistically toggle local flag and persist to server by patching observacoes
+    // Optimistically toggle local flag and persist to server by PATCHing explicit flag fields (do NOT touch observacoes)
     setLocalFlags(prev => {
       const cur = prev[id] || {};
       return { ...prev, [id]: { ...cur, congelado: !cur.congelado, ausente: cur.ausente ? cur.ausente : false } };
     });
     (async () => {
       try {
-        // Use local horarios state to read current observacoes (avoid GET /api/horarios/:id which isn't supported for GET)
-        const existing = horarios.find((h: any) => String(h._id) === String(id));
-        if (!existing) throw new Error('Horário local não encontrado');
-        const currentObs = String(existing.observacoes || '');
-        const has = currentObs.includes('[CONGELADO]');
-        const novoObs = has ? currentObs.replace(/\[CONGELADO\]/g, '').trim() : (`[CONGELADO] ${currentObs}`).trim();
-        const patch = await fetch(`/api/horarios/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ observacoes: novoObs }) });
+        const cur = localFlags[id] || {};
+        const newCongelado = !cur.congelado;
+        // When setting congelado=true ensure ausente=false on server
+        const body: any = { congelado: newCongelado };
+        if (newCongelado) body.ausente = false;
+        const patch = await fetch(`/api/horarios/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
         const patchData = await patch.json();
         if (!patchData || !patchData.success) throw new Error(patchData && patchData.error ? patchData.error : 'Erro ao atualizar');
-        // Refresh horarios
-        fetchHorarios();
+        // Refresh horarios after server update
+        await fetchHorarios();
       } catch (err) {
         console.error('Erro ao togglear congelado:', err);
         alert('Erro ao marcar congelado.');
@@ -908,22 +1008,22 @@ export default function HorariosPage() {
   };
 
   const toggleAusente = (id: string) => {
-    // Optimistically toggle local flag and persist to server by patching observacoes
+    // Optimistically toggle local flag and persist to server by PATCHing explicit flag fields (do NOT touch observacoes)
     setLocalFlags(prev => {
       const cur = prev[id] || {};
       return { ...prev, [id]: { ...cur, ausente: !cur.ausente, congelado: cur.congelado ? cur.congelado : false } };
     });
     (async () => {
       try {
-        const existing = horarios.find((h: any) => String(h._id) === String(id));
-        if (!existing) throw new Error('Horário local não encontrado');
-        const currentObs = String(existing.observacoes || '');
-        const has = currentObs.includes('[AUSENTE]');
-        const novoObs = has ? currentObs.replace(/\[AUSENTE\]/g, '').trim() : (`[AUSENTE] ${currentObs}`).trim();
-        const patch = await fetch(`/api/horarios/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ observacoes: novoObs }) });
+        const cur = localFlags[id] || {};
+        const newAusente = !cur.ausente;
+        // When setting ausente=true ensure congelado=false on server
+        const body: any = { ausente: newAusente };
+        if (newAusente) body.congelado = false;
+        const patch = await fetch(`/api/horarios/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
         const patchData = await patch.json();
         if (!patchData || !patchData.success) throw new Error(patchData && patchData.error ? patchData.error : 'Erro ao atualizar');
-        fetchHorarios();
+        await fetchHorarios();
       } catch (err) {
         console.error('Erro ao togglear ausente:', err);
         alert('Erro ao marcar ausente.');
@@ -1195,47 +1295,51 @@ export default function HorariosPage() {
   const handleImportClick = async () => {
     // iniciar importação
     setImporting(true);
-    const lines = importText.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+    // Only import entries that are checked
+    const entriesToImport = importEntries.filter(e => e.selected);
     const failures: Array<{name:string, reason:string}> = [];
     let successes = 0;
-    for (const name of lines) {
-      // procurar aluno pelo nome (exato ou case-insensitive)
-      const aluno = alunos.find(a => a.nome.toLowerCase() === name.toLowerCase());
-      let resolvedAluno = aluno;
-      if (!resolvedAluno) {
-        // Try similarity-based match first
-        const best = findBestAlunoMatch(name);
-              if (best.aluno && best.score >= 0.8) {
-                const decision = await askAlunoConfirmation(name, [{ aluno: best.aluno, score: best.score }]);
-                if (decision.action === 'use' && decision.alunoId) {
-                  const found = alunos.find(a => a._id === decision.alunoId);
-                  if (found) resolvedAluno = found;
-                } else if (decision.action === 'create') {
-                  // will create below
-                } else if (decision.action === 'skip') {
-                  failures.push({ name, reason: 'Pulado pelo usuário' });
-                  continue;
-                }
-              }
-
-        // criar aluno automaticamente se não quisermos usar existente
+    for (const entry of entriesToImport) {
+      const name = String(entry.name || '').trim();
+      if (!name) {
+        failures.push({name: '(vazio)', reason: 'Nome vazio'});
+        continue;
+      }
+      let alunoIdToUse: string | undefined = entry.alunoId;
+      // If an explicit alunoId was provided for this entry, use it directly
+      if (!alunoIdToUse) {
+        // Try to find exact match first
+        const aluno = alunos.find(a => String(a.nome || '').trim().toLowerCase() === name.toLowerCase());
+        let resolvedAluno = aluno;
         if (!resolvedAluno) {
+          // Try similarity match like before
+          const best = findBestAlunoMatch(name);
+          if (best.aluno && best.score >= 0.8) {
+            const decision = await askAlunoConfirmation(name, [{ aluno: best.aluno, score: best.score }]);
+            if (decision.action === 'use' && decision.alunoId) {
+              const found = alunos.find(a => a._id === decision.alunoId);
+              if (found) resolvedAluno = found;
+            } else if (decision.action === 'create') {
+              // will create below
+            } else if (decision.action === 'skip') {
+              failures.push({ name, reason: 'Pulado pelo usuário' });
+              continue;
+            }
+          }
+        }
+        if (!resolvedAluno) {
+          // create aluno
           try {
-            const alunoPayload: any = { nome: String(name || '').trim().toUpperCase() };
+            const alunoPayload: any = { nome: name.toUpperCase() };
             if (importModalidadeId) alunoPayload.modalidadeId = importModalidadeId;
-            // Only include optional fields when they have meaningful values
-            // (avoid sending empty strings which could collide with unique indexes)
             const alunoResp = await fetch('/api/alunos', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(alunoPayload)
+              method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(alunoPayload)
             });
             const alunoData = await alunoResp.json();
             if (alunoData.success) {
               const created = alunoData.data as Aluno | undefined;
               if (created) {
                 resolvedAluno = created;
-                // atualizar lista local de alunos
                 setAlunos(prev => [...prev, created]);
               } else {
                 failures.push({name, reason: 'Resposta inválida ao criar aluno'});
@@ -1250,24 +1354,18 @@ export default function HorariosPage() {
             continue;
           }
         }
+        alunoIdToUse = resolvedAluno?._id;
       }
+
+      if (!alunoIdToUse) {
+        failures.push({name, reason: 'Aluno não resolvido'});
+        continue;
+      }
+
+      // create horario
       try {
-        if (!resolvedAluno) {
-          failures.push({name, reason: 'Aluno não resolvido'});
-          continue;
-        }
         const resp = await fetch('/api/horarios', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            alunoId: (resolvedAluno as Aluno)._id,
-            professorId: importProfessorId,
-            diaSemana: importDiaSemana,
-            horarioInicio: importHorarioInicio,
-            horarioFim: importHorarioFim,
-            observacoes: 'Importado em lote',
-            modalidadeId: importModalidadeId || modalidadeSelecionada || undefined
-          })
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ alunoId: alunoIdToUse, professorId: importProfessorId, diaSemana: importDiaSemana, horarioInicio: importHorarioInicio, horarioFim: importHorarioFim, observacoes: 'Importado em lote', modalidadeId: importModalidadeId || modalidadeSelecionada || undefined })
         });
         const data = await resp.json();
         if (data.success) {
@@ -1281,7 +1379,7 @@ export default function HorariosPage() {
     }
     setImportResults({successes, failures});
     setImporting(false);
-    fetchHorarios();
+    await fetchHorarios();
   };
 
   return (
@@ -1290,7 +1388,8 @@ export default function HorariosPage() {
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
           <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
             <div className="mt-3">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Adicionar Alunos em Lote</h3>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Adicionar Alunos em Lote</h3>
+          <p className="text-sm text-gray-700 mb-3">Modalidade aplicada: <span className="font-semibold">{(modalidades.find(m => getMid(m) === modalidadeSelecionada)?.nome) || '— nenhuma selecionada —'}</span>. Os alunos selecionados serão adicionados a esta modalidade — verifique se está correta antes de confirmar.</p>
               <div className="mb-4">
                 <label className="block text-sm font-medium text-gray-700 mb-2">Selecione os alunos:</label>
                 <div className="max-h-40 overflow-y-auto border rounded p-2">
@@ -1343,13 +1442,52 @@ export default function HorariosPage() {
             <textarea
               value={bulkAlunoTextAdd}
               onChange={e => {
-                // Allow free typing (do not normalize on each keystroke) so user can add spaces/blank lines while editing.
+                // Keep raw text for editing
                 setBulkAlunoTextAdd(String(e.target.value || ''));
               }}
               className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-              rows={8}
+              rows={4}
               placeholder={`Ex:\nJOÃO SILVA\nMARIA SOUZA\n...`}
             />
+            <p className="text-xs text-gray-500 mt-2">Linhas detectadas: {bulkImportEntries.length}. Desmarque as que não deseja adicionar.</p>
+            <div className="mt-2 flex items-center justify-between">
+              <div />
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={() => setBulkImportEntries(prev => prev.map(p => ({...p, selected: true})))} className="text-xs text-primary-600">Selecionar todos</button>
+                <button type="button" onClick={() => setBulkImportEntries(prev => prev.map(p => ({...p, selected: false})))} className="text-xs text-gray-600">Desmarcar</button>
+              </div>
+            </div>
+            <div className="mt-3 flex items-center gap-3">
+              <input type="checkbox" id="bulk-allow-create" checked={bulkAllowCreateNew} onChange={e => setBulkAllowCreateNew(e.target.checked)} />
+              <label htmlFor="bulk-allow-create" className="text-xs">Permitir criação automática de novos alunos (marque com cuidado para evitar duplicatas)</label>
+            </div>
+            <div className="mt-2 max-h-36 overflow-y-auto border rounded p-2 bg-white">
+              {bulkImportEntries.length === 0 && <div className="text-xs text-gray-500">Nenhuma linha detectada ainda.</div>}
+              {bulkImportEntries.map(entry => (
+                <div key={entry.id} className="flex items-start gap-2 mb-2">
+                  <input type="checkbox" checked={entry.selected} onChange={e => setBulkImportEntries(prev => prev.map(p => p.id === entry.id ? {...p, selected: e.target.checked} : p))} className="mt-1" />
+                  <div className="flex-1">
+                    <div className="flex gap-2">
+                      <input value={entry.name} onChange={e => setBulkImportEntries(prev => prev.map(p => p.id === entry.id ? {...p, name: e.target.value} : p))} className="w-full border border-gray-200 rounded px-2 py-1 text-sm" />
+                      <input value={entry.obs || ''} onChange={e => setBulkImportEntries(prev => prev.map(p => p.id === entry.id ? {...p, obs: e.target.value} : p))} placeholder="Observação (opcional)" className="w-40 border border-gray-200 rounded px-2 py-1 text-sm" />
+                    </div>
+                    <div className="mt-1 text-xs text-gray-500">Associe a um aluno existente (opcional):
+                      <select value={entry.alunoId || ''} onChange={e => setBulkImportEntries(prev => prev.map(p => p.id === entry.id ? {...p, alunoId: e.target.value || undefined} : p))} className="ml-2 text-xs border border-gray-200 rounded px-2 py-1">
+                        <option value="">— nenhum —</option>
+                        {alunos.slice(0,200).map(a => (
+                          <option key={a._id} value={a._id}>{a.nome}</option>
+                        ))}
+                      </select>
+                      {entry.alunoId ? (
+                        <span className="ml-2 inline-block text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded">Existente</span>
+                      ) : (
+                        <span className="ml-2 inline-block text-xs bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded">Novo (será criado)</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
             <div className="mt-4 flex justify-end space-x-3">
               <button
                 type="button"
@@ -1359,72 +1497,77 @@ export default function HorariosPage() {
               <button
                 type="button"
                   onClick={async () => {
-                  // processar linhas (trim e ignore linhas vazias); support 'NOME | OBSERVAÇÃO'
-                  const lines = String(bulkAlunoTextAdd || '').split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+                  // use only selected entries
+                  const entries = bulkImportEntries.filter(e => e.selected);
                   const failures: Array<{name:string, reason:string}> = [];
                   let successes = 0;
-                  for (const rawLine of lines) {
-                    // split into name and optional observation using '|' separator
-                    const parts = rawLine.split('|');
-                    const namePart = String(parts[0] || '').trim();
-                    const obsPart = parts.slice(1).join('|').trim();
-                    const lookupName = namePart.toUpperCase();
-                    // procurar aluno localmente (case-insensitive)
-                    const aluno = alunos.find(a => String(a.nome || '').trim().toUpperCase() === lookupName);
-                    let resolvedAluno = aluno;
+                  // If any selected entry has no alunoId and bulkAllowCreateNew is false, block
+                  if (entries.some(en => !en.alunoId) && !bulkAllowCreateNew) {
+                    alert('Algumas entradas selecionadas não correspondem a alunos existentes. Ative "Permitir criação automática" para criá-las ou associe alunos existentes.');
+                    return;
+                  }
+                  for (const e of entries) {
+                    const rawName = String(e.name || '').trim();
+                    const obsPart = String(e.obs || '').trim();
+                    if (!rawName) { failures.push({name: '(vazio)', reason: 'Nome vazio'}); continue; }
+                    // If an alunoId was manually associated, use it
+                    let resolvedAluno: Aluno | undefined = undefined;
+                    if (e.alunoId) {
+                      resolvedAluno = alunos.find(a => a._id === e.alunoId);
+                    }
                     if (!resolvedAluno) {
-                      // criar aluno automaticamente com modalidade selecionada globalmente
+                      // try exact match
+                      const lookupName = rawName.toUpperCase();
+                      const alunoFound = alunos.find(a => String(a.nome || '').trim().toUpperCase() === lookupName);
+                      if (alunoFound) resolvedAluno = alunoFound;
+                    }
+                    if (!resolvedAluno) {
+                      // create only if allowed
+                      if (!bulkAllowCreateNew) { failures.push({name: rawName, reason: 'Criação proibida'}); continue; }
                       try {
-                        const alunoPayload: any = { nome: namePart.toUpperCase() };
+                        const alunoPayload: any = { nome: rawName.toUpperCase() };
                         if (modalidadeSelecionada) alunoPayload.modalidadeId = modalidadeSelecionada;
                         const alunoResp = await fetch('/api/alunos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(alunoPayload) });
                         const alunoData = await alunoResp.json();
                         if (alunoData.success) {
                           resolvedAluno = alunoData.data as Aluno;
-                          const createdAluno = resolvedAluno as Aluno;
-                          setAlunos(prev => [...prev, createdAluno]);
+                          if (resolvedAluno) setAlunos(prev => [...prev, resolvedAluno!]);
                         } else {
-                          failures.push({name: namePart, reason: 'Falha ao criar aluno: ' + (alunoData.error || 'erro')});
+                          failures.push({name: rawName, reason: 'Falha ao criar aluno: ' + (alunoData.error || 'erro')});
                           continue;
                         }
                       } catch (err:any) {
-                        failures.push({name: namePart, reason: 'Erro ao criar aluno: ' + (err.message || 'erro')});
+                        failures.push({name: rawName, reason: 'Erro ao criar aluno: ' + (err.message || 'erro')});
                         continue;
                       }
                     }
-                    // criar horario para o aluno com a observação específica (se houver)
+
+                    if (!resolvedAluno) { failures.push({name: rawName, reason: 'Aluno não resolvido'}); continue; }
+
                     try {
                       const resp = await fetch('/api/horarios', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                          alunoId: (resolvedAluno as Aluno)._id,
-                          professorId: addAlunoTurma.professorId,
-                          diaSemana: addAlunoTurma.diaSemana,
-                          horarioInicio: addAlunoTurma.horarioInicio,
-                          horarioFim: addAlunoTurma.horarioFim,
-                          observacoes: obsPart || '',
-                          modalidadeId: formData.modalidadeId || modalidadeSelecionada || undefined
-                        })
+                        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ alunoId: resolvedAluno._id, professorId: addAlunoTurma.professorId, diaSemana: addAlunoTurma.diaSemana, horarioInicio: addAlunoTurma.horarioInicio, horarioFim: addAlunoTurma.horarioFim, observacoes: obsPart || '', modalidadeId: formData.modalidadeId || modalidadeSelecionada || undefined })
                       });
                       const data = await resp.json();
                       if (data.success) {
                         successes++;
                       } else {
-                        failures.push({name: namePart, reason: data.error || 'Erro desconhecido'});
+                        failures.push({name: rawName, reason: data.error || 'Erro desconhecido'});
                       }
                     } catch (err:any) {
-                      failures.push({name: namePart, reason: err.message || 'Erro de requisição'});
+                      failures.push({name: rawName, reason: err.message || 'Erro de requisição'});
                     }
                   }
                   setShowAddAlunoModal(false);
                   setBulkAlunoTextAdd('');
                   setAddAlunoTurma(null);
+                  setBulkImportEntries([]);
                   await fetchHorarios();
                   alert(`Adicionados: ${successes}. Falhas: ${failures.length}` + (failures.length>0 ? '\n' + failures.map(f=> `${f.name}: ${f.reason}`).join('\n') : ''));
                 }}
                 className="px-4 py-2 bg-primary-600 text-white rounded-md disabled:opacity-50"
-              >Adicionar</button>
+                disabled={bulkImportEntries.filter(e=>e.selected).length===0 || (bulkImportEntries.filter(e=>e.selected && !e.alunoId).length>0 && !bulkAllowCreateNew)}
+              >Adicionar ({bulkImportEntries.filter(e=>e.selected).length})</button>
             </div>
           </div>
         </div>
@@ -1470,28 +1613,28 @@ export default function HorariosPage() {
           <div className="shadow ring-1 ring-black ring-opacity-5 md:rounded-lg">
             {/* Horário de funcionamento removido da UI por decisão do produto; a lógica de filtragem por openTime/closeTime permanece. */}
             <div className="overflow-auto max-h-[75vh]">{/* table scrolls internally */}
-              <table className="w-full table-fixed text-sm border-separate" style={{ borderSpacing: 0 }}>
+              <table className="w-full table-fixed text-sm border-collapse">
             <thead className="bg-white border-b">
               <tr>
-                <th scope="col" className="sticky top-0 left-0 z-20 px-2 py-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-24 bg-white border-r border-gray-200">
+                <th scope="col" className="sticky top-0 left-0 z-20 px-2 py-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-24 bg-white border border-gray-200">
                   Horário
                 </th>
                 {visibleDays.map((dayIndex) => (
                   <th
                     key={dayIndex}
                     scope="col"
-                    className="sticky top-0 z-10 px-3 py-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider min-w-[88px] bg-gray-50 border-l border-gray-200"
+                    className="sticky top-0 z-10 px-3 py-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider min-w-[88px] bg-gray-50 border border-gray-200"
                   >
                     {diasSemana[dayIndex]}
                   </th>
                 ))}
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
+            <tbody className="bg-white">
               {visibleTimes.map((horarioSlot) => (
                 <tr key={horarioSlot} className="align-top">
-                  <td className="sticky left-0 z-10 p-2 whitespace-nowrap text-sm font-medium text-gray-900 bg-white border-r border-gray-200 flex items-center justify-center">
-                    <div className="text-sm font-medium text-center">{horarioSlot}</div>
+                  <td className="sticky left-0 z-10 p-2 whitespace-nowrap text-sm font-medium text-gray-900 bg-white border border-gray-200 h-full">
+                    <div className="h-full flex items-center justify-center text-sm font-medium text-center">{horarioSlot}</div>
                   </td>
                   {visibleDays.map((dayIndex) => {
                     const key = `${horarioSlot}-${dayIndex}`;
@@ -1570,22 +1713,10 @@ export default function HorariosPage() {
                         rowSpan={rowSpan}
                         onClick={() => {
                           if (!isOpen) return; // blocked slot
-                          // If there are existing turmas in this cell, ask the user whether
-                          // to edit an existing turma or create a new turma in the same slot.
-                          if (turmas && turmas.length > 0) {
-                            try {
-                              // Use a simple confirm for the choice: OK = editar existente, Cancel = criar nova turma
-                              // This keeps the change minimal; we can later replace with a nicer custom modal if desired.
-                              const editExisting = confirm('Já existem turmas neste horário. Clique em OK para editar a turma existente ou Cancel para criar uma nova turma no mesmo horário.');
-                              if (editExisting) {
-                                openEditTurmaGroup(turmas[0]);
-                                return;
-                              }
-                              // If user chose to create a new turma (Cancel), fall through to open the create modal below
-                            } catch (e) {
-                              // fallback to create modal if something unexpected
-                            }
-                          }
+                          // If this cell already has one or more turmas, do NOT open edit/create modal
+                          // Clicking the cell should be a no-op in that case. Use the buttons inside
+                          // each turma card to edit/add students or the small '+' button to add a new turma.
+                          if (turmas && turmas.length > 0) return;
                           // Open the create-new-horario modal prefilled for this slot
                           const idx = horariosDisponiveis.indexOf(horarioSlot);
                           const horarioFimDefault = idx >= 0 && idx < horariosDisponiveis.length - 1 ? horariosDisponiveis[idx + 1] : horarioSlot;
@@ -1604,156 +1735,206 @@ export default function HorariosPage() {
                           setEditingMemberIds([]);
                           setShowModal(true);
                         }}
-                        className={`p-2 align-top border-l border-gray-100 ${isOpen ? 'cursor-pointer' : 'cursor-not-allowed'}`}
+                        className={`p-2 align-top border border-gray-200 h-full ${(isOpen && (!turmas || turmas.length === 0)) ? 'cursor-pointer' : 'cursor-default'}`}
                       >
-                            <div className={`${isOpen ? 'bg-white hover:bg-gray-50' : 'bg-red-50'} rounded-md p-2 flex flex-col`}>
+                            <div className={`${!isOpen ? 'bg-red-50' : (turmas && turmas.length > 0) ? 'bg-white' : 'bg-white hover:bg-gray-50'} rounded-md p-2 flex flex-col h-full`}>
                           {isOpen ? (
                             // open interval: show turmas or 'TURMA VAGA'
                             (turmas && turmas.length > 0) ? (
-                              <div className="flex flex-col space-y-2">
-                                {turmas.map((turma, turmaIdx) => {
-                                  const visibleAlunos = (turma.alunos || []).filter((h: any) => h && h.alunoId && (h.alunoId.nome || h.alunoId._id));
-                                  // Determine capacity: prefer selected modalidade, otherwise infer from first aluno
-                                  let capacity: number | undefined = undefined;
-                                try {
-                                  if (modalidadeSelecionada) {
-                                    const mod = modalidades.find(m => getMid(m) === modalidadeSelecionada) as any;
-                                    if (mod && typeof mod.limiteAlunos === 'number') capacity = mod.limiteAlunos;
-                                  }
-                                  if (capacity === undefined) {
-                                    const firstAlunoMod = (visibleAlunos[0] && (visibleAlunos[0].alunoId as any)?.modalidadeId) || null;
-                                    const modId = firstAlunoMod ? ((firstAlunoMod.id || firstAlunoMod._id) as string) : null;
-                                    if (modId) {
-                                      const mod2 = modalidades.find(m => getMid(m) === modId) as any;
-                                      if (mod2 && typeof mod2.limiteAlunos === 'number') capacity = mod2.limiteAlunos;
+                              <div className="flex flex-col">
+                                <div className="flex flex-col space-y-2">
+                                  {turmas.map((turma, turmaIdx) => {
+                                    const visibleAlunos = (turma.alunos || []).filter((h: any) => h && h.alunoId && (h.alunoId.nome || h.alunoId._id));
+                                    // Determine capacity: prefer selected modalidade, otherwise infer from first aluno
+                                    let capacity: number | undefined = undefined;
+                                    try {
+                                      if (modalidadeSelecionada) {
+                                        const mod = modalidades.find(m => getMid(m) === modalidadeSelecionada) as any;
+                                        if (mod && typeof mod.limiteAlunos === 'number') capacity = mod.limiteAlunos;
+                                      }
+                                      if (capacity === undefined) {
+                                        const firstAlunoMod = (visibleAlunos[0] && (visibleAlunos[0].alunoId as any)?.modalidadeId) || null;
+                                        const modId = firstAlunoMod ? ((firstAlunoMod.id || firstAlunoMod._id) as string) : null;
+                                        if (modId) {
+                                          const mod2 = modalidades.find(m => getMid(m) === modId) as any;
+                                          if (mod2 && typeof mod2.limiteAlunos === 'number') capacity = mod2.limiteAlunos;
+                                        }
+                                      }
+                                    } catch (e) {
+                                      // ignore
                                     }
-                                  }
-                                } catch (e) {
-                                  // ignore
-                                }
-                                const count = visibleAlunos.length;
-                                const exceeded = capacity !== undefined && count >= capacity;
-                                // Prefer explicit turma.observacaoTurma if present; otherwise detect if all members share the same observacao (ignoring flags)
-                                const explicitTurmaObs = (turma as any).observacaoTurma;
-                                // Do NOT infer turma observation from per-student notes. Use only explicit turma.observacaoTurma.
-                                const turmaObsStr = explicitTurmaObs ? String(explicitTurmaObs).trim() : '';
-                                const turmaClass = `${exceeded ? 'border-red-200 bg-red-50 text-red-800' : 'border-gray-200 bg-primary-50 text-primary-800'} border px-3 py-2 rounded text-xs mb-1 shadow-sm flex flex-col`;
-                                // Debug: log turma observation just before rendering to trace flicker
-                                try { if (typeof window !== 'undefined') console.debug('renderTurma: turma', { professor: turma.professorNome, turmaObs: turma.observacaoTurma, visibleAlunos: visibleAlunos.map((a:any)=>({id:a._id, obs: a.observacoes})) }); } catch(e) {}
+                                    const count = visibleAlunos.length;
+                                    const exceeded = capacity !== undefined && count >= capacity;
+                                    const explicitTurmaObs = (turma as any).observacaoTurma;
+                                    const turmaObsStr = explicitTurmaObs ? String(explicitTurmaObs).trim() : '';
+                                    const turmaClass = `${exceeded ? 'border-red-200 bg-red-50 text-red-800' : 'border-gray-200 bg-primary-50 text-primary-800'} border px-3 py-2 rounded text-xs mb-1 shadow-sm flex flex-col`;
+                                    try { if (typeof window !== 'undefined') console.debug('renderTurma: turma', { professor: turma.professorNome, turmaObs: turma.observacaoTurma, visibleAlunos: visibleAlunos.map((a:any)=>({id:a._id, obs: a.observacoes})) }); } catch(e) {}
 
-                                return (
-                                  <div key={turma.professorId + turma.horarioFim} className={turmaClass}>
-                                    <div className="flex items-center justify-between mb-1">
-                                      <div className="font-medium text-left"><span className="text-sm">{turma.professorNome}</span></div>
-                                      <div className={`text-[11px] ${exceeded ? 'text-red-700 font-semibold' : 'text-gray-600'}`}>{count}{capacity ? `/${capacity}` : ''}</div>
-                                    </div>
-                                    {turmaObsStr ? (
-                                      <div className="mb-2 text-left">
-                                        <span className="inline-block text-xs px-2 py-0.5 bg-blue-100 text-blue-800 rounded font-semibold">
-                                          {turmaObsStr.replace(/\[CONGELADO\]|\[AUSENTE\]/g, '').trim()}
-                                        </span>
-                                      </div>
-                                    ) : null}
-                                    <div className="space-y-2 max-h-40 overflow-y-auto text-xs">
-                                      {visibleAlunos.map((horario: any) => (
-                                        <div key={horario._id} className="bg-white bg-opacity-60 px-2 py-1 rounded text-xs w-full">
-                                          <div className="w-full">
-                                            <div className="flex items-center">
-                                              <i className="fas fa-user fa-xs text-primary-600 mr-2" aria-hidden="true" />
-                                              {
-                                                (() => {
-                                                  const obs = String(horario.observacoes || '');
-                                                  const local = localFlags[horario._id] || {};
-                                                  const isCongelado = (local.congelado === true) || obs.includes('[CONGELADO]');
-                                                  const isAusente = (local.ausente === true) || obs.includes('[AUSENTE]');
-                                                  const nameClass = isAusente ? 'text-red-600 font-semibold' : (isCongelado ? 'text-blue-600 font-semibold' : 'text-gray-800');
-                                                  const tooltipParts: string[] = [];
-                                                  if (isCongelado) tooltipParts.push('CONGELADO: matrícula congelada (não cobra/pausa)');
-                                                  if (isAusente) tooltipParts.push('AUSENTE: ausência registrada');
-                                                  const tooltip = tooltipParts.join(' • ');
-                                                  return (
-                                                    <span title={tooltip || undefined} className={`font-medium ${nameClass} text-xs`}>{horario.alunoId?.nome}</span>
-                                                  );
-                                                })()
-                                              }
-                                            </div>
-                                            {/* student observation is shown ABOVE the action buttons and applies only to this aluno */}
-                                            {(() => {
-                                              const studentObsRaw = String(horario.observacoes || '');
-                                              const studentObs = studentObsRaw.replace(/\[CONGELADO\]|\[AUSENTE\]/g, '').trim();
-                                              if (studentObs) {
-                                                return (
-                                                  <div className="mt-1 mb-1 text-left">
-                                                    <span className="inline-block text-xs px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded font-semibold">{studentObs}</span>
-                                                  </div>
-                                                );
-                                              }
-                                              return null;
-                                            })()}
-                                            <div className="w-full flex items-center justify-center mt-1 gap-2">
-                                              <button onClick={(e) => { e.stopPropagation(); toggleCongelado(horario._id); }} className="text-primary-600 hover:text-primary-700 p-0.5 text-xs" title={localFlags[horario._id]?.congelado ? 'Descongelar matrícula' : 'Congelar matrícula'} aria-label={localFlags[horario._id]?.congelado ? 'Descongelar' : 'Congelar'}>
-                                                <i className="fas fa-snowflake fa-xs" aria-hidden="true" />
-                                              </button>
-                                              <button onClick={(e) => { e.stopPropagation(); toggleAusente(horario._id); }} className="text-primary-600 hover:text-primary-700 p-0.5 text-xs" title={localFlags[horario._id]?.ausente ? 'Marcar como presente' : 'Marcar como ausente'} aria-label={localFlags[horario._id]?.ausente ? 'Marcar presente' : 'Marcar ausente'}>
-                                                <i className="fas fa-ban fa-xs" aria-hidden="true" />
-                                              </button>
-                                              <button onClick={(e) => { e.stopPropagation(); updateHorarioObservacoes(horario._id, horario.observacoes); }} className="text-primary-600 hover:text-primary-700 p-0.5 text-xs" title="Editar observações">
-                                                <i className="fas fa-pencil-alt fa-xs" aria-hidden="true" />
-                                              </button>
-                                              <button onClick={(e) => { e.stopPropagation(); editAlunoName(horario); }} className="text-primary-600 hover:text-primary-700 p-0.5 text-xs" title="Editar nome do aluno">
-                                                <i className="fas fa-user-edit fa-xs" aria-hidden="true" />
-                                              </button>
-                                              <button onClick={(e) => { e.stopPropagation(); deleteHorario(horario._id); }} className="text-primary-600 hover:text-primary-700 p-0.5 text-xs" title="Remover aluno da turma"><i className="fas fa-times fa-xs" aria-hidden="true" /></button>
-                                            </div>
-                                            {/* student-specific observation handled above */}
-                                          </div>
+                                    return (
+                                      <div key={turma.professorId + turma.horarioFim} className={turmaClass}>
+                                        <div className="flex items-center justify-between mb-1">
+                                          <div className="font-medium text-left"><span className="text-sm">{turma.professorNome}</span></div>
+                                          <div className={`text-[11px] ${exceeded ? 'text-red-700 font-semibold' : 'text-gray-600'}`}>{count}{capacity ? `/${capacity}` : ''}</div>
                                         </div>
-                                      ))}
-                                    </div>
-                                    {/* Botões de ação da turma */}
-                                    <div className="mt-2 flex items-center justify-center gap-2">
-                                      <button
-                                        onClick={(e) => { e.stopPropagation(); setAddAlunoTurma({ professorId: turma.professorId, diaSemana: dayIndex, horarioInicio: horarioSlot, horarioFim: turma.horarioFim }); setShowAddAlunoModal(true); }}
-                                        title="Adicionar aluno"
-                                        className="p-1 w-8 h-8 flex items-center justify-center text-primary-600 hover:text-primary-700 rounded bg-white/30"
-                                      >
-                                        <span className="sr-only">Adicionar aluno</span>
-                                        <i className="fas fa-plus" aria-hidden="true" />
-                                      </button>
+                                        {turmaObsStr ? (
+                                          <div className="mb-2 text-left">
+                                            <span className="inline-block text-xs px-2 py-0.5 bg-blue-100 text-blue-800 rounded font-semibold">
+                                              {turmaObsStr.replace(/\[CONGELADO\]|\[AUSENTE\]/g, '').trim()}
+                                            </span>
+                                          </div>
+                                        ) : null}
+                                        <div className="space-y-2 max-h-40 overflow-y-auto text-xs">
+                                          {visibleAlunos.map((horario: any) => (
+                                            <div key={horario._id} className="bg-white bg-opacity-60 px-2 py-1 rounded text-xs w-full">
+                                              <div className="w-full">
+                                                <div className="flex items-center justify-between">
+                                                  <div className="flex items-center">
+                                                    <i className="fas fa-user fa-xs text-primary-600 mr-2" aria-hidden="true" />
+                                                    {
+                                                      (() => {
+                                                        const obs = String(horario.observacoes || '');
+                                                        const local = localFlags[horario._id] || {};
+                                                        const isCongelado = (local.congelado === true) || obs.includes('[CONGELADO]');
+                                                        const isAusente = (local.ausente === true) || obs.includes('[AUSENTE]');
+                                                        const tooltipParts: string[] = [];
+                                                        if (isCongelado) tooltipParts.push('CONGELADO: matrícula congelada (não cobra/pausa)');
+                                                        if (isAusente) tooltipParts.push('AUSENTE: ausência registrada');
+                                                        const tooltip = tooltipParts.join(' • ');
+                                                        return (
+                                                          <div title={tooltip || undefined} className="flex flex-col">
+                                                            <span className={`font-medium text-xs text-gray-800`}>{horario.alunoId?.nome}</span>
+                                                            <div className="mt-1 flex items-center gap-2 text-sm">
+                                                              {isCongelado && <i className="fas fa-snowflake text-sky-500" aria-hidden="true" title="Congelado" />}
+                                                              {isAusente && <i className="fas fa-user-clock text-rose-500" aria-hidden="true" title="Ausente recorrente" />}
+                                                            </div>
+                                                          </div>
+                                                        );
+                                                      })()
+                                                    }
+                                                  </div>
+                                                  <div>
+                                                    <button
+                                                      onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        /* close other modals/backdrops */
+                                                        setShowAddSingleAlunoModal(false);
+                                                        setShowAddAlunoModal(false);
+                                                        setShowImportModal(false);
+                                                        setShowModalLote({open: false});
+                                                        // Ensure professorNome from the parent turma is available in the selected object
+                                                        const enriched = { ...horario, professorNome: (turma && (turma.professorNome || (turma.professorId && (turma.professorId.nome || turma.professorId))) ) };
+                                                        setSelectedStudentHorario(enriched);
+                                                        setShowStudentDetailModal(true);
+                                                      }}
+                                                      className="text-primary-600 hover:text-primary-700 p-1 text-sm rounded"
+                                                      title="Ver detalhes do aluno"
+                                                      aria-label="Ver detalhes do aluno"
+                                                    >
+                                                      <i className="fas fa-info-circle" aria-hidden="true" />
+                                                    </button>
+                                                  </div>
+                                                </div>
+                                                {/* student observation is shown BELOW the name row and applies only to this aluno */}
+                                                {(() => {
+                                                  const studentObsRaw = String(horario.observacoes || '');
+                                                  const studentObs = studentObsRaw.replace(/\[CONGELADO\]|\[AUSENTE\]/g, '').trim();
+                                                  if (studentObs) {
+                                                    return (
+                                                      <div className="mt-1 mb-1 text-left">
+                                                        <span className="inline-block text-xs px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded font-semibold">{studentObs}</span>
+                                                      </div>
+                                                    );
+                                                  }
+                                                  return null;
+                                                })()}
+                                              </div>
+                                            </div>
+                                          ))}
+                                        </div>
+                                        {/* Botões de ação da turma */}
+                                        <div className="mt-2 flex items-center justify-center gap-2">
+                                          <button
+                                            onClick={(e) => { e.stopPropagation(); setAddAlunoTurma({ professorId: turma.professorId, diaSemana: dayIndex, horarioInicio: horarioSlot, horarioFim: turma.horarioFim }); setShowAddAlunoModal(true); }}
+                                            title="Adicionar aluno"
+                                            className="p-1 w-8 h-8 flex items-center justify-center text-primary-600 hover:text-primary-700 rounded bg-white/30"
+                                          >
+                                            <span className="sr-only">Adicionar aluno</span>
+                                            <i className="fas fa-plus" aria-hidden="true" />
+                                          </button>
 
-                                      <button
-                                        onClick={(e) => { e.stopPropagation(); openEditTurmaGroup(turma); }}
-                                        title="Editar turma"
-                                        className="p-1 w-8 h-8 flex items-center justify-center text-primary-600 hover:text-primary-700 rounded"
-                                      >
-                                        <span className="sr-only">Editar turma</span>
-                                        <i className="fas fa-edit" aria-hidden="true" />
-                                      </button>
+                                          {/* Single-add button: add one aluno (opens modal with search/create) */}
+                                          <button
+                                            onClick={(e) => { e.stopPropagation(); setAddAlunoTurma({ professorId: turma.professorId, diaSemana: dayIndex, horarioInicio: horarioSlot, horarioFim: turma.horarioFim }); setShowAddSingleAlunoModal(true); setSingleAlunoSearch(''); setSingleAlunoSelectedId(null); setSingleAlunoName(''); setSingleAlunoObservacoes(''); }}
+                                            title="Adicionar 1 aluno"
+                                            className="p-1 w-8 h-8 flex items-center justify-center text-primary-600 hover:text-primary-700 rounded"
+                                          >
+                                            <span className="sr-only">Adicionar um aluno</span>
+                                            <i className="fas fa-user-plus" aria-hidden="true" />
+                                          </button>
 
-                                      <button
-                                        onClick={(e) => { e.stopPropagation(); if (!confirm('Excluir TODA a turma? Isso removerá todos os alunos deste horário.')) return; handleDeleteTurma(turma); }}
-                                        title="Excluir turma inteira"
-                                        className="p-1 w-8 h-8 flex items-center justify-center text-primary-600 hover:text-primary-700 rounded"
-                                      >
-                                        <span className="sr-only">Excluir turma</span>
-                                        <i className="fas fa-trash" aria-hidden="true" />
-                                      </button>
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                              ) : (
-                                <div className="flex items-center justify-center flex-1">
-                                  <span className="text-sm font-semibold text-green-700 text-center">TURMA VAGA</span>
+                                          <button
+                                            onClick={(e) => { e.stopPropagation(); openEditTurmaGroup(turma); }}
+                                            title="Editar turma"
+                                            className="p-1 w-8 h-8 flex items-center justify-center text-primary-600 hover:text-primary-700 rounded"
+                                          >
+                                            <span className="sr-only">Editar turma</span>
+                                            <i className="fas fa-edit" aria-hidden="true" />
+                                          </button>
+
+                                          <button
+                                            onClick={(e) => { e.stopPropagation(); if (!confirm('Excluir TODA a turma? Isso removerá todos os alunos deste horário.')) return; handleDeleteTurma(turma); }}
+                                            title="Excluir turma inteira"
+                                            className="p-1 w-8 h-8 flex items-center justify-center text-primary-600 hover:text-primary-700 rounded"
+                                          >
+                                            <span className="sr-only">Excluir turma</span>
+                                            <i className="fas fa-trash" aria-hidden="true" />
+                                          </button>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
                                 </div>
-                              )
-                            ) : (
-                              // blocked slot for this modalidade/day/time
-                              <div className="flex items-center justify-center flex-1">
-                                <span className="inline-block px-2 py-1 text-xs font-semibold text-red-700 bg-red-50 rounded text-center">INDISPONÍVEL</span>
+                                {/* add-button: render outside the turma card list so it visually indicates adding another turma for this slot */}
+                                <div className="mt-2 w-full flex items-center justify-center">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); /* open create modal prefilled for this slot */
+                                      const idx = horariosDisponiveis.indexOf(horarioSlot);
+                                      const horarioFimDefault = idx >= 0 && idx < horariosDisponiveis.length - 1 ? horariosDisponiveis[idx + 1] : horarioSlot;
+                                      setEditingMode('create');
+                                      setFormData({
+                                        alunoId: '',
+                                        professorId: '',
+                                        diaSemana: dayIndex,
+                                        horarioInicio: horarioSlot,
+                                        horarioFim: horarioFimDefault,
+                                        observacoes: '',
+                                        observacaoTurma: '',
+                                        modalidadeId: modalidadeSelecionada || ''
+                                      });
+                                      setSelectedHorarioId(null);
+                                      setEditingMemberIds([]);
+                                      setShowModal(true);
+                                    }}
+                                    className="inline-flex items-center gap-2 px-2 py-1 text-xs rounded border border-dashed border-gray-300 text-gray-600 hover:bg-gray-50"
+                                    title="Adicionar nova turma neste horário"
+                                  >
+                                    <span className="font-bold text-sm">+</span>
+                                    <span>Adicionar turma</span>
+                                  </button>
+                                </div>
                               </div>
-                            )}
+                            ) : (
+                              <div className="h-full w-full flex items-center justify-center">
+                                <span className="text-sm font-semibold text-green-700 text-center">TURMA VAGA</span>
+                              </div>
+                            )
+                          ) : (
+                            // blocked slot for this modalidade/day/time
+                            <div className="flex items-center justify-center flex-1">
+                              <span className="inline-block px-2 py-1 text-xs font-semibold text-red-700 bg-red-50 rounded text-center">INDISPONÍVEL</span>
+                            </div>
+                          )}
                         </div>
                       </td>
                     );
@@ -1828,7 +2009,7 @@ export default function HorariosPage() {
           <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
             <div className="mt-3">
               <h3 className="text-lg font-medium text-gray-900 mb-4">
-                {editingMode === 'turma' ? 'Editar Turma' : editingMode === 'single' ? 'Editar Horário' : 'Cadastrar Novo Horário'}
+                {editingMode === 'turma' ? 'Editar Turma' : editingMode === 'single' ? 'Editar Horário' : 'Cadastrar Nova Turma'}
               </h3>
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
@@ -1836,9 +2017,7 @@ export default function HorariosPage() {
                     <p className="text-sm text-gray-600">Editando a turma selecionada. As alterações serão aplicadas a todos os alunos dessa turma.</p>
                   ) : editingMode === 'single' ? (
                     <p className="text-sm text-gray-600">Editando o horário selecionado.</p>
-                  ) : (
-                    <p className="text-sm text-gray-600">Crie um novo horário (turma). Após criar, use o botão + Aluno na célula para adicionar alunos a essa turma.</p>
-                  )}
+                  ) : null }
                 </div>
 
                 <div>
@@ -1870,18 +2049,23 @@ export default function HorariosPage() {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700">Dia da Semana</label>
-                  <select
-                    value={formData.diaSemana}
-                    onChange={(e) => setFormData({...formData, diaSemana: parseInt(e.target.value)})}
-                    className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                    required
-                  >
-                    {diasSemana.map((dia, index) => (
-                      <option key={index} value={index}>
-                        {dia}
-                      </option>
-                    ))}
-                  </select>
+                  {(() => {
+                    const avail = getModalidadeAvailability();
+                    return (
+                      <select
+                        value={formData.diaSemana}
+                        onChange={(e) => setFormData({...formData, diaSemana: parseInt(e.target.value)})}
+                        className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                        required
+                      >
+                        {avail.days.map((index: number) => (
+                          <option key={index} value={index}>
+                            {diasSemana[index]}
+                          </option>
+                        ))}
+                      </select>
+                    );
+                  })()}
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
@@ -1913,7 +2097,7 @@ export default function HorariosPage() {
                       required
                     >
                       <option value="">Selecione</option>
-                      {horariosDisponiveis.map((horario) => (
+                      {getModalidadeAvailability().times.map((horario) => (
                         <option key={horario} value={horario}>
                           {horario}
                         </option>
@@ -1930,7 +2114,7 @@ export default function HorariosPage() {
                       required
                     >
                       <option value="">Selecione</option>
-                      {horariosDisponiveis.map((horario) => (
+                      {getModalidadeAvailability().times.map((horario) => (
                         <option key={horario} value={horario}>
                           {horario}
                         </option>
@@ -1962,21 +2146,6 @@ export default function HorariosPage() {
                       className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
                       rows={2}
                       placeholder="Observação que será aplicada à turma inteira..."
-                    />
-                  </div>
-                )}
-
-                {/* Optional textarea to create students when creating the horario - hide when editing an existing turma */}
-                {editingMode !== 'turma' && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Adicionar alunos (opcional)</label>
-                    <p className="text-xs text-gray-500 mb-1">Cole nomes, uma por linha. Se preenchido, o sistema criará alunos (ou sugerirá correspondências) e adicionará cada um a este horário.</p>
-                    <textarea
-                      value={novoHorarioAlunosText}
-                      onChange={(e) => setNovoHorarioAlunosText(String(e.target.value || ''))}
-                      className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                      rows={4}
-                      placeholder={`Ex:\nJOÃO SILVA\nMARIA SOUZA\n...`}
                     />
                   </div>
                 )}
@@ -2015,9 +2184,36 @@ export default function HorariosPage() {
                   value={importText}
                   onChange={e => setImportText(e.target.value)}
                   className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                  rows={10}
+                  rows={6}
                   placeholder={`Ex:\nJoão Silva\nMaria Souza\n...`}
                 />
+                <div className="mt-2 flex items-center justify-between">
+                  <p className="text-xs text-gray-500">Linhas detectadas: {importEntries.length}.</p>
+                  <div className="flex items-center gap-2">
+                    <button type="button" onClick={() => setImportEntries(prev => prev.map(p => ({...p, selected: true})))} className="text-xs text-primary-600">Selecionar todos</button>
+                    <button type="button" onClick={() => setImportEntries(prev => prev.map(p => ({...p, selected: false})))} className="text-xs text-gray-600">Desmarcar</button>
+                  </div>
+                </div>
+                <div className="mt-2 max-h-40 overflow-y-auto border rounded p-2 bg-white">
+                  {importEntries.length === 0 && <div className="text-xs text-gray-500">Nenhuma linha detectada ainda.</div>}
+                  {importEntries.map((entry, idx) => (
+                    <div key={entry.id} className="flex items-start gap-2 mb-2">
+                      <input type="checkbox" checked={entry.selected} onChange={e => setImportEntries(prev => prev.map(p => p.id === entry.id ? {...p, selected: e.target.checked} : p))} className="mt-1" />
+                      <div className="flex-1">
+                        <input value={entry.name} onChange={e => setImportEntries(prev => prev.map(p => p.id === entry.id ? {...p, name: e.target.value} : p))} className="w-full border border-gray-200 rounded px-2 py-1 text-sm" />
+                        <div className="mt-1 flex items-center gap-2">
+                          <select value={entry.alunoId || ''} onChange={e => setImportEntries(prev => prev.map(p => p.id === entry.id ? {...p, alunoId: e.target.value || undefined} : p))} className="text-xs border border-gray-200 rounded px-2 py-1">
+                            <option value="">— selecionar aluno (opcional) —</option>
+                            {alunos.slice(0,200).map(a => (
+                              <option key={a._id} value={a._id}>{a.nome}</option>
+                            ))}
+                          </select>
+                          <button type="button" onClick={() => setImportEntries(prev => prev.map(p => p.id === entry.id ? {...p, selected: false} : p))} className="text-xs text-red-600">Remover</button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700">Professor</label>
@@ -2089,10 +2285,10 @@ export default function HorariosPage() {
               >Cancelar</button>
               <button
                 type="button"
-                disabled={importing || !importProfessorId || !importHorarioInicio || !importHorarioFim}
+                disabled={importing || !importProfessorId || !importHorarioInicio || !importHorarioFim || importEntries.filter(e=>e.selected).length===0}
                 onClick={handleImportClick}
                 className="px-4 py-2 bg-primary-600 text-white rounded-md disabled:opacity-50"
-              >{importing ? 'Importando...' : 'Importar'}</button>
+              >{importing ? 'Importando...' : `Importar (${importEntries.filter(e=>e.selected).length})`}</button>
             </div>
 
             {importResults && (
@@ -2110,6 +2306,273 @@ export default function HorariosPage() {
           </div>
         </div>
       )}
+
+      {/* Modal: adicionar um aluno individualmente (search/create) */}
+      {showAddSingleAlunoModal && addAlunoTurma && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-24 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">Adicionar um aluno</h3>
+            <div className="space-y-3">
+              <div className="text-sm text-gray-700">
+                Escolha um aluno existente ou crie um novo. Se criar um novo, confirme explicitamente para evitar duplicatas.
+              </div>
+              <div className="flex items-center gap-3">
+                <label className="flex items-center gap-3">
+                  <span className="text-sm">Usar existente</span>
+                  <div className="relative">
+                    <input
+                      type="checkbox"
+                      role="switch"
+                      aria-checked={singleAddMode === 'create'}
+                      checked={singleAddMode === 'create'}
+                      onChange={(e) => { setSingleAddMode(e.target.checked ? 'create' : 'select'); if (e.target.checked) { setSingleAlunoSelectedId(null); setSingleAlunoSearch(''); } else { setSingleAlunoName(''); } }}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-gray-200 rounded-full peer-checked:bg-primary-600 peer-focus:ring-2 peer-focus:ring-primary-300 transition-colors"></div>
+                    <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full shadow transform transition-transform peer-checked:translate-x-5"></div>
+                  </div>
+                  <span className="text-sm">Criar novo</span>
+                </label>
+              </div>
+              {singleAddMode === 'select' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Pesquisar aluno existente</label>
+                  <input
+                    value={singleAlunoSearch}
+                    onChange={(e) => { setSingleAlunoSearch(String(e.target.value || '')); setSingleAlunoSelectedId(null); }}
+                    placeholder="Digite para pesquisar..."
+                    className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                  />
+                  {singleAlunoSearch && (
+                    <div className="mt-2 max-h-40 overflow-y-auto border rounded p-1 bg-white">
+                      {(alunos || []).filter(a => String(a.nome || '').toLowerCase().includes(singleAlunoSearch.toLowerCase())).slice(0,10).map(a => (
+                        <div key={a._id} className={`p-2 rounded hover:bg-gray-50 ${singleAlunoSelectedId === a._id ? 'bg-primary-50' : 'cursor-pointer'}`} onClick={() => { setSingleAlunoSelectedId(a._id); setSingleAlunoName(a.nome); }}>
+                          <div className="text-sm font-medium">{a.nome}</div>
+                          <div className="text-xs text-gray-500">{a.email || ''}</div>
+                        </div>
+                      ))}
+                      {(alunos || []).filter(a => String(a.nome || '').toLowerCase().includes(singleAlunoSearch.toLowerCase())).length === 0 && (
+                        <div className="p-2 text-xs text-gray-500">Nenhum aluno encontrado — será criado ao salvar</div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {singleAddMode === 'create' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Nome do aluno</label>
+                  <input value={singleAlunoName} onChange={(e) => setSingleAlunoName(String(e.target.value || ''))} className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2" />
+                  <div className="mt-2 text-xs text-yellow-700">Você está prestes a criar um novo aluno — verifique se não existe um registro similar.</div>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Observações</label>
+                <input value={singleAlunoObservacoes} onChange={(e) => setSingleAlunoObservacoes(String(e.target.value || ''))} className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2" />
+              </div>
+
+              <div className="flex justify-end space-x-2">
+                <button onClick={() => { setShowAddSingleAlunoModal(false); setSingleAlunoSearch(''); setSingleAlunoSelectedId(null); setSingleAlunoName(''); setSingleAlunoObservacoes(''); }} className="px-3 py-1 border rounded">Cancelar</button>
+                <button
+                  onClick={async () => {
+                    try {
+                      setLoading(true);
+                      // Validation: if mode is 'select', require singleAlunoSelectedId
+                      if (singleAddMode === 'select') {
+                        if (!singleAlunoSelectedId) { alert('Selecione um aluno existente antes de prosseguir.'); return; }
+                      }
+                      let alunoId = singleAlunoSelectedId;
+                      if (singleAddMode === 'create') {
+                        if (singleAddMode === 'create' && !singleAlunoName) { alert('Insira o nome do novo aluno antes de prosseguir.'); return; }
+                        // create aluno
+                        const resp = await fetch('/api/alunos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nome: (singleAlunoName || singleAlunoSearch || '').toUpperCase() }) });
+                        const data = await resp.json();
+                        if (!data.success) throw new Error(data.error || 'Falha ao criar aluno');
+                        alunoId = data.data._id;
+                        setAlunos(prev => [...prev, data.data]);
+                      }
+
+                      if (!alunoId) { alert('Aluno não selecionado/criado.'); return; }
+
+                      // create horario record linking aluno to turma slot
+                      const horarioResp = await fetch('/api/horarios', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ alunoId, professorId: addAlunoTurma.professorId, diaSemana: addAlunoTurma.diaSemana, horarioInicio: addAlunoTurma.horarioInicio, horarioFim: addAlunoTurma.horarioFim, observacoes: singleAlunoObservacoes || '', modalidadeId: modalidadeSelecionada || undefined }) });
+                      const horarioData = await horarioResp.json();
+                      if (!horarioData.success) throw new Error(horarioData.error || 'Erro ao adicionar horário');
+
+                      // cleanup and refresh
+                      setShowAddSingleAlunoModal(false);
+                      setSingleAlunoSearch(''); setSingleAlunoSelectedId(null); setSingleAlunoName(''); setSingleAlunoObservacoes('');
+                      await fetchHorarios();
+                    } catch (err:any) {
+                      alert('Erro: ' + (err.message || 'erro'));
+                    } finally {
+                      setLoading(false);
+                    }
+                  }}
+                  className="px-3 py-1 bg-primary-600 text-white rounded disabled:opacity-50"
+                  disabled={(singleAddMode === 'select' && !singleAlunoSelectedId) || (singleAddMode === 'create' && !singleAlunoName)}
+                >Adicionar</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Student detail modal (cleaned up) */}
+      {showStudentDetailModal && selectedStudentHorario && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50" style={{ zIndex: 9999 }} onClick={() => setShowStudentDetailModal(false)}>
+    <div className="relative top-24 mx-auto p-6 border w-96 max-w-full shadow-lg rounded-md bg-white" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="student-detail-title">
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-3">
+                <h3 id="student-detail-title" className="text-lg font-semibold text-slate-800">Detalhes do aluno</h3>
+                {/* edit icon next to title */}
+                <button
+                  onClick={() => setModalEditing(prev => !prev)}
+                  title={modalEditing ? 'Cancelar edição' : 'Editar'}
+                  aria-label={modalEditing ? 'Cancelar edição' : 'Editar'}
+                  className={`p-1 rounded ${modalEditing ? 'text-primary-700 bg-primary-100' : 'text-gray-500 hover:bg-gray-100'}`}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 20h9" />
+                    <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+                  </svg>
+                </button>
+              </div>
+              <div className="ml-4">
+                <button onClick={() => setShowStudentDetailModal(false)} className="text-slate-500 hover:text-slate-700" aria-label="Fechar">
+                  <i className="fas fa-times" />
+                </button>
+              </div>
+            </div>
+
+            {(() => {
+              const alunoName = selectedStudentHorario.alunoId?.nome || selectedStudentHorario.aluno?.nome || selectedStudentHorario.nome || null;
+              const alunoEmail = selectedStudentHorario.alunoId?.email || selectedStudentHorario.aluno?.email || selectedStudentHorario.email || null;
+              const modalidadeId = selectedStudentHorario.modalidadeId || selectedStudentHorario.aluno?.modalidadeId || selectedStudentHorario.modalidade || null;
+              const modalidadeObj = modalidades.find(m => getMid(m) === String(modalidadeId));
+              const modalidadeNome = modalidadeObj ? (modalidadeObj.nome || '') : (selectedStudentHorario.modalidadeNome || '—');
+              const professorNome = selectedStudentHorario.professorNome || selectedStudentHorario.professor?.nome || '—';
+              const dia = typeof selectedStudentHorario.diaSemana === 'number' ? diasSemana[selectedStudentHorario.diaSemana] : (selectedStudentHorario.diaSemana || '—');
+              const horarioRange = `${selectedStudentHorario.horarioInicio || selectedStudentHorario.horarioInicio || '—'}${selectedStudentHorario.horarioFim ? ' — ' + selectedStudentHorario.horarioFim : ''}`;
+              const _toggleId = selectedStudentHorario._id;
+              const _isCongelado = !!localFlags[_toggleId]?.congelado;
+              const _isAusente = !!localFlags[_toggleId]?.ausente;
+
+              // collect all horarios for this aluno (student can have multiple horarios/modalidades)
+              const studentId = (selectedStudentHorario.alunoId && (selectedStudentHorario.alunoId as any)._id) || (selectedStudentHorario.aluno && (selectedStudentHorario.aluno as any)._id) || null;
+              const studentHorarios = studentId ? (horarios || []).filter((h: any) => {
+                try {
+                  const aid = (h.alunoId && (h.alunoId as any)._id) || h.alunoId;
+                  return aid && String(aid) === String(studentId);
+                } catch (e) { return false; }
+              }) : [];
+              const studentModalidades = Array.from(new Set(studentHorarios.map((h: any) => {
+                const mid = (h.modalidadeId && ((h.modalidadeId.id || h.modalidadeId._id) || h.modalidadeId)) || (h.alunoId && (h.alunoId as any).modalidadeId) || h.modalidadeId || null;
+                return mid ? String(mid) : null;
+              }).filter(Boolean)));
+
+              {/* modal fields are initialized by a top-level useEffect when selection changes */}
+
+              return (
+                <div className="mt-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <div className="text-sm text-gray-500">Nome</div>
+                      {!modalEditing ? (
+                        <div className="font-medium text-slate-800">{alunoName ? alunoName : <span className="text-gray-400 italic">Nome não informado</span>}</div>
+                      ) : (
+                        <input value={modalEditName} onChange={e => setModalEditName(e.target.value)} className="w-full border rounded px-2 py-1" />
+                      )}
+
+                      {/* toggles moved below the name for better layout */}
+                      <div className="mt-2 flex items-center gap-2">
+                        <button
+                          onClick={() => { toggleCongelado(_toggleId); }}
+                          aria-pressed={_isCongelado}
+                          title={_isCongelado ? 'Descongelar' : 'Congelar'}
+                          className={`px-3 py-1 border rounded text-sm flex items-center gap-2 ${_isCongelado ? 'bg-sky-100 border-sky-300 text-sky-800' : 'bg-white hover:bg-gray-50'}`}
+                        >
+                          {_isCongelado ? 'Descongelar' : 'Congelar'}
+                        </button>
+
+                        <button
+                          onClick={() => { toggleAusente(_toggleId); }}
+                          aria-pressed={_isAusente}
+                          title={_isAusente ? 'Presente' : 'Ausente'}
+                          className={`px-3 py-1 border rounded text-sm flex items-center gap-2 ${_isAusente ? 'bg-rose-100 border-rose-300 text-rose-700' : 'bg-white hover:bg-gray-50'}`}
+                        >
+                          {_isAusente ? 'Presente' : 'Ausente'}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {modalEditing ? null : null}
+                    </div>
+                  </div>
+
+                  {/* Email removed by user request. Aggregated modalidades/horarios remain below. */}
+
+                  <div className="mt-3 text-sm text-gray-500">Observações</div>
+                  {!modalEditing ? (
+                    <div className="mt-1 text-sm text-slate-700 whitespace-pre-wrap">{selectedStudentHorario.observacoes ? selectedStudentHorario.observacoes : <span className="text-gray-400 italic">Sem observações</span>}</div>
+                  ) : (
+                    <div className="mt-1">
+                      <textarea value={modalEditObservacoes} onChange={e => setModalEditObservacoes(e.target.value)} className="w-full border rounded px-2 py-1 text-sm" rows={4} />
+                      <div className="mt-2 flex gap-2 justify-end">
+                        <button onClick={async () => {
+                          // save observations
+                          try {
+                            await updateHorarioObservacoes(selectedStudentHorario._id, modalEditObservacoes);
+                            setModalEditing(false);
+                          } catch (e) { alert('Erro ao salvar observações'); }
+                        }} className="px-3 py-1 bg-primary-600 text-white rounded text-sm">Salvar</button>
+                        <button onClick={() => { setModalEditObservacoes(String(selectedStudentHorario.observacoes || '')); setModalEditing(false); }} className="px-3 py-1 border rounded text-sm">Cancelar</button>
+                      </div>
+                    </div>
+                  )}
+                  {/* Student can have multiple modalidades/horarios - list them */}
+                  <div className="mt-4">
+                    <div className="mt-3 text-sm text-gray-500">Horários do aluno</div>
+                    <div className="mt-2 space-y-2">
+                      {studentHorarios.length === 0 ? (
+                        <div className="text-[12px] text-gray-500">Nenhum horário encontrado</div>
+                      ) : (
+                        studentHorarios.map((sh: any) => {
+                          const mod = modalidades.find(m => getMid(m) === (sh.modalidadeId && ((sh.modalidadeId.id || sh.modalidadeId._id) || sh.modalidadeId)));
+                          return (
+                            <div key={String(sh._id)} className="p-2 rounded border border-gray-100 bg-white text-sm">
+                              <div className="flex items-center justify-between">
+                                <div className="min-w-0">
+                                  <div className="text-[12px] text-gray-600">{diasSemana[sh.diaSemana]} • {sh.horarioInicio}{sh.horarioFim ? ' — ' + sh.horarioFim : ''}</div>
+                                  <div className="text-[12px] text-gray-600">{sh.professorNome || (sh.professorId && (sh.professorId as any)?.nome) || ''}</div>
+                                </div>
+                                <div className="ml-2 text-[12px] text-gray-700">{mod?.nome || (sh.modalidadeNome || '')}</div>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            <div className="mt-5 border-t pt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* Remove button left-aligned */}
+                <button onClick={() => { if (confirm('REMOVER ALUNO DA TURMA?')) { deleteHorario(selectedStudentHorario._id); setShowStudentDetailModal(false); } }} className="px-3 py-1 bg-red-600 text-white rounded text-sm">REMOVER ALUNO DA TURMA</button>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* footer has no Save/Close as edits are inline */}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       </Layout>
     </>
   );

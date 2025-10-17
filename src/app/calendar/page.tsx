@@ -127,10 +127,30 @@ export default function CalendarPage() {
   const horariosForDate = (date: Date) => {
     const dow = date.getDay();
     // fixed horarios that match day of week
-    const fixed = horarios.filter(h => h.diaSemana === dow && h.ativo !== false);
-    // reagendamentos that target this date (novaData) and approved or pending
+    // Show only horarios that reference a student with a name (filter out empty/placeholder turmas)
+    const fixed = horarios.filter(h => {
+      if (h.diaSemana !== dow) return false;
+      if (h.ativo === false) return false;
+      const aluno = h.alunoId as any;
+      // require an object aluno with a nome property
+      if (!aluno) return false;
+      if (typeof aluno === 'string') return false; // string id only -> skip (no display name)
+      if (!aluno.nome) return false;
+      return true;
+    });
+
+    // reagendamentos that target this date (novaData) and reference a student
     const dateStr = date.toISOString().slice(0,10);
-    const r = reagendamentos.filter(rr => rr.novaData && rr.novaData.slice(0,10) === dateStr);
+    const r = reagendamentos.filter(rr => {
+      if (!rr.novaData || rr.novaData.slice(0,10) !== dateStr) return false;
+      const hf = rr.horarioFixoId as any;
+      if (!hf) return false;
+      const aluno = hf.alunoId as any;
+      if (!aluno) return false;
+      if (typeof aluno === 'string') return false;
+      if (!aluno.nome) return false;
+      return true;
+    });
     return { fixed, reagend: r };
   };
 
@@ -240,8 +260,8 @@ export default function CalendarPage() {
             const cellBaseBg = inCurrentMonth ? 'bg-white' : 'bg-gray-100 text-gray-500';
             // If modality explicitly disallows this weekday, mark cell as red (only for current month days)
             const unavailableClasses = (!allowed && inCurrentMonth) ? 'bg-red-50 text-red-700 border border-red-200' : '';
-            return (
-              <div key={dateKey} className={`p-2 h-44 flex flex-col ${cellBaseBg} ${unavailableClasses} ${isToday ? 'ring-2 ring-primary-500' : ''} border`}>
+              return (
+              <div key={dateKey} className={`p-2 h-44 flex flex-col min-h-0 ${cellBaseBg} ${unavailableClasses} ${isToday ? 'ring-2 ring-primary-500' : ''} border`}>
                 <div className="flex justify-between items-center">
                   <div className="font-medium flex items-center gap-2">
                     <span>{dObj.day}</span>
@@ -251,12 +271,12 @@ export default function CalendarPage() {
                   </div>
                   <div className={`${!allowed && inCurrentMonth ? 'text-red-700' : 'text-[10px] text-gray-500'}`}>{fixed.length}</div>
                 </div>
-                <div className="mt-1 space-y-0.5 flex flex-col items-center">
+                  <div className="mt-1 space-y-0.5 flex flex-col items-center min-h-0">
                   {/* show explicit unavailable badge when modalidade disallows this weekday */}
                   {!allowed && inCurrentMonth ? (
                     <div className="text-center text-[11px] text-red-700 bg-red-100 border border-red-200 rounded px-1 py-0.5 w-full max-w-[140px]">INDISPONÍVEL</div>
                   ) : null}
-                  <div className="w-full flex-1 overflow-y-auto space-y-1 scrollbar-thin scrollbar-thumb-rounded scrollbar-thumb-gray-300">
+                  <div className="w-full flex-1 min-h-0 overflow-y-auto space-y-1 scrollbar-thin scrollbar-thumb-rounded scrollbar-thumb-gray-300">
                     {fixed.map(f => {
                     const obsRaw = String((f as any).observacoes || '');
                     const obs = obsRaw.replace(/\[CONGELADO\]|\[AUSENTE\]/g, '').trim();
@@ -275,7 +295,17 @@ export default function CalendarPage() {
                             <div className="text-[10px] text-gray-600 mt-0.5 truncate">{(f.professorId as any)?.nome || ''} • {f.horarioInicio}</div>
                           </div>
                           <div className="flex-shrink-0 ml-2">
-                            <button onClick={() => handleOpenModalForHorario(f._id)} className="text-[11px] text-primary-600">Reagendar</button>
+                            <button onClick={() => handleOpenModalForHorario(f._id)} className="text-primary-600 p-1 rounded hover:bg-gray-100" title="Reagendar" aria-label="Reagendar">
+                              {/* calendar + arrow icon (inline SVG) */}
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                                <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                                <line x1="16" y1="2" x2="16" y2="6" />
+                                <line x1="8" y1="2" x2="8" y2="6" />
+                                <path d="M3 10h18" />
+                                <path d="M12 14l4-4" />
+                                <path d="M12 14v-3" />
+                              </svg>
+                            </button>
                           </div>
                         </div>
                       </div>
