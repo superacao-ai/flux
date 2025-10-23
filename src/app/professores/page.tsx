@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import Layout from '@/components/Layout';
 
 interface Especialidade {
@@ -26,6 +26,7 @@ interface ProfessorForm {
   telefone: string;
   especialidades: string[];
   ativo: boolean;
+  senha?: string;
 }
 
 export default function ProfessoresPage() {
@@ -34,12 +35,14 @@ export default function ProfessoresPage() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
   const [formData, setFormData] = useState<ProfessorForm>({
     nome: '',
     email: '',
     telefone: '',
     especialidades: [],
     ativo: true
+  , senha: ''
   });
 
   // Carregar professores
@@ -171,6 +174,19 @@ export default function ProfessoresPage() {
     setShowModal(true);
   };
 
+  // Filter professors by query
+  const filteredProfessores = useMemo(() => {
+    if (!query) return professores;
+    const q = String(query).trim().toLowerCase();
+    return professores.filter(p => {
+      const nome = String(p.nome || '').toLowerCase();
+      const email = String(p.email || '').toLowerCase();
+      const telefone = String(p.telefone || '').toLowerCase();
+      const especialidadesStr = (p.especialidades || []).map(e => String(e.nome || '').toLowerCase()).join(' ');
+      return nome.includes(q) || email.includes(q) || telefone.includes(q) || especialidadesStr.includes(q);
+    });
+  }, [professores, query]);
+
   // Abrir modal para editar professor
   const abrirModalEditar = (professor: Professor) => {
     setEditingId(professor._id);
@@ -206,7 +222,21 @@ export default function ProfessoresPage() {
       const data = await response.json();
 
       if (data.success) {
+        // If the save succeeded, and a password was provided, attempt to set it via API
         await carregarProfessores();
+        const savedId = editingId || (data.data && data.data._id) || null;
+        if (savedId && formData.senha && String(formData.senha).trim().length > 0) {
+          try {
+            const resp = await fetch(`/api/professores/${savedId}/senha`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ senha: formData.senha }) });
+            const sd = await resp.json();
+            if (!sd || !sd.success) {
+              alert('Professor salvo, mas falha ao definir senha: ' + (sd && sd.error ? sd.error : 'Erro'));
+            }
+          } catch (e) {
+            console.error('Erro ao setar senha:', e);
+            alert('Professor salvo, mas falha ao definir senha');
+          }
+        }
         setShowModal(false);
         // sucesso silencioso: modal fechado e lista recarregada
       } else {
@@ -256,36 +286,61 @@ export default function ProfessoresPage() {
   return (
     <Layout title="Professores - Superação Flux">
       <div className="px-4 py-6 sm:px-0">
-        <div className="sm:flex sm:items-center">
-          <div className="sm:flex-auto">
-            <h1 className="text-xl font-semibold text-gray-900">Professores</h1>
-            <p className="mt-2 text-sm text-gray-700">
-              Gerencie a equipe de professores do studio.
-            </p>
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-semibold text-gray-900">Professores</h1>
+            <p className="mt-1 text-sm text-gray-600 max-w-xl">Gerencie a equipe de professores do studio — adicione, edite e organize especialidades.</p>
           </div>
-          <div className="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
-            <button
-              type="button"
-              onClick={abrirModalNovo}
-              className="inline-flex items-center justify-center rounded-md border border-transparent bg-primary-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 sm:w-auto"
-            >
-              👨‍🏫 Novo Professor
-            </button>
+
+          <div className="flex items-center gap-3">
+            <div>
+              <button
+                type="button"
+                onClick={abrirModalNovo}
+                className="h-10 inline-flex items-center gap-2 rounded-md bg-primary-600 text-white px-4 text-sm font-medium hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
+              >
+                <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
+                Novo Professor
+              </button>
+            </div>
           </div>
         </div>
 
-        {professores.length === 0 ? (
+        {/* Search row above table */}
+        <div className="mt-4 sm:mt-6">
+          <div className="flex items-center justify-between gap-4">
+            <div className="relative w-full sm:w-1/2">
+              <svg className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z" /></svg>
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Pesquisar por nome, email, telefone ou especialidade..."
+                className="block w-full pl-10 pr-3 border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 bg-white"
+              />
+            </div>
+            <div className="hidden sm:flex items-center text-sm text-gray-600">
+              <div>Resultados: {filteredProfessores.length}</div>
+            </div>
+          </div>
+        </div>
+
+        {filteredProfessores.length === 0 ? (
           <div className="text-center py-12">
-            <div className="text-gray-400 text-6xl mb-4">👨‍🏫</div>
-            <h3 className="text-lg font-medium text-gray-900 mb-2">Nenhum professor cadastrado</h3>
+              <div className="mb-4">
+                <div className="inline-flex items-center justify-center h-12 w-12 rounded-full bg-primary-50 text-primary-600">
+                  <svg className="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"/></svg>
+                </div>
+              </div>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Nenhum professor encontrado</h3>
             <p className="text-gray-500 mb-6">
-              Comece cadastrando o primeiro professor do studio.
+              Não há professores que correspondam à sua busca.
             </p>
             <button
               onClick={abrirModalNovo}
-              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+              className="h-10 inline-flex items-center gap-2 rounded-md bg-primary-600 text-white px-4 text-sm font-medium hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
             >
-              👨‍🏫 Cadastrar Primeiro Professor
+              👨‍🏫 Cadastrar Professor
             </button>
           </div>
         ) : (
@@ -317,7 +372,7 @@ export default function ProfessoresPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200 bg-white">
-                      {professores.map((professor) => (
+                      {filteredProfessores.map((professor) => (
                         <tr key={professor._id}>
                           <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900 sm:pl-6">
                             {professor.nome}
@@ -353,18 +408,16 @@ export default function ProfessoresPage() {
                             </span>
                           </td>
                           <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
-                            <button 
-                              onClick={() => abrirModalEditar(professor)}
-                              className="text-primary-600 hover:text-primary-900 mr-4"
-                            >
-                              ✏️ Editar
-                            </button>
-                            <button 
-                              onClick={() => excluirProfessor(professor._id)}
-                              className="text-red-600 hover:text-red-900"
-                            >
-                              🗑️ Excluir
-                            </button>
+                            <div className="flex items-center justify-end gap-3">
+                              <button onClick={() => abrirModalEditar(professor)} className="inline-flex items-center gap-2 h-8 px-3 rounded-md bg-white border border-gray-100 hover:bg-gray-50 text-primary-600 text-sm">
+                                <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536M9 11l6-6 3 3-6 6H9v-3z"/></svg>
+                                <span>Editar</span>
+                              </button>
+                              <button onClick={() => excluirProfessor(professor._id)} className="inline-flex items-center gap-2 h-8 px-3 rounded-md bg-red-50 border border-red-100 text-red-700 hover:bg-red-100 text-sm">
+                                <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M10 3h4l1 4H9l1-4z"/></svg>
+                                <span>Excluir</span>
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -460,37 +513,43 @@ export default function ProfessoresPage() {
                         </p>
                       ) : (
                         especialidades.map((especialidade) => (
-                        <div key={especialidade._id} className="flex items-center justify-between">
-                          <label className="flex items-center">
-                            <input
-                              type="checkbox"
-                              checked={formData.especialidades.includes(especialidade._id)}
-                              onChange={(e) => handleEspecialidadeChange(especialidade._id, e.target.checked)}
-                              className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                            />
-                            <span className="ml-2 text-sm text-gray-700">
-                              {especialidade.nome}
-                              {especialidade.descricao && (
-                                <span className="text-gray-500 text-xs block">{especialidade.descricao}</span>
-                              )}
-                            </span>
-                          </label>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (confirm(`Tem certeza que deseja excluir a especialidade "${especialidade.nome}"?`)) {
-                                excluirEspecialidade(especialidade._id);
-                              }
-                            }}
-                            className="text-red-500 hover:text-red-700 text-xs ml-2"
-                            title="Excluir especialidade"
-                          >
-                            🗑️
-                          </button>
-                        </div>
+                          <div key={especialidade._id} className="flex items-center justify-between">
+                            <label className="flex items-center">
+                              <input
+                                type="checkbox"
+                                checked={formData.especialidades.includes(especialidade._id)}
+                                onChange={(e) => handleEspecialidadeChange(especialidade._id, e.target.checked)}
+                                className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                              />
+                              <span className="ml-2 text-sm text-gray-700">
+                                {especialidade.nome}
+                                {especialidade.descricao && (
+                                  <span className="text-gray-500 text-xs block">{especialidade.descricao}</span>
+                                )}
+                              </span>
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (confirm(`Tem certeza que deseja excluir a especialidade "${especialidade.nome}"?`)) {
+                                  excluirEspecialidade(especialidade._id);
+                                }
+                              }}
+                              className="text-red-500 hover:text-red-700 text-xs ml-2"
+                              title="Excluir especialidade"
+                            >
+                              🗑️
+                            </button>
+                          </div>
                         ))
                       )}
                     </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Senha (opcional)</label>
+                    <input type="password" value={formData.senha || ''} onChange={(e) => setFormData(prev => ({ ...prev, senha: e.target.value }))} className="w-full border rounded px-2 py-1" placeholder="Definir senha para professor (mín 6)" />
+                    <div className="text-xs text-gray-500 mt-1">Se preenchida, permite criar/atualizar a senha do professor (requer email).</div>
                   </div>
 
                   {editingId && (

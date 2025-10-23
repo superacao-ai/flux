@@ -74,7 +74,7 @@ export async function PATCH(
     const body = await request.json();
 
     const updates: any = {};
-    const allowed = ['professorId', 'diaSemana', 'horarioInicio', 'horarioFim', 'observacoes'];
+  const allowed = ['professorId', 'diaSemana', 'horarioInicio', 'horarioFim', 'observacoes', 'congelado', 'ausente', 'emEspera'];
     for (const key of allowed) {
       if (body[key] !== undefined) updates[key] = body[key];
     }
@@ -88,15 +88,23 @@ export async function PATCH(
       updates.professorId = new mongoose.Types.ObjectId(updates.professorId);
     }
 
-    const horario = await HorarioFixo.findByIdAndUpdate(id, updates, { new: true });
+  const horario = await HorarioFixo.findByIdAndUpdate(id, { $set: updates }, { new: true, runValidators: true });
 
     if (!horario) {
       return NextResponse.json({ success: false, error: 'Horário não encontrado' }, { status: 404 });
     }
 
-    const horarioPop = await HorarioFixo.findById(horario._id).populate('alunoId', 'nome email').populate('professorId', 'nome especialidade');
+  const horarioPop = await HorarioFixo.findById(horario._id).populate('alunoId', 'nome email').populate('professorId', 'nome especialidade');
 
-    return NextResponse.json({ success: true, data: horarioPop });
+  // Also fetch a plain JS object (lean) and the raw collection document to verify persistence
+  try {
+  const horarioLean = await HorarioFixo.findById(horario._id).lean();
+  } catch (e) {}
+  try {
+  const raw = await HorarioFixo.collection.findOne({ _id: horario._id });
+  } catch (e) {}
+
+  return NextResponse.json({ success: true, data: horarioPop });
   } catch (error) {
     console.error('Erro ao atualizar horário:', error);
     return NextResponse.json({ success: false, error: 'Erro interno do servidor' }, { status: 500 });

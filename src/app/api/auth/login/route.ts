@@ -79,11 +79,18 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
+    // Log full error server-side for debugging
     console.error('Erro no login:', error);
+
+    // If the error is due to a missing MongoDB URI, return a specific message
+    const msg = (error instanceof Error && /MONGODB_URI/i.test(error.message))
+      ? 'MONGODB_URI não definida. Configure .env.local com a variável de conexão ao MongoDB.'
+      : (error instanceof Error ? error.message : 'Erro interno do servidor');
+
     return NextResponse.json(
       {
         success: false,
-        error: 'Erro interno do servidor'
+        error: msg
       },
       { status: 500 }
     );

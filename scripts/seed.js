@@ -299,39 +299,35 @@ async function seedDatabase() {
       }
     ]);
 
-    // Criar horários fixos
-    console.log('📅 Criando horários fixos...');
-    const horarios = [
+
+    // Criar horários fixos como template (sem alunoId)
+    console.log('📅 Criando horários fixos como turma...');
+    const turmaTemplates = [
       {
-        alunoId: alunos[0]._id, // João Silva
         professorId: professores[0]._id, // Carlos
         diaSemana: 1, // Segunda
         horarioInicio: '08:00',
         horarioFim: '09:00'
       },
       {
-        alunoId: alunos[1]._id, // Maria Santos
         professorId: professores[1]._id, // Ana Paula
         diaSemana: 1, // Segunda
         horarioInicio: '09:00',
         horarioFim: '10:00'
       },
       {
-        alunoId: alunos[2]._id, // Pedro Costa
         professorId: professores[2]._id, // Roberto
         diaSemana: 3, // Quarta
         horarioInicio: '14:00',
         horarioFim: '15:00'
       },
       {
-        alunoId: alunos[3]._id, // Ana Clara
         professorId: professores[0]._id, // Carlos
         diaSemana: 5, // Sexta
         horarioInicio: '18:00',
         horarioFim: '19:00'
       },
       {
-        alunoId: alunos[4]._id, // Lucas Pereira
         professorId: professores[1]._id, // Ana Paula
         diaSemana: 2, // Terça
         horarioInicio: '17:00',
@@ -339,7 +335,27 @@ async function seedDatabase() {
       }
     ];
 
-    await HorarioFixo.insertMany(horarios);
+    // Cria os horários fixos (turmas)
+    const horariosCriados = await HorarioFixo.insertMany(turmaTemplates);
+
+    // Vincula todos os alunos às turmas via Matricula
+    const MatriculaSchema = new mongoose.Schema({
+      horarioFixoId: { type: mongoose.Schema.Types.ObjectId, ref: 'HorarioFixo', required: true },
+      alunoId: { type: mongoose.Schema.Types.ObjectId, ref: 'Aluno', required: true },
+      ativo: { type: Boolean, default: true },
+      observacoes: String
+    }, { timestamps: true });
+    const Matricula = mongoose.models.Matricula || mongoose.model('Matricula', MatriculaSchema);
+
+    // Exemplo: vincular todos os alunos à primeira turma
+    for (const aluno of alunos) {
+      await Matricula.create({
+        horarioFixoId: horariosCriados[0]._id,
+        alunoId: aluno._id,
+        ativo: true,
+        observacoes: 'Seed: vinculado à turma principal'
+      });
+    }
 
     console.log('🎉 Dados iniciais criados com sucesso no MongoDB Atlas!');
     console.log('\n📋 Credenciais de acesso:');

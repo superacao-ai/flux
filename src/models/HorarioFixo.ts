@@ -10,6 +10,9 @@ export interface IHorarioFixo {
   horarioInicio: string; // HH:MM
   horarioFim: string; // HH:MM
   ativo: boolean;
+  congelado?: boolean;
+  ausente?: boolean;
+  emEspera?: boolean;
   observacoes?: string;
   observacaoTurma?: string;
   criadoEm?: Date;
@@ -52,6 +55,18 @@ const HorarioFixoSchema = new Schema<IHorarioFixo>({
   ativo: {
     type: Boolean,
     default: true
+  },
+  congelado: {
+    type: Boolean,
+    default: false
+  },
+  ausente: {
+    type: Boolean,
+    default: false
+  },
+  emEspera: {
+    type: Boolean,
+    default: false
   },
   observacoes: {
     type: String,

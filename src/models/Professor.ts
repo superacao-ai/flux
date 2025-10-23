@@ -64,7 +64,7 @@ const ProfessorSchema = new Schema<IProfessor>({
 });
 
 // Índices
-ProfessorSchema.index({ email: 1 });
+// `email` already declares `unique: true` on the field; avoid duplicate schema.index declaration
 ProfessorSchema.index({ nome: 1 });
 ProfessorSchema.index({ ativo: 1 });
 

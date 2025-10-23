@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Layout from '@/components/Layout';
 
 export interface HorarioDisponivel {
@@ -25,6 +25,7 @@ export default function ModalidadesPage() {
   const [modalidades, setModalidades] = useState<Modalidade[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [editingModalidade, setEditingModalidade] = useState<Modalidade | null>(null);
+  const [query, setQuery] = useState('');
   const [formData, setFormData] = useState({
     nome: '',
     descricao: '',
@@ -290,30 +291,54 @@ export default function ModalidadesPage() {
     return dias.map(dia => nomes[dia]).join(', ');
   };
 
+  const filteredModalidades = useMemo(() => {
+    if (!query) return modalidades;
+    const q = String(query).trim().toLowerCase();
+    return modalidades.filter(m => {
+      const nome = String(m.nome || '').toLowerCase();
+      const desc = String(m.descricao || '').toLowerCase();
+      return nome.includes(q) || desc.includes(q);
+    });
+  }, [modalidades, query]);
+
   return (
     <Layout title="Modalidades - Superação Flux">
       <div className="px-4 py-6 sm:px-0">
-        <div className="sm:flex sm:items-center mb-6">
-          <div className="sm:flex-auto">
-            <h1 className="text-xl font-semibold text-gray-900">Modalidades</h1>
-            <p className="mt-2 text-sm text-gray-700">
-              Gerencie as modalidades disponíveis no seu studio.
-            </p>
+        <div className="flex items-center justify-between gap-4 mb-4">
+          <div>
+            <h1 className="text-2xl font-semibold text-gray-900">Modalidades</h1>
+            <p className="mt-1 text-sm text-gray-600 max-w-xl">Gerencie as modalidades disponíveis no seu studio — nome, cor, duração e horários.</p>
           </div>
-          <div className="mt-4 sm:mt-0 sm:ml-4">
+
+          <div>
             <button
               type="button"
               onClick={() => setShowModal(true)}
-              className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+              className="h-10 inline-flex items-center gap-2 rounded-md bg-primary-600 text-white px-4 text-sm font-medium hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
             >
+              <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
               Nova Modalidade
             </button>
           </div>
         </div>
 
+        {/* Search row above grid */}
+        <div className="mb-6">
+          <div className="relative w-full sm:w-1/2">
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z" /></svg>
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Pesquisar por nome ou descrição..."
+              className="block w-full pl-10 pr-3 border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 bg-white"
+            />
+          </div>
+        </div>
+
         {/* Grid de modalidades */}
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {modalidades.map((modalidade, idx) => (
+          {filteredModalidades.map((modalidade, idx) => (
             <div key={(modalidade as any).id || (modalidade as any)._id || idx} className="bg-white rounded-lg shadow border border-gray-200 p-6">
               <div className="flex items-center">
                 <div
@@ -368,42 +393,39 @@ export default function ModalidadesPage() {
                 {/* Horários disponíveis removidos do card para simplificar a visualização */}
               </div>
               
-              <div className="mt-4 flex justify-end space-x-2">
-                <button 
-                  onClick={() => editModalidade(modalidade)}
-                  className="text-indigo-600 hover:text-indigo-900 text-sm font-medium"
-                >
-                  Editar
+              <div className="mt-4 flex justify-end gap-3">
+                <button onClick={() => editModalidade(modalidade)} className="inline-flex items-center gap-2 h-8 px-3 rounded-md bg-white border border-gray-100 hover:bg-gray-50 text-primary-600 text-sm">
+                  <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536M9 11l6-6 3 3-6 6H9v-3z"/></svg>
+                  <span>Editar</span>
                 </button>
-                <button 
-                  onClick={() => deleteModalidade((modalidade as any).id || (modalidade as any)._id)}
-                  className="text-red-600 hover:text-red-900 text-sm font-medium"
-                >
-                  Desativar
+                <button onClick={() => deleteModalidade((modalidade as any).id || (modalidade as any)._id)} className="inline-flex items-center gap-2 h-8 px-3 rounded-md bg-red-50 border border-red-100 text-red-700 hover:bg-red-100 text-sm">
+                  <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M10 3h4l1 4H9l1-4z"/></svg>
+                  <span>Desativar</span>
                 </button>
-                <button
-                  onClick={() => deleteModalidadeHard((modalidade as any).id || (modalidade as any)._id)}
-                  className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-md"
-                >
-                  Apagar permanentemente
+                <button onClick={() => deleteModalidadeHard((modalidade as any).id || (modalidade as any)._id)} className="inline-flex items-center gap-2 h-8 px-3 rounded-md bg-red-600 text-white hover:bg-red-700 text-sm">
+                  <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v3m0 0v3m0-3h3m-3 0H9"/></svg>
+                  <span>Apagar</span>
                 </button>
               </div>
             </div>
           ))}
           
-          {modalidades.length === 0 && (
+          {filteredModalidades.length === 0 && (
             <div className="col-span-full text-center text-gray-500 py-12">
-              <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-              </svg>
+              <div className="mx-auto h-12 w-12 rounded-full bg-primary-50 text-primary-600 flex items-center justify-center">
+                <svg className="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+              </div>
               <h3 className="mt-2 text-sm font-medium text-gray-900">Nenhuma modalidade</h3>
               <p className="mt-1 text-sm text-gray-500">Comece criando sua primeira modalidade.</p>
               <div className="mt-6">
                 <button
                   type="button"
                   onClick={() => setShowModal(true)}
-                  className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+                  className="h-10 inline-flex items-center gap-2 rounded-md bg-primary-600 text-white px-4 text-sm font-medium hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
                 >
+                  <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
                   Nova Modalidade
                 </button>
               </div>

@@ -7,8 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "seed": "node scripts/seed.js",
-    "wipe:modalidades": "node scripts/delete-all-modalidades.js"
+  "seed": "node scripts/seed.js",
+  "create-admin": "node scripts/create-admin.js",
+  "wipe:modalidades": "node scripts/delete-all-modalidades.js"
   },
   "dependencies": {
     "@fortawesome/fontawesome-free": "^7.1.0",

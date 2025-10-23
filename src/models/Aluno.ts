@@ -84,7 +84,7 @@ const AlunoSchema = new Schema<IAluno>({
 });
 
 // Índices
-AlunoSchema.index({ email: 1 });
+// `email` already declares `unique: true` on the field; avoid duplicate schema.index declaration
 AlunoSchema.index({ nome: 1 });
 AlunoSchema.index({ ativo: 1 });
 

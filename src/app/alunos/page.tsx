@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Layout from '@/components/Layout';
 
 interface Modalidade {
@@ -52,69 +52,106 @@ export default function AlunosPage() {
     fetchProfessores();
   }, []);
 
-  // Fetch alunos from horarios: list only students that have HorarioFixo entries
+  // Fetch all alunos and attach their horarios (so students without horarios are included)
   const fetchAlunos = async () => {
     try {
-      const response = await fetch('/api/horarios');
-      const data = await response.json();
-      if (data.success) {
-        // horarios are populated with alunoId (or null for templates)
-        const horarios = data.data as any[];
-        const alunosMap: Record<string, any> = {};
-        horarios.forEach(h => {
-          const aluno = h.alunoId;
-          if (aluno && aluno._id) {
-            // accumulate aluno info and their horarios/modalidades
-            if (!alunosMap[aluno._id]) {
-              alunosMap[aluno._id] = {
-                _id: aluno._id,
-                nome: aluno.nome,
-                email: aluno.email || '',
-                telefone: aluno.telefone || 'Não informado',
-                endereco: aluno.endereco || '',
-                modalidadeId: aluno.modalidadeId || { _id: '', nome: 'N/A', cor: '#3B82F6', duracao: 0, limiteAlunos: 0 },
-                plano: aluno.plano,
-                observacoes: aluno.observacoes,
-                ativo: aluno.ativo !== undefined ? aluno.ativo : true,
-                modalidades: new Map<string, { _id: string; nome: string; cor?: string }>(),
-                horarios: [] as AlunoHorario[]
+      // Fetch all alunos
+      const respAlunos = await fetch('/api/alunos');
+      const dataAlunos = await respAlunos.json();
+      let alunosList: any[] = [];
+      if (dataAlunos && dataAlunos.success) {
+        alunosList = dataAlunos.data || [];
+      }
+
+      // Fetch all horarios to attach schedule info per aluno
+      const respHor = await fetch('/api/horarios');
+      const dataHor = await respHor.json();
+      const horarios = (dataHor && dataHor.success) ? (dataHor.data as any[]) : [];
+
+      // Build a map of alunoId -> horarios
+      // Prefer the newer `matriculas` shape on HorarioFixo: expand matriculas into per-aluno entries.
+      // Fallback to legacy HorarioFixo.alunoId when present (for older seeds/backups).
+      const horariosMap: Record<string, AlunoHorario[]> = {};
+      horarios.forEach(h => {
+        try {
+          const ms = (h as any).matriculas;
+          if (Array.isArray(ms) && ms.length > 0) {
+            // expand each matricula into a horario entry for the referenced aluno
+            for (let i = 0; i < ms.length; i++) {
+              const m = ms[i] || {};
+              // matricula.alunoId may be populated or just an id string
+              const alunoRef = m.alunoId || null;
+              const alunoId = alunoRef && (typeof alunoRef === 'string' ? alunoRef : (alunoRef._id || alunoRef)) || null;
+              if (!alunoId) continue;
+
+              const mod = (h.modalidadeId && (h.modalidadeId.nome || h.modalidadeId._id)) ? h.modalidadeId : ((m && (m.modalidadeId || null)) || null);
+              const professorNome = (m && (m.professorNome || m.professorNome === '') && m.professorNome) ? m.professorNome : (h.professorId && (h.professorId.nome || h.professorId) ? (h.professorId.nome || String(h.professorId)) : '');
+              const horarioEntry: AlunoHorario = {
+                diaSemana: h.diaSemana,
+                horarioInicio: h.horarioInicio,
+                horarioFim: h.horarioFim,
+                professorNome: professorNome,
+                modalidadeNome: mod ? (mod.nome || '') : ''
               };
+              horariosMap[String(alunoId)] = horariosMap[String(alunoId)] || [];
+              horariosMap[String(alunoId)].push(horarioEntry);
             }
-
-            // determine modalidade for this horario (could be on the horario or on aluno)
-            const mod = (h.modalidadeId && (h.modalidadeId.nome || h.modalidadeId._id)) ? h.modalidadeId : (aluno.modalidadeId || null);
-            if (mod && mod._id) {
-              const existing = alunosMap[aluno._id].modalidades as Map<string, any>;
-              existing.set(String(mod._id), { _id: String(mod._id), nome: mod.nome || 'N/A', cor: mod.cor || '#3B82F6' });
+          } else {
+            // legacy shape: horario has a single alunoId field
+            const aluno = h.alunoId;
+            if (aluno && aluno._id) {
+              const mod = (h.modalidadeId && (h.modalidadeId.nome || h.modalidadeId._id)) ? h.modalidadeId : (aluno.modalidadeId || null);
+              const professorNome = h.professorId && (h.professorId.nome || h.professorId) ? (h.professorId.nome || String(h.professorId)) : '';
+              const horarioEntry: AlunoHorario = {
+                diaSemana: h.diaSemana,
+                horarioInicio: h.horarioInicio,
+                horarioFim: h.horarioFim,
+                professorNome: professorNome,
+                modalidadeNome: mod ? (mod.nome || '') : ''
+              };
+              horariosMap[String(aluno._id)] = horariosMap[String(aluno._id)] || [];
+              horariosMap[String(aluno._id)].push(horarioEntry);
             }
+          }
+        } catch (e) {
+          // ignore problematic horario entries
+          console.warn('Erro ao processar horario para map de alunos:', e);
+        }
+      });
 
-            // collect horario entry
-            const professorNome = h.professorId && (h.professorId.nome || h.professorId) ? (h.professorId.nome || String(h.professorId)) : '';
-            const horarioEntry: AlunoHorario = {
-              diaSemana: h.diaSemana,
-              horarioInicio: h.horarioInicio,
-              horarioFim: h.horarioFim,
-              professorNome: professorNome,
-              modalidadeNome: mod ? (mod.nome || '') : ''
-            };
-            (alunosMap[aluno._id].horarios as AlunoHorario[]).push(horarioEntry);
+      // Compose final alunos array: ensure every aluno appears, attach modalidade(s) and horarios
+      const finalAlunos = alunosList.map(a => {
+        // collect modalidades: combine aluno.modalidadeId and any modalidade info from horarios
+        const modalidadesSet = new Map<string, { _id: string; nome: string; cor?: string }>();
+        if (a.modalidadeId && a.modalidadeId._id) {
+          modalidadesSet.set(String(a.modalidadeId._id), { _id: String(a.modalidadeId._id), nome: a.modalidadeId.nome || 'N/A', cor: a.modalidadeId.cor || '#3B82F6' });
+        }
+        const alunoHorarios = horariosMap[String(a._id)] || [];
+        alunoHorarios.forEach(h => {
+          if (h.modalidadeNome) {
+            // we don't have modalidade _id here, use name as key
+            modalidadesSet.set(h.modalidadeNome, { _id: h.modalidadeNome, nome: h.modalidadeNome, cor: '#3B82F6' });
           }
         });
 
-        // Convert modalidades maps to arrays and finalize aluno objects
-        const alunosFinal = Object.values(alunosMap).map((a: any) => {
-          const modsArr = Array.from((a.modalidades as Map<string, any>).values());
-          return {
-            ...a,
-            modalidades: modsArr,
-            horarios: a.horarios as AlunoHorario[]
-          };
-        });
+        return {
+          _id: a._id,
+          nome: a.nome,
+          email: a.email || '',
+          telefone: a.telefone || 'Não informado',
+          endereco: a.endereco || '',
+          modalidadeId: a.modalidadeId || { _id: '', nome: 'N/A', cor: '#3B82F6', duracao: 0, limiteAlunos: 0 },
+          plano: a.plano,
+          observacoes: a.observacoes,
+          ativo: a.ativo !== undefined ? a.ativo : true,
+          modalidades: Array.from(modalidadesSet.values()),
+          horarios: alunoHorarios
+        } as Aluno;
+      });
 
-        setAlunos(alunosFinal);
-      }
+      setAlunos(finalAlunos);
     } catch (error) {
-      console.error('Erro ao buscar alunos a partir dos horários:', error);
+      console.error('Erro ao buscar alunos:', error);
     } finally {
       setLoading(false);
     }
@@ -144,6 +181,16 @@ export default function AlunosPage() {
     }
   };
 
+  // Resolve a canonical color for a modalidade entry using the global modalidades list
+  const getModalidadeColor = (m: any) => {
+    if (!m) return '#3B82F6';
+    // try find by id or name in global modalidades state
+    const id = (m && ((m._id || (m as any).id))) || null;
+    const nome = m && (m.nome || '');
+    const found = modalidades.find(md => (id && String(md._id) === String(id)) || (md.nome && md.nome === nome));
+    return (found && found.cor) || m.cor || '#3B82F6';
+  };
+
   // Função para padronizar nomes: converter para MAIÚSCULAS
   const padronizarNome = (nome: string): string => {
     return String(nome || '').trim().toUpperCase();
@@ -159,13 +206,13 @@ export default function AlunosPage() {
     email: '',
     telefone: '',
     endereco: '',
-    modalidadeId: '',
     observacoes: ''
   });
 
   // Estados para seleção múltipla
   const [selectedAlunos, setSelectedAlunos] = useState<string[]>([]);
   const [selectAll, setSelectAll] = useState(false);
+  const [query, setQuery] = useState('');
 
   // Função para abrir modal de edição
   const abrirEdicao = (aluno: Aluno) => {
@@ -175,7 +222,6 @@ export default function AlunosPage() {
       email: aluno.email || '',
       telefone: aluno.telefone,
       endereco: aluno.endereco || '',
-      modalidadeId: aluno.modalidadeId._id,
       observacoes: aluno.observacoes || ''
     });
     setShowEditModal(true);
@@ -186,12 +232,21 @@ export default function AlunosPage() {
     if (!editingAluno) return;
 
     try {
+      // Only send editable fields — modalidade is derived from horarios and should not be manually changed here
+      const payload = {
+        nome: editFormData.nome,
+        email: editFormData.email,
+        telefone: editFormData.telefone,
+        endereco: editFormData.endereco,
+        observacoes: editFormData.observacoes
+      };
+
       const response = await fetch(`/api/alunos/${editingAluno._id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(editFormData),
+        body: JSON.stringify(payload),
       });
 
       const data = await response.json();
@@ -234,14 +289,28 @@ export default function AlunosPage() {
     }
   };
 
+  // Filter alunos by query (name, email, phone, modalidades, modalidadeId.nome, plano)
+  const filteredAlunos = useMemo(() => {
+    if (!query) return alunos;
+    const q = String(query).trim().toLowerCase();
+    return alunos.filter(aluno => {
+      const nome = String(aluno.nome || '').toLowerCase();
+      const email = String(aluno.email || '').toLowerCase();
+      const telefone = String(aluno.telefone || '').toLowerCase();
+      const plano = String(aluno.plano || '').toLowerCase();
+      const modIdNome = String(aluno.modalidadeId?.nome || '').toLowerCase();
+      const modalidadesStr = (aluno.modalidades || []).map(m => String(m.nome || '').toLowerCase()).join(' ');
+      return nome.includes(q) || email.includes(q) || telefone.includes(q) || plano.includes(q) || modIdNome.includes(q) || modalidadesStr.includes(q);
+    });
+  }, [alunos, query]);
+
   // Função para selecionar/deselecionar todos os alunos
   const toggleSelectAll = () => {
     if (selectAll) {
       setSelectedAlunos([]);
     } else {
-      setSelectedAlunos(alunos.map(aluno => aluno._id));
+      setSelectedAlunos(filteredAlunos.map(aluno => aluno._id));
     }
-    setSelectAll(!selectAll);
   };
 
   // Função para selecionar/deselecionar aluno individual
@@ -250,11 +319,16 @@ export default function AlunosPage() {
       const newSelected = prev.includes(alunoId)
         ? prev.filter(id => id !== alunoId)
         : [...prev, alunoId];
-      
-      setSelectAll(newSelected.length === alunos.length);
       return newSelected;
     });
   };
+
+  // Keep selectAll in sync with current selection and filtered list
+  useEffect(() => {
+    setSelectAll(selectedAlunos.length > 0 && filteredAlunos.length > 0 && selectedAlunos.length === filteredAlunos.length);
+  }, [selectedAlunos, filteredAlunos]);
+
+  
 
   // Função para excluir alunos selecionados em massa
   const excluirSelecionados = async () => {
@@ -293,28 +367,74 @@ export default function AlunosPage() {
   return (
     <Layout title="Alunos - Superação Flux">
       <div className="px-4 py-6 sm:px-0">
-        <div className="sm:flex sm:items-center">
-          <div className="sm:flex-auto">
-            <h1 className="text-xl font-semibold text-gray-900">Alunos</h1>
-            <p className="mt-2 text-sm text-gray-700">
-              Gerencie o cadastro de alunos do studio.
-            </p>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="sm:flex sm:items-center sm:space-x-6">
+            <div>
+              <h1 className="text-2xl font-semibold text-gray-900">Alunos</h1>
+              <p className="mt-1 text-sm text-gray-600 max-w-xl">Gerencie o cadastro de alunos do studio — pesquise, edite e organize seus alunos.</p>
+            </div>
+            <div className="mt-3 sm:mt-0 grid grid-cols-3 gap-3 sm:gap-4 ml-0 sm:ml-6">
+              <div className="bg-white border border-gray-100 rounded-md p-3 shadow-sm">
+                <div className="text-xs text-gray-500">Total</div>
+                <div className="text-lg font-semibold text-gray-900">{alunos.length}</div>
+              </div>
+              <div className="bg-white border border-gray-100 rounded-md p-3 shadow-sm">
+                <div className="text-xs text-gray-500">Ativos</div>
+                <div className="text-lg font-semibold text-green-700">{alunos.filter(a => a.ativo).length}</div>
+              </div>
+              <div className="bg-white border border-gray-100 rounded-md p-3 shadow-sm">
+                <div className="text-xs text-gray-500">Com horário</div>
+                <div className="text-lg font-semibold text-gray-900">{alunos.filter(a => a.horarios && a.horarios.length > 0).length}</div>
+              </div>
+            </div>
           </div>
-          <div className="mt-4 sm:mt-0 sm:ml-16 sm:flex-none space-x-3">
+
+          <div className="flex items-center gap-3">
+            <div>
+              <button
+                type="button"
+                onClick={() => window.location.href = '/alunos/novo'}
+                className="h-10 inline-flex items-center gap-2 rounded-md bg-primary-600 text-white px-4 text-sm font-medium hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
+              >
+                <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
+                Novo Aluno
+              </button>
+            </div>
+
             {selectedAlunos.length > 0 && (
               <button
                 type="button"
                 onClick={excluirSelecionados}
-                className="inline-flex items-center justify-center rounded-md border border-red-300 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 shadow-sm hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 sm:w-auto"
+                className="h-10 inline-flex items-center justify-center rounded-md border border-red-200 bg-red-50 px-4 text-sm font-medium text-red-700 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-500"
               >
-                🗑️ Excluir Selecionados ({selectedAlunos.length})
+                <span className="hidden sm:inline">🗑️</span>
+                <span>Excluir ({selectedAlunos.length})</span>
               </button>
             )}
-            {/* 'Novo Aluno' removed: this page now lists alunos presentes nos horários */}
           </div>
         </div>
 
-        <div className="mt-8 flex flex-col">
+        {/* Search row placed above the table for clearer layout */}
+        <div className="mt-4 sm:mt-6">
+          <div className="flex items-center justify-between gap-4">
+            <div className="relative w-full sm:w-1/2">
+              <svg className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z" /></svg>
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Pesquisar por nome, email, telefone, modalidade ou plano..."
+                className="block w-full pl-10 pr-3 border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 bg-white"
+              />
+            </div>
+            <div className="hidden sm:flex items-center text-sm text-gray-600">
+              {/* reserve space for potential stats/filters */}
+              <div>Resultados: {filteredAlunos.length}</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-6 flex flex-col">
           <div className="-my-2 -mx-4 overflow-x-auto sm:-mx-6 lg:-mx-8">
             <div className="inline-block min-w-full py-2 align-middle md:px-6 lg:px-8">
               <div className="overflow-hidden shadow ring-1 ring-black ring-opacity-5 md:rounded-lg">
@@ -359,15 +479,15 @@ export default function AlunosPage() {
                           Carregando alunos...
                         </td>
                       </tr>
-                    ) : alunos.length === 0 ? (
+                    ) : filteredAlunos.length === 0 ? (
                       <tr>
                         <td colSpan={7} className="px-6 py-4 text-center text-gray-500">
                           Nenhum aluno encontrado.
                         </td>
                       </tr>
                     ) : (
-                      alunos.map((aluno) => (
-                        <tr key={aluno._id}>
+                      filteredAlunos.map((aluno) => (
+                        <tr key={aluno._id} className="hover:bg-gray-50 transition-colors">
                           <td className="relative px-6 sm:w-12 sm:px-6">
                             <input
                               type="checkbox"
@@ -377,7 +497,10 @@ export default function AlunosPage() {
                             />
                           </td>
                           <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900 sm:pl-6">
-                            {aluno.nome}
+                            <div className="flex items-center gap-3">
+                              <div className="h-8 w-8 rounded-full bg-gray-100 flex items-center justify-center text-sm font-semibold text-gray-700">{(aluno.nome || '').split(' ').slice(0,2).map(n=>n[0]).join('').toUpperCase()}</div>
+                              <div className="truncate" title={aluno.nome}>{aluno.nome}</div>
+                            </div>
                           </td>
                           <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
                             {aluno.email}
@@ -386,14 +509,14 @@ export default function AlunosPage() {
                             <div className="flex items-center space-x-2">
                               {(aluno.modalidades && aluno.modalidades.length > 0) ? (
                                 aluno.modalidades.map(m => (
-                                  <div key={m._id} className="flex items-center space-x-2">
-                                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: m.cor || '#3B82F6' }}></div>
+                                  <div key={(m._id || m.nome)} className="flex items-center space-x-2">
+                                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: getModalidadeColor(m) }}></div>
                                     <span className="text-sm">{m.nome}</span>
                                   </div>
                                 ))
                               ) : (
                                 <div className="flex items-center">
-                                  <div className="w-3 h-3 rounded-full mr-2" style={{ backgroundColor: aluno.modalidadeId?.cor || '#3B82F6' }}></div>
+                                  <div className="w-3 h-3 rounded-full mr-2" style={{ backgroundColor: getModalidadeColor(aluno.modalidadeId) }}></div>
                                   <span>{aluno.modalidadeId?.nome || 'N/A'}</span>
                                 </div>
                               )}
@@ -405,7 +528,7 @@ export default function AlunosPage() {
                               <div className="space-y-1">
                                 <div className="text-xs font-semibold text-gray-700">Treinos: {aluno.horarios.length}</div>
                                 {aluno.horarios.slice(0,3).map((h,i) => (
-                                  <div key={i} className="text-xs text-gray-600">
+                                  <div key={`${h.diaSemana}-${h.horarioInicio}-${h.horarioFim}-${h.professorNome || ''}`} className="text-xs text-gray-600">
                                     {['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'][h.diaSemana]} {h.horarioInicio}–{h.horarioFim} {h.professorNome ? `· ${h.professorNome}` : ''}
                                   </div>
                                 ))}
@@ -430,18 +553,16 @@ export default function AlunosPage() {
                             </span>
                           </td>
                           <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
-                            <button 
-                              onClick={() => abrirEdicao(aluno)}
-                              className="text-primary-600 hover:text-primary-900 mr-4"
-                            >
-                              Editar
-                            </button>
-                            <button 
-                              onClick={() => excluirAluno(aluno._id, aluno.nome)}
-                              className="text-red-600 hover:text-red-900"
-                            >
-                              Excluir
-                            </button>
+                            <div className="flex items-center justify-end gap-3">
+                              <button onClick={() => abrirEdicao(aluno)} className="inline-flex items-center gap-2 px-3 py-1 text-sm rounded-md bg-white border border-gray-100 hover:bg-gray-50 text-primary-600">
+                                <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536M9 11l6-6 3 3-6 6H9v-3z"/></svg>
+                                <span>Editar</span>
+                              </button>
+                              <button onClick={() => excluirAluno(aluno._id, aluno.nome)} className="inline-flex items-center gap-2 px-3 py-1 text-sm rounded-md bg-red-50 border border-red-100 text-red-700 hover:bg-red-100">
+                                <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M10 3h4l1 4H9l1-4z"/></svg>
+                                <span>Excluir</span>
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))
@@ -459,12 +580,11 @@ export default function AlunosPage() {
       {/* Modal de Edição */}
       {showEditModal && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
-            <div className="mt-3">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">
-                Editar Aluno
-              </h3>
-              
+          <div className="relative top-20 mx-auto p-0 border w-11/12 max-w-md shadow-lg rounded-md bg-white">
+            <div className="px-6 py-4 border-b">
+              <h3 className="text-lg font-medium text-gray-900">Editar Aluno</h3>
+            </div>
+            <div className="p-6">
               <form noValidate>
                 <div className="space-y-4">
                 <div>
@@ -523,18 +643,20 @@ export default function AlunosPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Modalidade
                   </label>
-                  <select
-                    value={editFormData.modalidadeId}
-                    onChange={(e) => setEditFormData({...editFormData, modalidadeId: e.target.value})}
-                    className="block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                  >
-                    <option value="">Selecione uma modalidade</option>
-                    {modalidades.map((modalidade) => (
-                      <option key={modalidade._id} value={modalidade._id}>
-                        {modalidade.nome}
-                      </option>
-                    ))}
-                  </select>
+                  <div>
+                    {editingAluno && (editingAluno.modalidades && editingAluno.modalidades.length > 0) ? (
+                      <div className="flex flex-wrap gap-2">
+                        {editingAluno.modalidades.map(m => (
+                          <span key={(m._id || m.nome)} className="inline-flex items-center gap-2 px-3 py-0.5 bg-gray-50 border border-gray-100 rounded-full text-xs">
+                            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: getModalidadeColor(m) }} />
+                            <span className="text-xs text-gray-700">{m.nome}</span>
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="inline-flex items-center gap-2 px-3 py-1 bg-gray-50 border border-gray-100 rounded-md text-sm text-gray-600">{editingAluno?.modalidadeId?.nome || '—'}</div>
+                    )}
+                  </div>
                 </div>
 
                 <div>
@@ -550,22 +672,22 @@ export default function AlunosPage() {
                   />
                 </div>
               </div>
-              </form>
 
-              <div className="flex justify-end space-x-3 mt-6">
-                <button
-                  onClick={() => setShowEditModal(false)}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-500"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={salvarEdicao}
-                  className="px-4 py-2 text-sm font-medium text-white bg-primary-600 border border-transparent rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                >
-                  Salvar
-                </button>
-              </div>
+                <div className="flex justify-end space-x-3 mt-6">
+                  <button
+                    onClick={() => setShowEditModal(false)}
+                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-500"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={salvarEdicao}
+                    className="px-4 py-2 text-sm font-medium text-white bg-primary-600 border border-transparent rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  >
+                    Salvar
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         </div>

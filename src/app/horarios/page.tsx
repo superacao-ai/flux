@@ -1,7 +1,9 @@
-'use client';
+"use client";
 
 import { useState, useEffect, useRef, useMemo } from 'react';
+import StudentDetailModal from '@/components/StudentDetailModal';
 import Layout from '@/components/Layout';
+import RequireAuth from '@/components/RequireAuth';
 
 interface Aluno {
   _id: string;
@@ -98,16 +100,8 @@ export default function HorariosPage() {
   const [alunos, setAlunos] = useState<Aluno[]>([]);
   const [professores, setProfessores] = useState<Professor[]>([]);
   const [modalidades, setModalidades] = useState<Modalidade[]>([]);
-  const [modalidadeSelecionada, setModalidadeSelecionada] = useState<string>(() => {
-    try {
-      if (typeof window !== 'undefined') {
-        return localStorage.getItem('modalidadeSelecionada') || '';
-      }
-    } catch (e) {
-      // ignore
-    }
-    return '';
-  });
+  // Don't read localStorage during render — initialize to safe default and hydrate on mount
+  const [modalidadeSelecionada, setModalidadeSelecionada] = useState<string>('');
   const [showModal, setShowModal] = useState(false);
   const [editingMode, setEditingMode] = useState<'create' | 'single' | 'turma'>('create');
   const [editingMemberIds, setEditingMemberIds] = useState<string[] | null>(null);
@@ -145,6 +139,35 @@ export default function HorariosPage() {
     setModalEditObservacoes(String(selectedStudentHorario.observacoes || ''));
     setModalEditing(false);
   }, [selectedStudentHorario]);
+
+  // Expose a global helper so other pages (calendar) can open the student modal
+  useEffect(() => {
+    (window as any).openStudentDetailModal = (horario: any) => {
+      try {
+        setSelectedStudentHorario(horario);
+        setShowStudentDetailModal(true);
+        // Scroll modal into view
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } catch (e) {
+        console.error('openStudentDetailModal error', e);
+      }
+    };
+
+    // If another page set window.selectedStudentHorario and navigated here, open the modal
+    try {
+      const pending = (window as any).selectedStudentHorario;
+      if (pending) {
+        setSelectedStudentHorario(pending);
+        setShowStudentDetailModal(true);
+        // clear
+        delete (window as any).selectedStudentHorario;
+      }
+    } catch (e) {}
+
+    return () => {
+      try { delete (window as any).openStudentDetailModal; } catch (e) {}
+    };
+  }, []);
   
   const [novoHorarioAlunosText, setNovoHorarioAlunosText] = useState('');
   const [addAlunoTurma, setAddAlunoTurma] = useState<{professorId?: string, diaSemana?: number, horarioInicio?: string, horarioFim?: string} | null>(null);
@@ -198,7 +221,7 @@ export default function HorariosPage() {
   }, [showImportModal, importText]);
   const [mounted, setMounted] = useState(false);
   // local visual flags for quick toggles (not persisted) keyed by horarioId
-  const [localFlags, setLocalFlags] = useState<Record<string, { congelado?: boolean; ausente?: boolean }>>({});
+  const [localFlags, setLocalFlags] = useState<Record<string, { congelado?: boolean; ausente?: boolean; emEspera?: boolean }>>({});
   // Confirmation dialog state for handling similar-aluno decisions
   const pendingAlunoResolve = useRef<((res: {action: 'use'|'create'|'skip'|'choose', alunoId?: string}) => void) | null>(null);
   const [confirmAlunoDialog, setConfirmAlunoDialog] = useState<null | { name: string; candidates: Array<{ aluno: Aluno; score: number }> }>(null);
@@ -226,18 +249,9 @@ export default function HorariosPage() {
     }
   };
   // Horário de funcionamento (início/fim) - usados para filtrar linhas exibidas na grade
-  const [openTime, setOpenTime] = useState<string>(() => {
-    try {
-      if (typeof window !== 'undefined') return localStorage.getItem('horarioOpen') || '06:00';
-    } catch (e) {}
-    return '06:00';
-  });
-  const [closeTime, setCloseTime] = useState<string>(() => {
-    try {
-      if (typeof window !== 'undefined') return localStorage.getItem('horarioClose') || '22:00';
-    } catch (e) {}
-    return '22:00';
-  });
+  // Avoid client-only APIs during SSR render — use defaults and sync from storage on mount
+  const [openTime, setOpenTime] = useState<string>('06:00');
+  const [closeTime, setCloseTime] = useState<string>('22:00');
 
       // ...existing code...
 
@@ -266,12 +280,30 @@ export default function HorariosPage() {
     }
     return times;
   };
-  const horariosDisponiveis = generateTimes('00:00', '23:30', 30);
+  // Return the step in minutes to use for the schedule grid based on modalidade.duracao.
+  // Falls back to 30 if not available or invalid. Allowed steps: 5,10,15,20,30,60.
+  const getCurrentStep = (modalidadeId?: string) => {
+    try {
+      const mid = modalidadeId || formData.modalidadeId || modalidadeSelecionada || '';
+      if (!mid) return 30;
+      const mod = modalidades.find(m => getMid(m) === mid) as any;
+      if (!mod) return 30;
+      const dur = typeof mod.duracao === 'number' ? Number(mod.duracao) : parseInt(String(mod.duracao || '30'));
+      const allowed = [5, 10, 15, 20, 30, 60];
+      return allowed.includes(dur) ? dur : 30;
+    } catch (e) {
+      return 30;
+    }
+  };
+
+  const horariosDisponiveis = generateTimes('00:00', '23:30', getCurrentStep());
 
   const timeToMinutes = (t: string) => {
     const [hh, mm] = (t || '00:00').split(':').map(Number);
     return hh * 60 + mm;
   };
+
+  
 
   const getVisibleHorarios = () => {
     try {
@@ -310,7 +342,7 @@ export default function HorariosPage() {
           const start = hd.horaInicio || hd.horaInicio || hd.hora_inicio || '';
           const end = hd.horaFim || hd.horaFim || hd.hora_fim || '';
           if (!start || !end) continue;
-          const slots = generateTimes(start, end, 30);
+          const slots = generateTimes(start, end, getCurrentStep(mod._id || mid));
           for (const s of slots) timesSet.add(s);
         }
       }
@@ -329,6 +361,21 @@ export default function HorariosPage() {
     fetchProfessores();
     fetchModalidades();
     setMounted(true);
+  }, []);
+
+  // Hydrate persisted UI state from localStorage on client mount
+  useEffect(() => {
+    try {
+      if (typeof window === 'undefined') return;
+      const hOpen = localStorage.getItem('horarioOpen');
+      const hClose = localStorage.getItem('horarioClose');
+      if (hOpen) setOpenTime(hOpen);
+      if (hClose) setCloseTime(hClose);
+      const savedModal = localStorage.getItem('modalidadeSelecionada');
+      if (savedModal) setModalidadeSelecionada(savedModal);
+    } catch (e) {
+      // ignore
+    }
   }, []);
 
   // Persist operating hours selection
@@ -612,26 +659,35 @@ export default function HorariosPage() {
         }
       }
 
-      // Criar horário para o aluno
+      // Prefer creating a Matricula for an existing HorarioFixo. If none exists, create a HorarioFixo (without alunoId) then matricula.
       try {
-        const resp = await fetch('/api/horarios', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            alunoId: (resolvedAluno as Aluno)._id,
-            professorId: formData.professorId,
-            diaSemana: formData.diaSemana,
-            horarioInicio: formData.horarioInicio,
-            horarioFim: formData.horarioFim,
-            observacoes: formData.observacoes || '',
-            modalidadeId: formData.modalidadeId || modalidadeSelecionada || undefined
-          })
+        const existing = horarios.find(h => {
+          try {
+            const rawProf = (h as any).professorId;
+            const profId = rawProf && (rawProf._id || rawProf) ? String(rawProf._id || rawProf) : undefined;
+            return profId === String(formData.professorId) && h.diaSemana === formData.diaSemana && h.horarioInicio === formData.horarioInicio && h.horarioFim === formData.horarioFim;
+          } catch (e) { return false; }
         });
-        const data = await resp.json();
-        if (data.success) {
+
+        let enrollResp: any = null;
+        if (existing && existing._id) {
+          const matResp = await fetch('/api/matriculas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ horarioFixoId: existing._id, alunoId: (resolvedAluno as Aluno)._id, observacoes: formData.observacoes || '' }) });
+          enrollResp = await matResp.json();
+        } else {
+          const createResp = await fetch('/api/horarios', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ professorId: formData.professorId, diaSemana: formData.diaSemana, horarioInicio: formData.horarioInicio, horarioFim: formData.horarioFim, observacoes: formData.observacoes || '', modalidadeId: formData.modalidadeId || modalidadeSelecionada || undefined }) });
+          const created = await createResp.json();
+          if (created && created.success && created.data && created.data._id) {
+            const matResp = await fetch('/api/matriculas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ horarioFixoId: created.data._id, alunoId: (resolvedAluno as Aluno)._id, observacoes: formData.observacoes || '' }) });
+            enrollResp = await matResp.json();
+          } else {
+            enrollResp = { success: false, error: created && created.error ? created.error : 'Falha ao criar horario' };
+          }
+        }
+
+        if (enrollResp && enrollResp.success) {
           successes++;
         } else {
-          failures.push({name, reason: data.error || 'Erro desconhecido'});
+          failures.push({ name, reason: enrollResp && (enrollResp.error || enrollResp.message) ? (enrollResp.error || enrollResp.message) : 'Erro desconhecido' });
         }
       } catch (err:any) {
         failures.push({name, reason: err.message || 'Erro de requisição'});
@@ -770,26 +826,43 @@ export default function HorariosPage() {
               }
             }
 
-            // create horario for this aluno; use the parsed observation (obsPart) when present
+            // Prefer creating a Matricula for an existing HorarioFixo. If none exists,
+            // create the HorarioFixo without alunoId and then create the Matricula.
             try {
-              const resp = await fetch('/api/horarios', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  alunoId: (aluno as Aluno)._id,
-                  professorId: formData.professorId,
-                  diaSemana: formData.diaSemana,
-                  horarioInicio: formData.horarioInicio,
-                  horarioFim: formData.horarioFim,
-                    observacoes: obsPart || formData.observacoes || '',
-                    modalidadeId: formData.modalidadeId || modalidadeSelecionada || undefined
-                })
+              const existing = horarios.find(h => {
+                try {
+                  const rawProf = (h as any).professorId;
+                  const profId = rawProf && (rawProf._id || rawProf) ? String(rawProf._id || rawProf) : undefined;
+                  return profId === String(formData.professorId) && h.diaSemana === formData.diaSemana && h.horarioInicio === formData.horarioInicio && h.horarioFim === formData.horarioFim;
+                } catch (e) { return false; }
               });
-              const data = await resp.json();
-              if (data.success) {
+
+              let enrollResp: any = null;
+              if (existing && existing._id) {
+                const matResp = await fetch('/api/matriculas', {
+                  method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ horarioFixoId: existing._id, alunoId: (aluno as Aluno)._id, observacoes: obsPart || formData.observacoes || '' })
+                });
+                enrollResp = await matResp.json();
+              } else {
+                // create HorarioFixo template without alunoId
+                const createResp = await fetch('/api/horarios', {
+                  method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ professorId: formData.professorId, diaSemana: formData.diaSemana, horarioInicio: formData.horarioInicio, horarioFim: formData.horarioFim, observacoes: formData.observacoes || '', modalidadeId: formData.modalidadeId || modalidadeSelecionada || undefined })
+                });
+                const created = await createResp.json();
+                if (created && created.success && created.data && created.data._id) {
+                  const matResp = await fetch('/api/matriculas', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ horarioFixoId: created.data._id, alunoId: (aluno as Aluno)._id, observacoes: obsPart || formData.observacoes || '' })
+                  });
+                  enrollResp = await matResp.json();
+                } else {
+                  enrollResp = { success: false, error: created && created.error ? created.error : 'Falha ao criar horario' };
+                }
+              }
+
+              if (enrollResp && enrollResp.success) {
                 successes++;
               } else {
-                failures.push({name: namePart, reason: data.error || 'Erro desconhecido'});
+                failures.push({ name: namePart, reason: enrollResp && (enrollResp.error || enrollResp.message) ? (enrollResp.error || enrollResp.message) : 'Erro desconhecido' });
               }
             } catch (err:any) {
               failures.push({name: namePart, reason: err.message || 'Erro de requisição'});
@@ -805,15 +878,62 @@ export default function HorariosPage() {
           return;
         }
 
-        // otherwise fallback to single horario create as before
+        // If a specific alunoId was provided, prefer enrolling via Matricula.
+        // This prevents creating a HorarioFixo that carries alunoId directly.
+        if (formData.alunoId && String(formData.alunoId).trim() !== '') {
+          try {
+            const existing = horarios.find(h => {
+              try {
+                const rawProf = (h as any).professorId;
+                const profId = rawProf && (rawProf._id || rawProf) ? String(rawProf._id || rawProf) : undefined;
+                return profId === String(formData.professorId) && h.diaSemana === formData.diaSemana && h.horarioInicio === formData.horarioInicio && h.horarioFim === formData.horarioFim;
+              } catch (e) { return false; }
+            });
+
+            let enrollResp: any = null;
+            if (existing && existing._id) {
+              const matResp = await fetch('/api/matriculas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ horarioFixoId: existing._id, alunoId: formData.alunoId, observacoes: formData.observacoes || '' }) });
+              enrollResp = await matResp.json();
+            } else {
+              // create HorarioFixo template without alunoId, then create Matricula
+              const createResp = await fetch('/api/horarios', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ professorId: formData.professorId, diaSemana: formData.diaSemana, horarioInicio: formData.horarioInicio, horarioFim: formData.horarioFim, observacoes: formData.observacoes || '', modalidadeId: formData.modalidadeId || modalidadeSelecionada || undefined }) });
+              const created = await createResp.json();
+              if (created && created.success && created.data && created.data._id) {
+                const matResp = await fetch('/api/matriculas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ horarioFixoId: created.data._id, alunoId: formData.alunoId, observacoes: formData.observacoes || '' }) });
+                enrollResp = await matResp.json();
+              } else {
+                enrollResp = { success: false, error: created && created.error ? created.error : 'Falha ao criar horario' };
+              }
+            }
+
+            if (!enrollResp || !enrollResp.success) {
+              const message = enrollResp && (enrollResp.error || enrollResp.message) ? (enrollResp.error || enrollResp.message) : 'Erro ao criar/inscrever aluno';
+              alert('Erro ao criar horário: ' + message);
+              setLoading(false);
+              return;
+            }
+
+            // Success: close modal and refresh
+            setShowModal(false);
+            setFormData({ alunoId: '', professorId: '', diaSemana: 1, horarioInicio: '', horarioFim: '', observacoes: '', observacaoTurma: '', modalidadeId: '' });
+            await fetchHorarios();
+            setLoading(false);
+            return;
+          } catch (err:any) {
+            console.error('Erro ao criar horario/matricula:', err);
+            alert('Erro ao criar horário: ' + (err && err.message ? err.message : 'erro'));
+            setLoading(false);
+            return;
+          }
+        }
+
+        // otherwise fallback to creating a HorarioFixo template (no alunoId)
         const response = await fetch('/api/horarios', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify(
-            (formData.alunoId && formData.alunoId.trim() !== '' ? { ...formData, modalidadeId: formData.modalidadeId || modalidadeSelecionada } : { ...formData, alunoId: undefined, modalidadeId: formData.modalidadeId || modalidadeSelecionada })
-          ),
+          body: JSON.stringify({ ...formData, alunoId: undefined, modalidadeId: formData.modalidadeId || modalidadeSelecionada })
         });
 
         // Parse response and handle errors explicitly
@@ -978,21 +1098,26 @@ export default function HorariosPage() {
   };
 
   const toggleCongelado = (id: string) => {
-    // Optimistically toggle local flag and persist to server by PATCHing explicit flag fields (do NOT touch observacoes)
+    // Compute new value from current localFlags to avoid stale closure
+    let newCongelado = false;
     setLocalFlags(prev => {
       const cur = prev[id] || {};
-      return { ...prev, [id]: { ...cur, congelado: !cur.congelado, ausente: cur.ausente ? cur.ausente : false } };
+      newCongelado = !cur.congelado;
+      return { ...prev, [id]: { ...cur, congelado: newCongelado, ausente: cur.ausente ? cur.ausente : false } };
     });
     (async () => {
       try {
-        const cur = localFlags[id] || {};
-        const newCongelado = !cur.congelado;
-        // When setting congelado=true ensure ausente=false on server
-        const body: any = { congelado: newCongelado };
-        if (newCongelado) body.ausente = false;
+      const body: any = { congelado: newCongelado };
+      if (newCongelado) body.ausente = false;
+        // debug logs removed
         const patch = await fetch(`/api/horarios/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
         const patchData = await patch.json();
         if (!patchData || !patchData.success) throw new Error(patchData && patchData.error ? patchData.error : 'Erro ao atualizar');
+        // Sync local flags with server-returned document when available
+        const returned = patchData.data || {};
+        const serverCongelado = returned.congelado === true;
+        const serverAusente = returned.ausente === true;
+        setLocalFlags(prev => ({ ...prev, [id]: { congelado: serverCongelado, ausente: serverAusente, emEspera: returned.emEspera === true } }));
         // Refresh horarios after server update
         await fetchHorarios();
       } catch (err) {
@@ -1008,21 +1133,24 @@ export default function HorariosPage() {
   };
 
   const toggleAusente = (id: string) => {
-    // Optimistically toggle local flag and persist to server by PATCHing explicit flag fields (do NOT touch observacoes)
+    let newAusente = false;
     setLocalFlags(prev => {
       const cur = prev[id] || {};
-      return { ...prev, [id]: { ...cur, ausente: !cur.ausente, congelado: cur.congelado ? cur.congelado : false } };
+      newAusente = !cur.ausente;
+      return { ...prev, [id]: { ...cur, ausente: newAusente, congelado: cur.congelado ? cur.congelado : false } };
     });
     (async () => {
       try {
-        const cur = localFlags[id] || {};
-        const newAusente = !cur.ausente;
-        // When setting ausente=true ensure congelado=false on server
-        const body: any = { ausente: newAusente };
-        if (newAusente) body.congelado = false;
-        const patch = await fetch(`/api/horarios/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-        const patchData = await patch.json();
+  const body: any = { ausente: newAusente };
+  if (newAusente) body.congelado = false;
+  // debug logs removed
+  const patch = await fetch(`/api/horarios/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const patchData = await patch.json();
         if (!patchData || !patchData.success) throw new Error(patchData && patchData.error ? patchData.error : 'Erro ao atualizar');
+  const returned = patchData.data || {};
+  const serverCongelado = returned.congelado === true;
+  const serverAusente = returned.ausente === true;
+  setLocalFlags(prev => ({ ...prev, [id]: { congelado: serverCongelado, ausente: serverAusente, emEspera: returned.emEspera === true } }));
         await fetchHorarios();
       } catch (err) {
         console.error('Erro ao togglear ausente:', err);
@@ -1182,7 +1310,7 @@ export default function HorariosPage() {
         else if (rawProf._id) professorIdStr = String(rawProf._id);
         else professorIdStr = String(rawProf);
         const key = `${professorIdStr}::${h.horarioFim}`;
-        if (!groups[key]) groups[key] = { professorId: professorIdStr, professorNome: (h as any).professorId?.nome || '', horarioFim: h.horarioFim, alunos: [], observacaoTurma: (h as any).observacaoTurma || '' };
+  if (!groups[key]) groups[key] = { professorId: professorIdStr, professorNome: ((h as any).professorId?.nome ? 'Personal ' + (h as any).professorId?.nome : ((h as any).professorId && (h as any).professorId.nome) || ''), horarioFim: h.horarioFim, alunos: [], observacaoTurma: (h as any).observacaoTurma || '' };
         // Prefer any explicit observacaoTurma found among members
         if (!groups[key].observacaoTurma && (h as any).observacaoTurma) groups[key].observacaoTurma = (h as any).observacaoTurma || '';
         groups[key].alunos.push(h);
@@ -1362,16 +1490,36 @@ export default function HorariosPage() {
         continue;
       }
 
-      // create horario
+      // Prefer creating a Matricula on an existing HorarioFixo. If none exists create a HorarioFixo
+      // (without alunoId) and then create the Matricula.
       try {
-        const resp = await fetch('/api/horarios', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ alunoId: alunoIdToUse, professorId: importProfessorId, diaSemana: importDiaSemana, horarioInicio: importHorarioInicio, horarioFim: importHorarioFim, observacoes: 'Importado em lote', modalidadeId: importModalidadeId || modalidadeSelecionada || undefined })
+        const existing = horarios.find(h => {
+          try {
+            const rawProf = (h as any).professorId;
+            const profId = rawProf && (rawProf._id || rawProf) ? String(rawProf._id || rawProf) : undefined;
+            return profId === String(importProfessorId) && h.diaSemana === importDiaSemana && h.horarioInicio === importHorarioInicio && h.horarioFim === importHorarioFim;
+          } catch (e) { return false; }
         });
-        const data = await resp.json();
-        if (data.success) {
+
+        let enrollResp: any = null;
+        if (existing && existing._id) {
+          const matResp = await fetch('/api/matriculas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ horarioFixoId: existing._id, alunoId: alunoIdToUse, observacoes: 'Importado em lote' }) });
+          enrollResp = await matResp.json();
+        } else {
+          const createResp = await fetch('/api/horarios', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ professorId: importProfessorId, diaSemana: importDiaSemana, horarioInicio: importHorarioInicio, horarioFim: importHorarioFim, observacoes: '', modalidadeId: importModalidadeId || modalidadeSelecionada || undefined }) });
+          const created = await createResp.json();
+          if (created && created.success && created.data && created.data._id) {
+            const matResp = await fetch('/api/matriculas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ horarioFixoId: created.data._id, alunoId: alunoIdToUse, observacoes: 'Importado em lote' }) });
+            enrollResp = await matResp.json();
+          } else {
+            enrollResp = { success: false, error: created && created.error ? created.error : 'Falha ao criar horario' };
+          }
+        }
+
+        if (enrollResp && enrollResp.success) {
           successes++;
         } else {
-          failures.push({name, reason: data.error || 'Erro desconhecido'});
+          failures.push({ name, reason: enrollResp && (enrollResp.error || enrollResp.message) ? (enrollResp.error || enrollResp.message) : 'Erro desconhecido' });
         }
       } catch (err:any) {
         failures.push({name, reason: err.message || 'Erro de requisição'});
@@ -1545,14 +1693,33 @@ export default function HorariosPage() {
                     if (!resolvedAluno) { failures.push({name: rawName, reason: 'Aluno não resolvido'}); continue; }
 
                     try {
-                      const resp = await fetch('/api/horarios', {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ alunoId: resolvedAluno._id, professorId: addAlunoTurma.professorId, diaSemana: addAlunoTurma.diaSemana, horarioInicio: addAlunoTurma.horarioInicio, horarioFim: addAlunoTurma.horarioFim, observacoes: obsPart || '', modalidadeId: formData.modalidadeId || modalidadeSelecionada || undefined })
+                      const existing = horarios.find(h => {
+                        try {
+                          const rawProf = (h as any).professorId;
+                          const profId = rawProf && (rawProf._id || rawProf) ? String(rawProf._id || rawProf) : undefined;
+                          return profId === String(addAlunoTurma.professorId) && h.diaSemana === addAlunoTurma.diaSemana && h.horarioInicio === addAlunoTurma.horarioInicio && h.horarioFim === addAlunoTurma.horarioFim;
+                        } catch (e) { return false; }
                       });
-                      const data = await resp.json();
-                      if (data.success) {
+
+                      let enrollResp: any = null;
+                      if (existing && existing._id) {
+                        const matResp = await fetch('/api/matriculas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ horarioFixoId: existing._id, alunoId: resolvedAluno._id, observacoes: obsPart || '' }) });
+                        enrollResp = await matResp.json();
+                      } else {
+                        const createResp = await fetch('/api/horarios', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ professorId: addAlunoTurma.professorId, diaSemana: addAlunoTurma.diaSemana, horarioInicio: addAlunoTurma.horarioInicio, horarioFim: addAlunoTurma.horarioFim, observacoes: '', modalidadeId: formData.modalidadeId || modalidadeSelecionada || undefined }) });
+                        const created = await createResp.json();
+                        if (created && created.success && created.data && created.data._id) {
+                          const matResp = await fetch('/api/matriculas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ horarioFixoId: created.data._id, alunoId: resolvedAluno._id, observacoes: obsPart || '' }) });
+                          enrollResp = await matResp.json();
+                        } else {
+                          enrollResp = { success: false, error: created && created.error ? created.error : 'Falha ao criar horario' };
+                        }
+                      }
+
+                      if (enrollResp && enrollResp.success) {
                         successes++;
                       } else {
-                        failures.push({name: rawName, reason: data.error || 'Erro desconhecido'});
+                        failures.push({ name: rawName, reason: enrollResp && (enrollResp.error || enrollResp.message) ? (enrollResp.error || enrollResp.message) : 'Erro desconhecido' });
                       }
                     } catch (err:any) {
                       failures.push({name: rawName, reason: err.message || 'Erro de requisição'});
@@ -1572,6 +1739,7 @@ export default function HorariosPage() {
           </div>
         </div>
       )}
+  <RequireAuth>
   <Layout title="Horários - Superação Flux" fullWidth>
   <div className="w-full px-4 py-6 sm:px-0">
         <div className="sm:flex sm:items-center mb-6">
@@ -1646,7 +1814,18 @@ export default function HorariosPage() {
                     let anyExceeded = false;
                     try {
                       for (const turma of turmas) {
-                        const visibleAlunos = (turma.alunos || []).filter((h: any) => h && h.alunoId && (h.alunoId.nome || h.alunoId._id));
+                        // Support two data shapes:
+                        // 1) legacy: turma.alunos is an array of HorarioFixo member documents (each with alunoId)
+                        // 2) new: turma.alunos is an array with a single HorarioFixo template that carries a `matriculas` array
+                        const visibleAlunos = (() => {
+                          try {
+                            if (Array.isArray(turma.alunos) && turma.alunos.length === 1 && Array.isArray(turma.alunos[0].matriculas) && turma.alunos[0].matriculas.length > 0) {
+                              // Use matriculas (each item has alunoId populated)
+                              return (turma.alunos[0].matriculas || []).filter((m: any) => m && m.alunoId && (m.alunoId.nome || m.alunoId._id));
+                            }
+                          } catch (e) {}
+                          return (turma.alunos || []).filter((h: any) => h && h.alunoId && (h.alunoId.nome || h.alunoId._id));
+                        })();
                         let capacity: number | undefined = undefined;
                         if (modalidadeSelecionada) {
                           const mod = modalidades.find(m => getMid(m) === modalidadeSelecionada) as any;
@@ -1660,7 +1839,13 @@ export default function HorariosPage() {
                             if (mod2 && typeof mod2.limiteAlunos === 'number') capacity = mod2.limiteAlunos;
                           }
                         }
-                        const count = visibleAlunos.length;
+                        // Exclude students flagged as emEspera from capacity counts
+                        const count = visibleAlunos.filter((h: any) => {
+                          try {
+                            const local = localFlags[h._id] || {};
+                            return !(h.emEspera === true || local.emEspera === true);
+                          } catch (e) { return true; }
+                        }).length;
                         if (capacity !== undefined && count >= capacity) { anyExceeded = true; break; }
                       }
                     } catch (e) {
@@ -1735,7 +1920,7 @@ export default function HorariosPage() {
                           setEditingMemberIds([]);
                           setShowModal(true);
                         }}
-                        className={`p-2 align-top border border-gray-200 h-full ${(isOpen && (!turmas || turmas.length === 0)) ? 'cursor-pointer' : 'cursor-default'}`}
+                        className={`p-2 align-top border border-gray-200 h-full ${(!isOpen) ? 'cursor-not-allowed opacity-80' : ((isOpen && (!turmas || turmas.length === 0)) ? 'cursor-pointer' : 'cursor-default')}`}
                       >
                             <div className={`${!isOpen ? 'bg-red-50' : (turmas && turmas.length > 0) ? 'bg-white' : 'bg-white hover:bg-gray-50'} rounded-md p-2 flex flex-col h-full`}>
                           {isOpen ? (
@@ -1744,7 +1929,14 @@ export default function HorariosPage() {
                               <div className="flex flex-col">
                                 <div className="flex flex-col space-y-2">
                                   {turmas.map((turma, turmaIdx) => {
-                                    const visibleAlunos = (turma.alunos || []).filter((h: any) => h && h.alunoId && (h.alunoId.nome || h.alunoId._id));
+                                    const visibleAlunos = (() => {
+                                      try {
+                                        if (Array.isArray(turma.alunos) && turma.alunos.length === 1 && Array.isArray(turma.alunos[0].matriculas) && turma.alunos[0].matriculas.length > 0) {
+                                          return (turma.alunos[0].matriculas || []).filter((m: any) => m && m.alunoId && (m.alunoId.nome || m.alunoId._id));
+                                        }
+                                      } catch (e) {}
+                                      return (turma.alunos || []).filter((h: any) => h && h.alunoId && (h.alunoId.nome || h.alunoId._id));
+                                    })();
                                     // Determine capacity: prefer selected modalidade, otherwise infer from first aluno
                                     let capacity: number | undefined = undefined;
                                     try {
@@ -1763,7 +1955,13 @@ export default function HorariosPage() {
                                     } catch (e) {
                                       // ignore
                                     }
-                                    const count = visibleAlunos.length;
+                                    // Exclude emEspera from displayed capacity count, but still list them
+                                    const count = visibleAlunos.filter((h: any) => {
+                                      try {
+                                        const local = localFlags[h._id] || {};
+                                        return !(h.emEspera === true || local.emEspera === true);
+                                      } catch (e) { return true; }
+                                    }).length;
                                     const exceeded = capacity !== undefined && count >= capacity;
                                     const explicitTurmaObs = (turma as any).observacaoTurma;
                                     const turmaObsStr = explicitTurmaObs ? String(explicitTurmaObs).trim() : '';
@@ -1773,7 +1971,7 @@ export default function HorariosPage() {
                                     return (
                                       <div key={turma.professorId + turma.horarioFim} className={turmaClass}>
                                         <div className="flex items-center justify-between mb-1">
-                                          <div className="font-medium text-left"><span className="text-sm">{turma.professorNome}</span></div>
+                                          <div className="font-medium text-left"><span className="text-sm">{turma.professorNome ? (turma.professorNome.startsWith('Personal') ? turma.professorNome : 'Personal ' + turma.professorNome) : ''}</span></div>
                                           <div className={`text-[11px] ${exceeded ? 'text-red-700 font-semibold' : 'text-gray-600'}`}>{count}{capacity ? `/${capacity}` : ''}</div>
                                         </div>
                                         {turmaObsStr ? (
@@ -1794,45 +1992,45 @@ export default function HorariosPage() {
                                                       (() => {
                                                         const obs = String(horario.observacoes || '');
                                                         const local = localFlags[horario._id] || {};
-                                                        const isCongelado = (local.congelado === true) || obs.includes('[CONGELADO]');
-                                                        const isAusente = (local.ausente === true) || obs.includes('[AUSENTE]');
+                                                        // Prefer explicit boolean fields from the horario document when available
+                                                        const docCongelado = horario.congelado === true;
+                                                        const docAusente = horario.ausente === true;
+                                                        const isCongelado = docCongelado || (local.congelado === true) || obs.includes('[CONGELADO]');
+                                                        const isAusente = docAusente || (local.ausente === true) || obs.includes('[AUSENTE]');
                                                         const tooltipParts: string[] = [];
                                                         if (isCongelado) tooltipParts.push('CONGELADO: matrícula congelada (não cobra/pausa)');
                                                         if (isAusente) tooltipParts.push('AUSENTE: ausência registrada');
                                                         const tooltip = tooltipParts.join(' • ');
                                                         return (
                                                           <div title={tooltip || undefined} className="flex flex-col">
-                                                            <span className={`font-medium text-xs text-gray-800`}>{horario.alunoId?.nome}</span>
+                                                            <button
+                                                              onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setShowAddSingleAlunoModal(false);
+                                                                setShowAddAlunoModal(false);
+                                                                setShowImportModal(false);
+                                                                setShowModalLote({open: false});
+                                                                const rawProfName = (turma && (turma.professorNome || (turma.professorId && (turma.professorId.nome || turma.professorId))) ) || '';
+                                                                const enriched = { ...horario, professorNome: (rawProfName ? (String(rawProfName).startsWith('Personal') ? String(rawProfName) : 'Personal ' + String(rawProfName)) : '') };
+                                                                setSelectedStudentHorario(enriched);
+                                                                setShowStudentDetailModal(true);
+                                                              }}
+                                                              className="text-left font-medium text-xs text-gray-800 hover:underline"
+                                                              title="Ver detalhes do aluno"
+                                                            >
+                                                              {horario.alunoId?.nome}
+                                                            </button>
                                                             <div className="mt-1 flex items-center gap-2 text-sm">
-                                                              {isCongelado && <i className="fas fa-snowflake text-sky-500" aria-hidden="true" title="Congelado" />}
-                                                              {isAusente && <i className="fas fa-user-clock text-rose-500" aria-hidden="true" title="Ausente recorrente" />}
+                                                                                    {isCongelado && <i className="fas fa-snowflake text-sky-500" aria-hidden="true" title="Congelado" />}
+                                                                                    {isAusente && <i className="fas fa-user-clock text-rose-500" aria-hidden="true" title="Ausente recorrente" />}
+                                                                                    {(horario.emEspera === true || (local.emEspera === true)) && <i className="fas fa-hourglass-half text-yellow-600" aria-hidden="true" title="Em espera (não conta na turma)" />}
                                                             </div>
                                                           </div>
                                                         );
                                                       })()
                                                     }
                                                   </div>
-                                                  <div>
-                                                    <button
-                                                      onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        /* close other modals/backdrops */
-                                                        setShowAddSingleAlunoModal(false);
-                                                        setShowAddAlunoModal(false);
-                                                        setShowImportModal(false);
-                                                        setShowModalLote({open: false});
-                                                        // Ensure professorNome from the parent turma is available in the selected object
-                                                        const enriched = { ...horario, professorNome: (turma && (turma.professorNome || (turma.professorId && (turma.professorId.nome || turma.professorId))) ) };
-                                                        setSelectedStudentHorario(enriched);
-                                                        setShowStudentDetailModal(true);
-                                                      }}
-                                                      className="text-primary-600 hover:text-primary-700 p-1 text-sm rounded"
-                                                      title="Ver detalhes do aluno"
-                                                      aria-label="Ver detalhes do aluno"
-                                                    >
-                                                      <i className="fas fa-info-circle" aria-hidden="true" />
-                                                    </button>
-                                                  </div>
+                                                  {/* info button removed - name is clickable now */}
                                                 </div>
                                                 {/* student observation is shown BELOW the name row and applies only to this aluno */}
                                                 {(() => {
@@ -2395,10 +2593,30 @@ export default function HorariosPage() {
 
                       if (!alunoId) { alert('Aluno não selecionado/criado.'); return; }
 
-                      // create horario record linking aluno to turma slot
-                      const horarioResp = await fetch('/api/horarios', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ alunoId, professorId: addAlunoTurma.professorId, diaSemana: addAlunoTurma.diaSemana, horarioInicio: addAlunoTurma.horarioInicio, horarioFim: addAlunoTurma.horarioFim, observacoes: singleAlunoObservacoes || '', modalidadeId: modalidadeSelecionada || undefined }) });
-                      const horarioData = await horarioResp.json();
-                      if (!horarioData.success) throw new Error(horarioData.error || 'Erro ao adicionar horário');
+                      // Prefer creating a Matricula on existing HorarioFixo. If none exists, create HorarioFixo then Matricula.
+                      const existing = horarios.find(h => {
+                        try {
+                          const rawProf = (h as any).professorId;
+                          const profId = rawProf && (rawProf._id || rawProf) ? String(rawProf._id || rawProf) : undefined;
+                          return profId === String(addAlunoTurma.professorId) && h.diaSemana === addAlunoTurma.diaSemana && h.horarioInicio === addAlunoTurma.horarioInicio && h.horarioFim === addAlunoTurma.horarioFim;
+                        } catch (e) { return false; }
+                      });
+
+                      let horarioData: any = null;
+                      if (existing && existing._id) {
+                        const matResp = await fetch('/api/matriculas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ horarioFixoId: existing._id, alunoId, observacoes: singleAlunoObservacoes || '' }) });
+                        horarioData = await matResp.json();
+                      } else {
+                        const createResp = await fetch('/api/horarios', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ professorId: addAlunoTurma.professorId, diaSemana: addAlunoTurma.diaSemana, horarioInicio: addAlunoTurma.horarioInicio, horarioFim: addAlunoTurma.horarioFim, observacoes: '', modalidadeId: modalidadeSelecionada || undefined }) });
+                        const created = await createResp.json();
+                        if (created && created.success && created.data && created.data._id) {
+                          const matResp = await fetch('/api/matriculas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ horarioFixoId: created.data._id, alunoId, observacoes: singleAlunoObservacoes || '' }) });
+                          horarioData = await matResp.json();
+                        } else {
+                          horarioData = { success: false, error: created && created.error ? created.error : 'Falha ao criar horario' };
+                        }
+                      }
+                      if (!horarioData || !horarioData.success) throw new Error(horarioData && horarioData.error ? horarioData.error : 'Erro ao adicionar horário');
 
                       // cleanup and refresh
                       setShowAddSingleAlunoModal(false);
@@ -2421,159 +2639,11 @@ export default function HorariosPage() {
       
       {/* Student detail modal (cleaned up) */}
       {showStudentDetailModal && selectedStudentHorario && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50" style={{ zIndex: 9999 }} onClick={() => setShowStudentDetailModal(false)}>
-    <div className="relative top-24 mx-auto p-6 border w-96 max-w-full shadow-lg rounded-md bg-white" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="student-detail-title">
-            <div className="flex items-start justify-between">
-              <div className="flex items-center gap-3">
-                <h3 id="student-detail-title" className="text-lg font-semibold text-slate-800">Detalhes do aluno</h3>
-                {/* edit icon next to title */}
-                <button
-                  onClick={() => setModalEditing(prev => !prev)}
-                  title={modalEditing ? 'Cancelar edição' : 'Editar'}
-                  aria-label={modalEditing ? 'Cancelar edição' : 'Editar'}
-                  className={`p-1 rounded ${modalEditing ? 'text-primary-700 bg-primary-100' : 'text-gray-500 hover:bg-gray-100'}`}
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M12 20h9" />
-                    <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
-                  </svg>
-                </button>
-              </div>
-              <div className="ml-4">
-                <button onClick={() => setShowStudentDetailModal(false)} className="text-slate-500 hover:text-slate-700" aria-label="Fechar">
-                  <i className="fas fa-times" />
-                </button>
-              </div>
-            </div>
-
-            {(() => {
-              const alunoName = selectedStudentHorario.alunoId?.nome || selectedStudentHorario.aluno?.nome || selectedStudentHorario.nome || null;
-              const alunoEmail = selectedStudentHorario.alunoId?.email || selectedStudentHorario.aluno?.email || selectedStudentHorario.email || null;
-              const modalidadeId = selectedStudentHorario.modalidadeId || selectedStudentHorario.aluno?.modalidadeId || selectedStudentHorario.modalidade || null;
-              const modalidadeObj = modalidades.find(m => getMid(m) === String(modalidadeId));
-              const modalidadeNome = modalidadeObj ? (modalidadeObj.nome || '') : (selectedStudentHorario.modalidadeNome || '—');
-              const professorNome = selectedStudentHorario.professorNome || selectedStudentHorario.professor?.nome || '—';
-              const dia = typeof selectedStudentHorario.diaSemana === 'number' ? diasSemana[selectedStudentHorario.diaSemana] : (selectedStudentHorario.diaSemana || '—');
-              const horarioRange = `${selectedStudentHorario.horarioInicio || selectedStudentHorario.horarioInicio || '—'}${selectedStudentHorario.horarioFim ? ' — ' + selectedStudentHorario.horarioFim : ''}`;
-              const _toggleId = selectedStudentHorario._id;
-              const _isCongelado = !!localFlags[_toggleId]?.congelado;
-              const _isAusente = !!localFlags[_toggleId]?.ausente;
-
-              // collect all horarios for this aluno (student can have multiple horarios/modalidades)
-              const studentId = (selectedStudentHorario.alunoId && (selectedStudentHorario.alunoId as any)._id) || (selectedStudentHorario.aluno && (selectedStudentHorario.aluno as any)._id) || null;
-              const studentHorarios = studentId ? (horarios || []).filter((h: any) => {
-                try {
-                  const aid = (h.alunoId && (h.alunoId as any)._id) || h.alunoId;
-                  return aid && String(aid) === String(studentId);
-                } catch (e) { return false; }
-              }) : [];
-              const studentModalidades = Array.from(new Set(studentHorarios.map((h: any) => {
-                const mid = (h.modalidadeId && ((h.modalidadeId.id || h.modalidadeId._id) || h.modalidadeId)) || (h.alunoId && (h.alunoId as any).modalidadeId) || h.modalidadeId || null;
-                return mid ? String(mid) : null;
-              }).filter(Boolean)));
-
-              {/* modal fields are initialized by a top-level useEffect when selection changes */}
-
-              return (
-                <div className="mt-4">
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
-                      <div className="text-sm text-gray-500">Nome</div>
-                      {!modalEditing ? (
-                        <div className="font-medium text-slate-800">{alunoName ? alunoName : <span className="text-gray-400 italic">Nome não informado</span>}</div>
-                      ) : (
-                        <input value={modalEditName} onChange={e => setModalEditName(e.target.value)} className="w-full border rounded px-2 py-1" />
-                      )}
-
-                      {/* toggles moved below the name for better layout */}
-                      <div className="mt-2 flex items-center gap-2">
-                        <button
-                          onClick={() => { toggleCongelado(_toggleId); }}
-                          aria-pressed={_isCongelado}
-                          title={_isCongelado ? 'Descongelar' : 'Congelar'}
-                          className={`px-3 py-1 border rounded text-sm flex items-center gap-2 ${_isCongelado ? 'bg-sky-100 border-sky-300 text-sky-800' : 'bg-white hover:bg-gray-50'}`}
-                        >
-                          {_isCongelado ? 'Descongelar' : 'Congelar'}
-                        </button>
-
-                        <button
-                          onClick={() => { toggleAusente(_toggleId); }}
-                          aria-pressed={_isAusente}
-                          title={_isAusente ? 'Presente' : 'Ausente'}
-                          className={`px-3 py-1 border rounded text-sm flex items-center gap-2 ${_isAusente ? 'bg-rose-100 border-rose-300 text-rose-700' : 'bg-white hover:bg-gray-50'}`}
-                        >
-                          {_isAusente ? 'Presente' : 'Ausente'}
-                        </button>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {modalEditing ? null : null}
-                    </div>
-                  </div>
-
-                  {/* Email removed by user request. Aggregated modalidades/horarios remain below. */}
-
-                  <div className="mt-3 text-sm text-gray-500">Observações</div>
-                  {!modalEditing ? (
-                    <div className="mt-1 text-sm text-slate-700 whitespace-pre-wrap">{selectedStudentHorario.observacoes ? selectedStudentHorario.observacoes : <span className="text-gray-400 italic">Sem observações</span>}</div>
-                  ) : (
-                    <div className="mt-1">
-                      <textarea value={modalEditObservacoes} onChange={e => setModalEditObservacoes(e.target.value)} className="w-full border rounded px-2 py-1 text-sm" rows={4} />
-                      <div className="mt-2 flex gap-2 justify-end">
-                        <button onClick={async () => {
-                          // save observations
-                          try {
-                            await updateHorarioObservacoes(selectedStudentHorario._id, modalEditObservacoes);
-                            setModalEditing(false);
-                          } catch (e) { alert('Erro ao salvar observações'); }
-                        }} className="px-3 py-1 bg-primary-600 text-white rounded text-sm">Salvar</button>
-                        <button onClick={() => { setModalEditObservacoes(String(selectedStudentHorario.observacoes || '')); setModalEditing(false); }} className="px-3 py-1 border rounded text-sm">Cancelar</button>
-                      </div>
-                    </div>
-                  )}
-                  {/* Student can have multiple modalidades/horarios - list them */}
-                  <div className="mt-4">
-                    <div className="mt-3 text-sm text-gray-500">Horários do aluno</div>
-                    <div className="mt-2 space-y-2">
-                      {studentHorarios.length === 0 ? (
-                        <div className="text-[12px] text-gray-500">Nenhum horário encontrado</div>
-                      ) : (
-                        studentHorarios.map((sh: any) => {
-                          const mod = modalidades.find(m => getMid(m) === (sh.modalidadeId && ((sh.modalidadeId.id || sh.modalidadeId._id) || sh.modalidadeId)));
-                          return (
-                            <div key={String(sh._id)} className="p-2 rounded border border-gray-100 bg-white text-sm">
-                              <div className="flex items-center justify-between">
-                                <div className="min-w-0">
-                                  <div className="text-[12px] text-gray-600">{diasSemana[sh.diaSemana]} • {sh.horarioInicio}{sh.horarioFim ? ' — ' + sh.horarioFim : ''}</div>
-                                  <div className="text-[12px] text-gray-600">{sh.professorNome || (sh.professorId && (sh.professorId as any)?.nome) || ''}</div>
-                                </div>
-                                <div className="ml-2 text-[12px] text-gray-700">{mod?.nome || (sh.modalidadeNome || '')}</div>
-                              </div>
-                            </div>
-                          );
-                        })
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
-
-            <div className="mt-5 border-t pt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-              <div className="flex items-center gap-2 flex-wrap">
-                {/* Remove button left-aligned */}
-                <button onClick={() => { if (confirm('REMOVER ALUNO DA TURMA?')) { deleteHorario(selectedStudentHorario._id); setShowStudentDetailModal(false); } }} className="px-3 py-1 bg-red-600 text-white rounded text-sm">REMOVER ALUNO DA TURMA</button>
-              </div>
-
-              <div className="flex items-center gap-2 flex-wrap">
-                {/* footer has no Save/Close as edits are inline */}
-              </div>
-            </div>
-          </div>
-        </div>
+        <StudentDetailModal isOpen={showStudentDetailModal} onClose={() => setShowStudentDetailModal(false)} horario={selectedStudentHorario} modalidades={modalidades} horarios={horarios} onRefresh={fetchHorarios} />
       )}
 
       </Layout>
+      </RequireAuth>
     </>
   );
 }

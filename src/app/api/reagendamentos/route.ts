@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import { Reagendamento } from '@/models/Reagendamento';
+import fs from 'fs';
+import path from 'path';
 
 // GET - Listar reagendamentos
 export async function GET(request: NextRequest) {
@@ -48,8 +50,8 @@ export async function POST(request: NextRequest) {
   try {
     await connectDB();
     
-    const body = await request.json();
-    const { horarioFixoId, dataOriginal, novaData, novoHorarioInicio, novoHorarioFim, motivo } = body;
+  const body = await request.json();
+  const { horarioFixoId, dataOriginal, novaData, novoHorarioInicio, novoHorarioFim, motivo, novoHorarioFixoId, origemMatriculaId, alunoId } = body;
 
     // Validações básicas
     if (!horarioFixoId || !dataOriginal || !novaData || !novoHorarioInicio || !novoHorarioFim || !motivo) {
@@ -62,15 +64,66 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Enforce that the new target references an existing HorarioFixo (no creation via POST)
+    if (!novoHorarioFixoId) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Selecione uma turma existente como destino (novoHorarioFixoId) ao solicitar reagendamento.'
+        },
+        { status: 400 }
+      );
+    }
+
+    // Diagnostic logging for reproduction: write payload+stack to logs/debug-reagendamentos.log
+    try {
+      const logDir = path.resolve(process.cwd(), 'logs');
+      try { if (!fs.existsSync(logDir)) fs.mkdirSync(logDir); } catch(e) {}
+      const logfile = path.join(logDir, 'debug-reagendamentos.log');
+      const logEntry = { ts: new Date().toISOString(), route: 'POST /api/reagendamentos', body };
+      fs.appendFileSync(logfile, JSON.stringify(logEntry) + '\n');
+      console.warn('[DEBUG REAG] POST payload logged to', logfile, 'payload:', body);
+      console.warn(new Error('STACK TRACE FOR POST /api/reagendamentos').stack);
+    } catch (logErr:any) {
+      console.warn('Failed to write debug log for POST /api/reagendamentos', String(logErr?.message || logErr));
+    }
+
     // Criar reagendamento
-    const novoReagendamento = new Reagendamento({
+    const novoReagendamentoData: any = {
       horarioFixoId,
       dataOriginal: new Date(dataOriginal),
       novaData: new Date(novaData),
       novoHorarioInicio,
       novoHorarioFim,
       motivo
-    });
+    };
+    if (novoHorarioFixoId) novoReagendamentoData.novoHorarioFixoId = novoHorarioFixoId;
+    if (origemMatriculaId) novoReagendamentoData.origemMatriculaId = origemMatriculaId;
+    if (alunoId) novoReagendamentoData.alunoId = alunoId;
+
+    // populate professorOrigemId from HorarioFixo to keep origin audit
+    try {
+      const { HorarioFixo } = await import('@/models/HorarioFixo');
+      const origem: any = await HorarioFixo.findById(horarioFixoId).select('professorId').lean();
+      if (origem && origem.professorId) {
+        novoReagendamentoData.professorOrigemId = origem.professorId;
+      }
+    } catch (e) {
+      console.warn('Não foi possível popular professorOrigemId ao criar reagendamento:', e && (e as any).message ? (e as any).message : e);
+    }
+
+    // If origemMatriculaId provided but alunoId missing, try to resolve alunoId now for convenience
+    try {
+      if (!novoReagendamentoData.alunoId && novoReagendamentoData.origemMatriculaId) {
+        const { Matricula } = await import('@/models/Matricula');
+        const mat: any = await Matricula.findById(String(novoReagendamentoData.origemMatriculaId)).select('alunoId').lean();
+        if (mat && mat.alunoId) novoReagendamentoData.alunoId = mat.alunoId;
+      }
+    } catch (e) {
+      // ignore resolution failures - not fatal
+    }
+
+    const novoReagendamento = new Reagendamento(novoReagendamentoData);
 
     const reagendamentoSalvo = await novoReagendamento.save();
     

@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import { HorarioFixo } from '@/models/HorarioFixo';
+import { Matricula } from '@/models/Matricula';
+import { Modalidade } from '@/models/Modalidade';
 import mongoose from 'mongoose';
+import fs from 'fs';
+import path from 'path';
 
 // GET - Listar todos os horários
 export async function GET(request: NextRequest) {
@@ -33,6 +37,27 @@ export async function GET(request: NextRequest) {
       .select('-__v')
       .lean();
 
+    // Optional filter by professorId (supports string id matching populated or raw field)
+    try {
+      const { searchParams } = new URL(request.url);
+      const profFilter = searchParams.get('professorId');
+      if (profFilter) {
+        const pid = String(profFilter);
+        console.log('[/api/horarios] filtro professorId recebido:', pid);
+        horarios = horarios.filter((h: any) => {
+          const p = h.professorId;
+          if (!p) return false;
+          const pidRaw = typeof p === 'string' ? p : String(p._id || p);
+          return String(pidRaw) === pid;
+        });
+        console.log('[/api/horarios] quantidade apos filtro professorId:', horarios.length);
+      }
+    } catch (e) {
+      // ignore URL parsing errors
+      const emsg = (e && typeof e === 'object' && 'message' in e) ? (e as any).message : JSON.stringify(e);
+      console.warn('[/api/horarios] erro ao parsear query params', emsg);
+    }
+
     // If the client requested a modalidade filter, include horarios where either
     // the HorarioFixo.modalidadeId equals the filter OR the populated alunoId.modalidadeId equals it.
     if (modalidadeFilter) {
@@ -49,6 +74,41 @@ export async function GET(request: NextRequest) {
         }
         return false;
       });
+    }
+    
+    // Fetch active matriculas for the listed horarios and attach them to each horario.
+    try {
+      const horarioIds = horarios.map((h: any) => String(h._id));
+      if (horarioIds.length > 0) {
+        const matriculas = await Matricula.find({ horarioFixoId: { $in: horarioIds }, ativo: true })
+          .populate({
+            path: 'alunoId',
+            select: 'nome email modalidadeId',
+            populate: { path: 'modalidadeId', select: 'nome cor' }
+          })
+          .lean();
+
+        const byHorario: Record<string, any[]> = {};
+        for (const m of matriculas) {
+          const key = String(m.horarioFixoId);
+          byHorario[key] = byHorario[key] || [];
+          byHorario[key].push(m);
+        }
+
+        horarios = horarios.map((h: any) => {
+          const key = String(h._id);
+          const ms = byHorario[key] || [];
+          // Attach matriculas array
+          h.matriculas = ms;
+          // For backwards compatibility, set alunoId to the first matricula's aluno when present
+          if ((!h.alunoId || h.alunoId === null) && ms.length > 0) {
+            h.alunoId = ms[0].alunoId;
+          }
+          return h;
+        });
+      }
+    } catch (matErr:any) {
+      console.warn('Erro ao popular matriculas para horarios:', String(matErr?.message || matErr));
     }
     
     return NextResponse.json({
@@ -78,6 +138,25 @@ export async function POST(request: NextRequest) {
   // Normalize alunoId: treat empty string as not provided
   if (typeof alunoId === 'string' && alunoId.trim() === '') {
     alunoId = undefined;
+  }
+
+  // Protection: optionally block clients from creating HorarioFixo with alunoId.
+  // This helps during frontend migration to ensure enrollments go through /api/matriculas.
+  // Control via env var: set BLOCK_HORARIO_WITH_ALUNOID='false' or '0' to disable.
+  try {
+    const blockEnv = (process.env.BLOCK_HORARIO_WITH_ALUNOID || '').toLowerCase();
+    const blockEnabled = blockEnv === '' ? true : !(blockEnv === 'false' || blockEnv === '0');
+    if (blockEnabled && alunoId !== undefined && alunoId !== null) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Criação direta de HorarioFixo com alunoId não permitida. Use POST /api/matriculas para matricular um aluno em um horário existente.'
+        },
+        { status: 400 }
+      );
+    }
+  } catch (e) {
+    // If any unexpected error occurs, continue without blocking to avoid breaking requests.
   }
 
   // If an alunoId was provided, validate it's a proper ObjectId
@@ -118,6 +197,84 @@ export async function POST(request: NextRequest) {
   }
     if (modalidadeId) {
       modalidadeId = new mongoose.Types.ObjectId(modalidadeId);
+    }
+
+    // Helper: parse "HH:MM" to minutes
+    const parseTimeToMinutes = (t: string) => {
+      if (!t || typeof t !== 'string') return 0;
+      const [hh, mm] = t.split(':').map((x:any) => parseInt(x, 10) || 0);
+      return hh * 60 + mm;
+    };
+
+    const generateTimes = (start: string, end: string, stepMin: number) => {
+      const times: string[] = [];
+      try {
+        const [sh, sm] = (start || '00:00').split(':').map(Number);
+        const [eh, em] = (end || '23:59').split(':').map(Number);
+        let cur = new Date();
+        cur.setHours(sh, sm, 0, 0);
+        const endDate = new Date();
+        endDate.setHours(eh, em, 0, 0);
+        while (cur <= endDate) {
+          const hh = String(cur.getHours()).padStart(2, '0');
+          const mm = String(cur.getMinutes()).padStart(2, '0');
+          times.push(`${hh}:${mm}`);
+          cur = new Date(cur.getTime() + stepMin * 60 * 1000);
+        }
+      } catch (e) {
+        // fallback
+      }
+      return times;
+    };
+
+    // Validate that horarioInicio aligns with the modalidade's duration/availability when modalidadeId is provided
+    if (modalidadeId) {
+      try {
+        const modDoc: any = await Modalidade.findById(modalidadeId).lean();
+        if (modDoc) {
+          const dur = typeof modDoc.duracao === 'number' ? Number(modDoc.duracao) : parseInt(String(modDoc.duracao || '30')) || 30;
+          // If modalidade defines explicit horariosDisponiveis, build allowed starts using the modalidade duration
+          let allowedStarts = new Set<string>();
+          if (Array.isArray(modDoc.horariosDisponiveis) && modDoc.horariosDisponiveis.length > 0) {
+            for (const hd of modDoc.horariosDisponiveis) {
+              const hdDays = Array.isArray(hd.diasSemana) && hd.diasSemana.length > 0 ? hd.diasSemana.map((d:number)=> d>6? d-1: d) : null;
+              // only consider entries that include the requested diaSemana (or entries without days)
+              if (hdDays && Array.isArray(hdDays) && hdDays.length > 0 && (!hdDays.includes(diaSemana))) continue;
+              const start = hd.horaInicio || hd.hora_inicio || '';
+              const end = hd.horaFim || hd.hora_fim || '';
+              if (!start || !end) continue;
+              const slots = generateTimes(start, end, dur);
+              for (const s of slots) allowedStarts.add(s);
+            }
+          } else if (modDoc.horarioFuncionamento) {
+            const hf = modDoc.horarioFuncionamento || {};
+            if (hf.manha?.inicio && hf.manha?.fim) {
+              const slots = generateTimes(hf.manha.inicio, hf.manha.fim, dur);
+              for (const s of slots) allowedStarts.add(s);
+            }
+            if (hf.tarde?.inicio && hf.tarde?.fim) {
+              const slots = generateTimes(hf.tarde.inicio, hf.tarde.fim, dur);
+              for (const s of slots) allowedStarts.add(s);
+            }
+          }
+
+          // If we built an allowedStarts set, require horarioInicio to be one of them
+          if (allowedStarts.size > 0) {
+            if (!allowedStarts.has(horarioInicio)) {
+              return NextResponse.json({ success: false, error: 'Horario de inicio nao condiz com a duracao/horarios da modalidade' }, { status: 400 });
+            }
+          } else {
+            // Fallback: require minute alignment (e.g., minutes % dur === 0)
+            const m = parseTimeToMinutes(horarioInicio);
+            if (m % dur !== 0) {
+              return NextResponse.json({ success: false, error: 'Horario de inicio nao alinhado com a duracao da modalidade' }, { status: 400 });
+            }
+          }
+        }
+      } catch (e) {
+        // if validation fails unexpectedly, continue and let save handle other errors
+        console.warn('Erro validacao modalidade alignment:', e);
+      }
     }
 
     console.log('📍 Dados recebidos para criar horário:', {
@@ -263,6 +420,44 @@ export async function POST(request: NextRequest) {
     }
 
     const novoHorario = new HorarioFixo(payload);
+
+    // Diagnostic logging: if a HorarioFixo is being created with an alunoId, log caller info
+    try {
+      if (payload.alunoId) {
+        const logObj: any = {
+          ts: new Date().toISOString(),
+          payload: {
+            alunoId: String(payload.alunoId),
+            professorId: String(payload.professorId),
+            diaSemana,
+            horarioInicio,
+            horarioFim,
+            observacoes: payload.observacoes || null,
+            modalidadeId: payload.modalidadeId ? String(payload.modalidadeId) : null
+          },
+          stack: new Error('STACK TRACE FOR HorarioFixo.save()').stack
+        };
+        try {
+          const logDir = path.resolve(process.cwd(), 'logs');
+          try { if (!fs.existsSync(logDir)) fs.mkdirSync(logDir); } catch(e) {}
+          const logfile = path.join(logDir, 'debug-horarios-post.log');
+          fs.appendFileSync(logfile, JSON.stringify(logObj) + '\n');
+        } catch (fileErr:any) {
+          console.warn('DEBUG: failed to write debug-horarios-post.log', String(fileErr?.message || fileErr));
+        }
+
+        console.warn('DEBUG: Creating HorarioFixo with alunoId detected. payload:', {
+          alunoId: String(payload.alunoId),
+          professorId: String(payload.professorId),
+          diaSemana,
+          horarioInicio,
+          horarioFim
+        });
+        console.warn(logObj.stack);
+      }
+    } catch (logErr:any) {
+      console.warn('DEBUG: failed to log HorarioFixo diagnostic', String(logErr?.message || logErr));
+    }
 
     let horarioSalvo;
     try {

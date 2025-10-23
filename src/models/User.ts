@@ -48,7 +48,7 @@ const UserSchema = new Schema<IUser>({
 });
 
 // Índices
-UserSchema.index({ email: 1 });
+// `email` field already has unique:true; avoid duplicate index declaration
 UserSchema.index({ tipo: 1, ativo: 1 });
 
 export const User = models.User || model<IUser>('User', UserSchema);
