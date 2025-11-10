@@ -318,12 +318,11 @@ export default function HorariosPage() {
     try {
       const o = timeToMinutes(openTime);
       const c = timeToMinutes(closeTime);
-      // If interval is invalid (open >= close) show full day
-      if (o >= c) return horariosDisponiveis;
-      return horariosDisponiveis.filter(h => {
-        const m = timeToMinutes(h);
-        return m >= o && m <= c; // include slots that start within operating hours (include endpoint)
-      });
+    if (o >= c) return horariosDisponiveis; // If interval is invalid (open >= close) show full day
+    return horariosDisponiveis.filter(h => {
+      const m = timeToMinutes(h);
+      return m >= o && m <= c; // include slots that start within operating hours (include endpoint)
+    });
     } catch (e) {
       return horariosDisponiveis;
     }
@@ -1413,7 +1412,7 @@ export default function HorariosPage() {
         if (h.diaSemana !== diaIndex) return false;
         const hi = timeToMinutes(h.horarioInicio);
         const hf = timeToMinutes(h.horarioFim);
-                return m >= hi && m <= hf;
+                return m >= hi && m < hf;
       });
       // Group by professor + horarioFim to form turmas similar to criarGradeHorarios
       const groups: Record<string, any> = {};
@@ -1462,7 +1461,7 @@ export default function HorariosPage() {
                   if (!hdDays.includes(dayIdx)) return false;
                   const hi = timeToMinutes(hd.horaInicio);
                   const hf = timeToMinutes(hd.horaFim);
-                  return m >= hi && m <= hf;
+                  return m >= hi && m < hf;
                 });
                 return !!match;
               } else if (mod.horarioFuncionamento) {
@@ -2010,7 +2009,7 @@ export default function HorariosPage() {
                               if (!hdDays.includes(dayIndex)) return false;
                             const hi = timeToMinutes(hd.horaInicio);
                             const hf = timeToMinutes(hd.horaFim);
-                            return m >= hi && m <= hf;
+                            return m >= hi && m < hf;
                           });
                           isOpen = !!match;
                         } else if (mod.horarioFuncionamento) {
