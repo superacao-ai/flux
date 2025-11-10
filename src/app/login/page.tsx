@@ -42,14 +42,12 @@ export default function LoginPage() {
       <div className="hidden lg:flex w-1/2 bg-gradient-to-b from-primary-700 to-primary-900 text-white items-center justify-center p-12">
         <div className="max-w-md">
           <div className="flex items-center justify-center mb-4">
-            <Logo size="xl" noLink />
+            <Logo size="xl" noLink useLogo2 />
           </div>
-          <div className="flex justify-center">
-            <h2 className="text-3xl font-bold mb-2">FLUX</h2>
-          </div>
+          {/* Removed the 'FLUX' title as requested; logo remains */}
           <p className="text-lg text-primary-100">Sistema de gestão do Studio Superação. Acesse os horários, gerencie alunos e professores com rapidez e segurança.</p>
           <div className="mt-8 bg-white bg-opacity-5 p-4 rounded-lg border border-white/10">
-            <p className="text-sm">Se estiver usando um dispositivo público, não marque "Lembrar-me".</p>
+            <p className="text-sm">Se estiver usando um dispositivo público, não marque 'Lembrar-me'.</p>
           </div>
         </div>
       </div>
@@ -58,7 +56,7 @@ export default function LoginPage() {
         <div className="max-w-md w-full">
           <div className="mb-6 text-center">
             <div className="flex justify-center mb-4">
-              <Logo size="lg" noLink />
+              <Logo size="lg" noLink useLogo2 />
             </div>
             <h1 className="text-2xl font-semibold">Entrar na sua conta</h1>
             <p className="text-sm text-gray-500 mt-1">Informe seu email e senha para acessar o painel.</p>

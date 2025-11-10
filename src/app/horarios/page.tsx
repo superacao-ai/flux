@@ -14,12 +14,18 @@ interface Aluno {
     nome: string;
     cor: string;
   };
+  periodoTreino?: string | null;
+  parceria?: string | null;
+  congelado?: boolean;
+  ausente?: boolean;
+  emEspera?: boolean;
 }
 
 interface Professor {
   _id: string;
   nome: string;
   especialidade: string;
+  cor?: string;
 }
 
 interface Modalidade {
@@ -43,6 +49,9 @@ interface HorarioFixo {
   horarioFim: string;
   observacoes?: string;
   ativo: boolean;
+  congelado?: boolean;
+  ausente?: boolean;
+  emEspera?: boolean;
 }
 
 export default function HorariosPage() {
@@ -313,7 +322,7 @@ export default function HorariosPage() {
       if (o >= c) return horariosDisponiveis;
       return horariosDisponiveis.filter(h => {
         const m = timeToMinutes(h);
-        return m >= o && m < c; // include slots that start within operating hours
+        return m >= o && m <= c; // include slots that start within operating hours (include endpoint)
       });
     } catch (e) {
       return horariosDisponiveis;
@@ -484,6 +493,39 @@ export default function HorariosPage() {
     return () => window.removeEventListener('storage', onStorage);
   }, []);
 
+  // When modality data changes elsewhere (another tab or page), re-fetch modalidades and horarios.
+  // Also re-fetch when the tab becomes visible again (user returned after editing modalidades).
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        // re-sync latest modalidades and horarios when user returns to this tab
+        fetchModalidades();
+        fetchHorarios();
+      }
+    };
+
+    const onStorageUpdated = (e: StorageEvent) => {
+      // Convention: when /modalidades modifies data it should set localStorage.setItem('modalidadesUpdated', Date.now().toString())
+      if (e.key === 'modalidadesUpdated') {
+        try {
+          fetchModalidades();
+          fetchHorarios();
+        } catch (err) {
+          // ignore
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('storage', onStorageUpdated);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('storage', onStorageUpdated);
+    };
+  }, []);
+
   const fetchHorarios = async () => {
     try {
       const url = modalidadeSelecionada ? `/api/horarios?modalidadeId=${modalidadeSelecionada}` : '/api/horarios';
@@ -497,6 +539,79 @@ export default function HorariosPage() {
       console.error('Erro ao buscar horários:', error);
     }
     return null;
+  };
+
+  // Função para abrir modal com dados atualizados do banco
+  const openStudentDetailModal = async (horario: any, turma: any) => {
+    setShowAddAlunoModal(false);
+    setShowImportModal(false);
+    setShowModalLote({open: false});
+    
+    const horarioFixoId = (horario as any).horarioFixoId || horario._id;
+    try {
+      const resp = await fetch(`/api/horarios/${horarioFixoId}`);
+      if (!resp.ok) throw new Error('Falha ao buscar horário');
+      const data = await resp.json();
+      const fetchedHorario = data.data || data;
+      
+      const rawProfName = (turma && (turma.professorNome || (turma.professorId && (turma.professorId.nome || turma.professorId))) ) || '';
+      const enriched = { 
+        ...horario,
+        ...fetchedHorario,
+        professorNome: (rawProfName ? (String(rawProfName).startsWith('Personal') ? String(rawProfName) : 'Personal ' + String(rawProfName)) : ''),
+        congelado: fetchedHorario.congelado === true,
+        ausente: fetchedHorario.ausente === true,
+        emEspera: fetchedHorario.emEspera === true
+      };
+      
+      // Filtrar horários do aluno - verificar tanto alunoId direto quanto matriculas
+      const alunoId = enriched.alunoId?._id || enriched.alunoId;
+      const studentHorarios = horarios.filter((h: any) => {
+        // Verificar alunoId direto
+        const hAlunoId = h.alunoId?._id || h.alunoId;
+        if (hAlunoId && String(hAlunoId) === String(alunoId)) return true;
+        
+        // Verificar em matriculas (para horários que só têm dados lá)
+        if (h.matriculas && Array.isArray(h.matriculas)) {
+          return h.matriculas.some((m: any) => {
+            const mAlunoId = m.alunoId?._id || m.alunoId;
+            return mAlunoId && String(mAlunoId) === String(alunoId);
+          });
+        }
+        return false;
+      });
+      
+      setSelectedStudentHorario(enriched);
+      setShowStudentDetailModal(true);
+    } catch (err) {
+      console.error('Erro ao buscar horário:', err);
+      // Fallback: usar o horário da grade mesmo assim
+      const rawProfName = (turma && (turma.professorNome || (turma.professorId && (turma.professorId.nome || turma.professorId))) ) || '';
+      const enriched = { 
+        ...horario, 
+        professorNome: (rawProfName ? (String(rawProfName).startsWith('Personal') ? String(rawProfName) : 'Personal ' + String(rawProfName)) : '')
+      };
+      
+      // Filtrar horários do aluno mesmo no fallback - verificar tanto alunoId direto quanto matriculas
+      const alunoId = enriched.alunoId?._id || enriched.alunoId;
+      const studentHorarios = horarios.filter((h: any) => {
+        // Verificar alunoId direto
+        const hAlunoId = h.alunoId?._id || h.alunoId;
+        if (hAlunoId && String(hAlunoId) === String(alunoId)) return true;
+        
+        // Verificar em matriculas (para horários que só têm dados lá)
+        if (h.matriculas && Array.isArray(h.matriculas)) {
+          return h.matriculas.some((m: any) => {
+            const mAlunoId = m.alunoId?._id || m.alunoId;
+            return mAlunoId && String(mAlunoId) === String(alunoId);
+          });
+        }
+        return false;
+      });
+      
+      setSelectedStudentHorario(enriched);
+      setShowStudentDetailModal(true);
+    }
   };
 
   const fetchAlunos = async () => {
@@ -1298,7 +1413,7 @@ export default function HorariosPage() {
         if (h.diaSemana !== diaIndex) return false;
         const hi = timeToMinutes(h.horarioInicio);
         const hf = timeToMinutes(h.horarioFim);
-        return m >= hi && m < hf;
+                return m >= hi && m <= hf;
       });
       // Group by professor + horarioFim to form turmas similar to criarGradeHorarios
       const groups: Record<string, any> = {};
@@ -1334,19 +1449,20 @@ export default function HorariosPage() {
           const o = timeToMinutes(openTime);
           const c = timeToMinutes(closeTime);
           const m = timeToMinutes(timeStr);
-          let isOpen = o < c ? (m >= o && m < c) : true;
+          let isOpen = o < c ? (m >= o && m <= c) : true;
           if (modalidadeSelecionada) {
             const mod = modalidades.find(mo => getMid(mo) === modalidadeSelecionada) as any;
             if (mod) {
-              const dayAllowed = Array.isArray(mod.diasSemana) && mod.diasSemana.length > 0 ? (mod.diasSemana.includes(dayIdx)) : true;
+              const dayAllowed = Array.isArray(mod.diasSemana) && mod.diasSemana.length > 0 ? (mod.diasSemana.map((d:number)=> d>6? d-1: d).includes(dayIdx)) : true;
               if (!dayAllowed) return false;
               if (Array.isArray(mod.horariosDisponiveis) && mod.horariosDisponiveis.length > 0) {
                 const match = mod.horariosDisponiveis.some((hd: any) => {
-                  const hdDays = Array.isArray(hd.diasSemana) && hd.diasSemana.length > 0 ? hd.diasSemana : [dayIdx];
+                  const hdDaysRaw = Array.isArray(hd.diasSemana) && hd.diasSemana.length > 0 ? hd.diasSemana : [dayIdx];
+                  const hdDays = hdDaysRaw.map((d:number)=> d>6? d-1: d);
                   if (!hdDays.includes(dayIdx)) return false;
                   const hi = timeToMinutes(hd.horaInicio);
                   const hf = timeToMinutes(hd.horaFim);
-                  return m >= hi && m < hf;
+                  return m >= hi && m <= hf;
                 });
                 return !!match;
               } else if (mod.horarioFuncionamento) {
@@ -1355,8 +1471,8 @@ export default function HorariosPage() {
                 const manhaFim = hf?.manha?.fim ? timeToMinutes(hf.manha.fim) : null;
                 const tardeInicio = hf?.tarde?.inicio ? timeToMinutes(hf.tarde.inicio) : null;
                 const tardeFim = hf?.tarde?.fim ? timeToMinutes(hf.tarde.fim) : null;
-                const inManha = manhaInicio !== null && manhaFim !== null ? (m >= manhaInicio && m < manhaFim) : false;
-                const inTarde = tardeInicio !== null && tardeFim !== null ? (m >= tardeInicio && m < tardeFim) : false;
+                const inManha = manhaInicio !== null && manhaFim !== null ? (m >= manhaInicio && m <= manhaFim) : false;
+                const inTarde = tardeInicio !== null && tardeFim !== null ? (m >= tardeInicio && m <= tardeFim) : false;
                 return inManha || inTarde;
               }
             }
@@ -1534,13 +1650,13 @@ export default function HorariosPage() {
     <>
       {showModalLote.open && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white fade-in-4">
             <div className="mt-3">
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Adicionar Alunos em Lote</h3>
+          <h3 className="text-base font-medium text-gray-900 mb-2">Adicionar Alunos em Lote</h3>
           <p className="text-sm text-gray-700 mb-3">Modalidade aplicada: <span className="font-semibold">{(modalidades.find(m => getMid(m) === modalidadeSelecionada)?.nome) || '— nenhuma selecionada —'}</span>. Os alunos selecionados serão adicionados a esta modalidade — verifique se está correta antes de confirmar.</p>
               <div className="mb-4">
                 <label className="block text-sm font-medium text-gray-700 mb-2">Selecione os alunos:</label>
-                <div className="max-h-40 overflow-y-auto border rounded p-2">
+                <div className="max-h-40 overflow-y-auto border rounded-md p-2">
                   {alunosFiltrados.map(aluno => (
                     <div key={aluno._id} className="flex items-center mb-1">
                       <input
@@ -1564,14 +1680,14 @@ export default function HorariosPage() {
                 <button
                   type="button"
                   onClick={() => setShowModalLote({open: false})}
-                  className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+                  className="px-3 py-1.5 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
                 >
                   Cancelar
                 </button>
                 <button
                   type="button"
                   disabled={alunosSelecionadosLote.length === 0}
-                  className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50"
+                  className="px-3 py-1.5 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50"
                 >
                   Adicionar selecionados
                 </button>
@@ -1582,159 +1698,163 @@ export default function HorariosPage() {
       )}
       {/* Modal para adicionar alunos a uma turma (bulk via textarea) */}
       {showAddAlunoModal && addAlunoTurma && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-          <div className="relative top-16 mx-auto p-6 border w-[640px] shadow-lg rounded-md bg-white">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Adicionar Alunos à Turma</h3>
-            <p className="text-sm text-gray-600 mb-2">Professor: {professores.find(p => p._id === addAlunoTurma.professorId)?.nome} — {diasSemana[addAlunoTurma.diaSemana || 0]} {addAlunoTurma.horarioInicio} às {addAlunoTurma.horarioFim}</p>
-            <label className="block text-sm font-medium text-gray-700">Cole os nomes (uma linha por aluno) — serão convertidos para MAIÚSCULAS automaticamente</label>
-            <textarea
-              value={bulkAlunoTextAdd}
-              onChange={e => {
-                // Keep raw text for editing
-                setBulkAlunoTextAdd(String(e.target.value || ''));
-              }}
-              className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-              rows={4}
-              placeholder={`Ex:\nJOÃO SILVA\nMARIA SOUZA\n...`}
-            />
-            <p className="text-xs text-gray-500 mt-2">Linhas detectadas: {bulkImportEntries.length}. Desmarque as que não deseja adicionar.</p>
-            <div className="mt-2 flex items-center justify-between">
-              <div />
-              <div className="flex items-center gap-2">
-                <button type="button" onClick={() => setBulkImportEntries(prev => prev.map(p => ({...p, selected: true})))} className="text-xs text-primary-600">Selecionar todos</button>
-                <button type="button" onClick={() => setBulkImportEntries(prev => prev.map(p => ({...p, selected: false})))} className="text-xs text-gray-600">Desmarcar</button>
+        <div className="fixed inset-0 bg-black bg-opacity-60 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-4">
+          <div className="relative w-full max-w-2xl bg-white rounded-md shadow-lg border border-gray-200 ">
+            <div className="px-5 py-3 border-b">
+              <h3 className="text-base font-medium text-gray-900">Adicionar Alunos à Turma</h3>
+              <p className="text-sm text-gray-600 mt-1">Professor: {professores.find(p => p._id === addAlunoTurma.professorId)?.nome} — {diasSemana[addAlunoTurma.diaSemana || 0]} {addAlunoTurma.horarioInicio} às {addAlunoTurma.horarioFim}</p>
+            </div>
+            <div className="p-6">
+              <label className="block text-sm font-medium text-gray-700">Cole os nomes (uma linha por aluno) — serão convertidos para MAIÚSCULAS automaticamente</label>
+              <textarea
+                value={bulkAlunoTextAdd}
+                onChange={e => {
+                  // Keep raw text for editing
+                  setBulkAlunoTextAdd(String(e.target.value || ''));
+                }}
+                className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                rows={4}
+                placeholder={`Ex:\nJOÃO SILVA\nMARIA SOUZA\n...`}
+              />
+              <p className="text-xs text-gray-500 mt-2">Linhas detectadas: {bulkImportEntries.length}. Desmarque as que não deseja adicionar.</p>
+              <div className="mt-2 flex items-center justify-between">
+                <div />
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={() => setBulkImportEntries(prev => prev.map(p => ({...p, selected: true})))} className="text-xs text-primary-600">Selecionar todos</button>
+                  <button type="button" onClick={() => setBulkImportEntries(prev => prev.map(p => ({...p, selected: false})))} className="text-xs text-gray-600">Desmarcar</button>
+                </div>
               </div>
-            </div>
-            <div className="mt-3 flex items-center gap-3">
-              <input type="checkbox" id="bulk-allow-create" checked={bulkAllowCreateNew} onChange={e => setBulkAllowCreateNew(e.target.checked)} />
-              <label htmlFor="bulk-allow-create" className="text-xs">Permitir criação automática de novos alunos (marque com cuidado para evitar duplicatas)</label>
-            </div>
-            <div className="mt-2 max-h-36 overflow-y-auto border rounded p-2 bg-white">
-              {bulkImportEntries.length === 0 && <div className="text-xs text-gray-500">Nenhuma linha detectada ainda.</div>}
-              {bulkImportEntries.map(entry => (
-                <div key={entry.id} className="flex items-start gap-2 mb-2">
-                  <input type="checkbox" checked={entry.selected} onChange={e => setBulkImportEntries(prev => prev.map(p => p.id === entry.id ? {...p, selected: e.target.checked} : p))} className="mt-1" />
-                  <div className="flex-1">
-                    <div className="flex gap-2">
-                      <input value={entry.name} onChange={e => setBulkImportEntries(prev => prev.map(p => p.id === entry.id ? {...p, name: e.target.value} : p))} className="w-full border border-gray-200 rounded px-2 py-1 text-sm" />
-                      <input value={entry.obs || ''} onChange={e => setBulkImportEntries(prev => prev.map(p => p.id === entry.id ? {...p, obs: e.target.value} : p))} placeholder="Observação (opcional)" className="w-40 border border-gray-200 rounded px-2 py-1 text-sm" />
-                    </div>
-                    <div className="mt-1 text-xs text-gray-500">Associe a um aluno existente (opcional):
-                      <select value={entry.alunoId || ''} onChange={e => setBulkImportEntries(prev => prev.map(p => p.id === entry.id ? {...p, alunoId: e.target.value || undefined} : p))} className="ml-2 text-xs border border-gray-200 rounded px-2 py-1">
-                        <option value="">— nenhum —</option>
-                        {alunos.slice(0,200).map(a => (
-                          <option key={a._id} value={a._id}>{a.nome}</option>
-                        ))}
-                      </select>
-                      {entry.alunoId ? (
-                        <span className="ml-2 inline-block text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded">Existente</span>
-                      ) : (
-                        <span className="ml-2 inline-block text-xs bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded">Novo (será criado)</span>
-                      )}
+              <div className="mt-3 flex items-center gap-3">
+                <input type="checkbox" id="bulk-allow-create" checked={bulkAllowCreateNew} onChange={e => setBulkAllowCreateNew(e.target.checked)} />
+                <label htmlFor="bulk-allow-create" className="text-xs">Permitir criação automática de novos alunos (marque com cuidado para evitar duplicatas)</label>
+              </div>
+              <div className="mt-2 max-h-36 overflow-y-auto border rounded-md p-2 bg-white">
+                {bulkImportEntries.length === 0 && <div className="text-xs text-gray-500">Nenhuma linha detectada ainda.</div>}
+                {bulkImportEntries.map(entry => (
+                  <div key={entry.id} className="flex items-start gap-2 mb-2">
+                    <input type="checkbox" checked={entry.selected} onChange={e => setBulkImportEntries(prev => prev.map(p => p.id === entry.id ? {...p, selected: e.target.checked} : p))} className="mt-1" />
+                    <div className="flex-1">
+                      <div className="flex gap-2">
+                        <input value={entry.name} onChange={e => setBulkImportEntries(prev => prev.map(p => p.id === entry.id ? {...p, name: e.target.value} : p))} className="w-full border border-gray-200 rounded-md px-2 py-1 text-sm" />
+                        <input value={entry.obs || ''} onChange={e => setBulkImportEntries(prev => prev.map(p => p.id === entry.id ? {...p, obs: e.target.value} : p))} placeholder="Observação (opcional)" className="w-40 border border-gray-200 rounded-md px-2 py-1 text-sm" />
+                      </div>
+                      <div className="mt-1 text-xs text-gray-500">Associe a um aluno existente (opcional):
+                        <select value={entry.alunoId || ''} onChange={e => setBulkImportEntries(prev => prev.map(p => p.id === entry.id ? {...p, alunoId: e.target.value || undefined} : p))} className="ml-2 text-xs border border-gray-200 rounded-md px-2 py-1">
+                          <option value="">— nenhum —</option>
+                          {alunos.slice(0,200).map(a => (
+                            <option key={a._id} value={a._id}>{a.nome}</option>
+                          ))}
+                        </select>
+                        {entry.alunoId ? (
+                          <span className="ml-2 inline-block text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-md">Existente</span>
+                        ) : (
+                          <span className="ml-2 inline-block text-xs bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded-md">Novo (será criado)</span>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
-            <div className="mt-4 flex justify-end space-x-3">
-              <button
-                type="button"
-                onClick={() => { setShowAddAlunoModal(false); setBulkAlunoTextAdd(''); setAddAlunoTurma(null); }}
-                className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
-              >Cancelar</button>
-              <button
-                type="button"
-                  onClick={async () => {
-                  // use only selected entries
-                  const entries = bulkImportEntries.filter(e => e.selected);
-                  const failures: Array<{name:string, reason:string}> = [];
-                  let successes = 0;
-                  // If any selected entry has no alunoId and bulkAllowCreateNew is false, block
-                  if (entries.some(en => !en.alunoId) && !bulkAllowCreateNew) {
-                    alert('Algumas entradas selecionadas não correspondem a alunos existentes. Ative "Permitir criação automática" para criá-las ou associe alunos existentes.');
-                    return;
-                  }
-                  for (const e of entries) {
-                    const rawName = String(e.name || '').trim();
-                    const obsPart = String(e.obs || '').trim();
-                    if (!rawName) { failures.push({name: '(vazio)', reason: 'Nome vazio'}); continue; }
-                    // If an alunoId was manually associated, use it
-                    let resolvedAluno: Aluno | undefined = undefined;
-                    if (e.alunoId) {
-                      resolvedAluno = alunos.find(a => a._id === e.alunoId);
+                ))}
+              </div>
+              <div className="mt-4 flex justify-end space-x-3">
+                <button
+                  type="button"
+                  onClick={() => { setShowAddAlunoModal(false); setBulkAlunoTextAdd(''); setAddAlunoTurma(null); }}
+                  className="px-3 py-1.5 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
+                >Cancelar</button>
+                <button
+                  type="button"
+                    onClick={async () => {
+                    // use only selected entries
+                    const entries = bulkImportEntries.filter(e => e.selected);
+                    const failures: Array<{name:string, reason:string}> = [];
+                    let successes = 0;
+                    // If any selected entry has no alunoId and bulkAllowCreateNew is false, block
+                    if (entries.some(en => !en.alunoId) && !bulkAllowCreateNew) {
+                      alert('Algumas entradas selecionadas não correspondem a alunos existentes. Ative "Permitir criação automática" para criá-las ou associe alunos existentes.');
+                      return;
                     }
-                    if (!resolvedAluno) {
-                      // try exact match
-                      const lookupName = rawName.toUpperCase();
-                      const alunoFound = alunos.find(a => String(a.nome || '').trim().toUpperCase() === lookupName);
-                      if (alunoFound) resolvedAluno = alunoFound;
-                    }
-                    if (!resolvedAluno) {
-                      // create only if allowed
-                      if (!bulkAllowCreateNew) { failures.push({name: rawName, reason: 'Criação proibida'}); continue; }
-                      try {
-                        const alunoPayload: any = { nome: rawName.toUpperCase() };
-                        if (modalidadeSelecionada) alunoPayload.modalidadeId = modalidadeSelecionada;
-                        const alunoResp = await fetch('/api/alunos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(alunoPayload) });
-                        const alunoData = await alunoResp.json();
-                        if (alunoData.success) {
-                          resolvedAluno = alunoData.data as Aluno;
-                          if (resolvedAluno) setAlunos(prev => [...prev, resolvedAluno!]);
-                        } else {
-                          failures.push({name: rawName, reason: 'Falha ao criar aluno: ' + (alunoData.error || 'erro')});
+                    for (const e of entries) {
+                      const rawName = String(e.name || '').trim();
+                      const obsPart = String(e.obs || '').trim();
+                      if (!rawName) { failures.push({name: '(vazio)', reason: 'Nome vazio'}); continue; }
+                      // If an alunoId was manually associated, use it
+                      let resolvedAluno: Aluno | undefined = undefined;
+                      if (e.alunoId) {
+                        resolvedAluno = alunos.find(a => a._id === e.alunoId);
+                      }
+                      if (!resolvedAluno) {
+                        // try exact match
+                        const lookupName = rawName.toUpperCase();
+                        const alunoFound = alunos.find(a => String(a.nome || '').trim().toUpperCase() === lookupName);
+                        if (alunoFound) resolvedAluno = alunoFound;
+                      }
+                      if (!resolvedAluno) {
+                        // create only if allowed
+                        if (!bulkAllowCreateNew) { failures.push({name: rawName, reason: 'Criação proibida'}); continue; }
+                        try {
+                          const alunoPayload: any = { nome: rawName.toUpperCase() };
+                          if (modalidadeSelecionada) alunoPayload.modalidadeId = modalidadeSelecionada;
+                          const alunoResp = await fetch('/api/alunos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(alunoPayload) });
+                          const alunoData = await alunoResp.json();
+                          if (alunoData.success) {
+                            resolvedAluno = alunoData.data as Aluno;
+                            if (resolvedAluno) setAlunos(prev => [...prev, resolvedAluno!]);
+                          } else {
+                            failures.push({name: rawName, reason: 'Falha ao criar aluno: ' + (alunoData.error || 'erro')});
+                            continue;
+                          }
+                        } catch (err:any) {
+                          failures.push({name: rawName, reason: 'Erro ao criar aluno: ' + (err.message || 'erro')});
                           continue;
                         }
-                      } catch (err:any) {
-                        failures.push({name: rawName, reason: 'Erro ao criar aluno: ' + (err.message || 'erro')});
-                        continue;
                       }
-                    }
 
-                    if (!resolvedAluno) { failures.push({name: rawName, reason: 'Aluno não resolvido'}); continue; }
+                      if (!resolvedAluno) { failures.push({name: rawName, reason: 'Aluno não resolvido'}); continue; }
 
-                    try {
-                      const existing = horarios.find(h => {
-                        try {
-                          const rawProf = (h as any).professorId;
-                          const profId = rawProf && (rawProf._id || rawProf) ? String(rawProf._id || rawProf) : undefined;
-                          return profId === String(addAlunoTurma.professorId) && h.diaSemana === addAlunoTurma.diaSemana && h.horarioInicio === addAlunoTurma.horarioInicio && h.horarioFim === addAlunoTurma.horarioFim;
-                        } catch (e) { return false; }
-                      });
+                      try {
+                        const existing = horarios.find(h => {
+                          try {
+                            const rawProf = (h as any).professorId;
+                            const profId = rawProf && (rawProf._id || rawProf) ? String(rawProf._id || rawProf) : undefined;
+                            return profId === String(addAlunoTurma.professorId) && h.diaSemana === addAlunoTurma.diaSemana && h.horarioInicio === addAlunoTurma.horarioInicio && h.horarioFim === addAlunoTurma.horarioFim;
+                          } catch (e) { return false; }
+                        });
 
-                      let enrollResp: any = null;
-                      if (existing && existing._id) {
-                        const matResp = await fetch('/api/matriculas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ horarioFixoId: existing._id, alunoId: resolvedAluno._id, observacoes: obsPart || '' }) });
-                        enrollResp = await matResp.json();
-                      } else {
-                        const createResp = await fetch('/api/horarios', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ professorId: addAlunoTurma.professorId, diaSemana: addAlunoTurma.diaSemana, horarioInicio: addAlunoTurma.horarioInicio, horarioFim: addAlunoTurma.horarioFim, observacoes: '', modalidadeId: formData.modalidadeId || modalidadeSelecionada || undefined }) });
-                        const created = await createResp.json();
-                        if (created && created.success && created.data && created.data._id) {
-                          const matResp = await fetch('/api/matriculas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ horarioFixoId: created.data._id, alunoId: resolvedAluno._id, observacoes: obsPart || '' }) });
+                        let enrollResp: any = null;
+                        if (existing && existing._id) {
+                          const matResp = await fetch('/api/matriculas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ horarioFixoId: existing._id, alunoId: resolvedAluno._id, observacoes: obsPart || '' }) });
                           enrollResp = await matResp.json();
                         } else {
-                          enrollResp = { success: false, error: created && created.error ? created.error : 'Falha ao criar horario' };
+                          const createResp = await fetch('/api/horarios', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ professorId: addAlunoTurma.professorId, diaSemana: addAlunoTurma.diaSemana, horarioInicio: addAlunoTurma.horarioInicio, horarioFim: addAlunoTurma.horarioFim, observacoes: '', modalidadeId: formData.modalidadeId || modalidadeSelecionada || undefined }) });
+                          const created = await createResp.json();
+                          if (created && created.success && created.data && created.data._id) {
+                            const matResp = await fetch('/api/matriculas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ horarioFixoId: created.data._id, alunoId: resolvedAluno._id, observacoes: obsPart || '' }) });
+                            enrollResp = await matResp.json();
+                          } else {
+                            enrollResp = { success: false, error: created && created.error ? created.error : 'Falha ao criar horario' };
+                          }
                         }
-                      }
 
-                      if (enrollResp && enrollResp.success) {
-                        successes++;
-                      } else {
-                        failures.push({ name: rawName, reason: enrollResp && (enrollResp.error || enrollResp.message) ? (enrollResp.error || enrollResp.message) : 'Erro desconhecido' });
+                        if (enrollResp && enrollResp.success) {
+                          successes++;
+                        } else {
+                          failures.push({ name: rawName, reason: enrollResp && (enrollResp.error || enrollResp.message) ? (enrollResp.error || enrollResp.message) : 'Erro desconhecido' });
+                        }
+                      } catch (err:any) {
+                        failures.push({name: rawName, reason: err.message || 'Erro de requisição'});
                       }
-                    } catch (err:any) {
-                      failures.push({name: rawName, reason: err.message || 'Erro de requisição'});
                     }
-                  }
-                  setShowAddAlunoModal(false);
-                  setBulkAlunoTextAdd('');
-                  setAddAlunoTurma(null);
-                  setBulkImportEntries([]);
-                  await fetchHorarios();
-                  alert(`Adicionados: ${successes}. Falhas: ${failures.length}` + (failures.length>0 ? '\n' + failures.map(f=> `${f.name}: ${f.reason}`).join('\n') : ''));
-                }}
-                className="px-4 py-2 bg-primary-600 text-white rounded-md disabled:opacity-50"
-                disabled={bulkImportEntries.filter(e=>e.selected).length===0 || (bulkImportEntries.filter(e=>e.selected && !e.alunoId).length>0 && !bulkAllowCreateNew)}
-              >Adicionar ({bulkImportEntries.filter(e=>e.selected).length})</button>
+                    setShowAddAlunoModal(false);
+                    setBulkAlunoTextAdd('');
+                    setAddAlunoTurma(null);
+                    setBulkImportEntries([]);
+                    await fetchHorarios();
+                    alert(`Adicionados: ${successes}. Falhas: ${failures.length}` + (failures.length>0 ? '\n' + failures.map(f=> `${f.name}: ${f.reason}`).join('\n') : ''));
+                  }}
+                  className="px-3 py-1.5 bg-primary-600 text-white rounded-md disabled:opacity-50"
+                  disabled={bulkImportEntries.filter(e=>e.selected).length===0 || (bulkImportEntries.filter(e=>e.selected && !e.alunoId).length>0 && !bulkAllowCreateNew)}
+                >Adicionar ({bulkImportEntries.filter(e=>e.selected).length})</button>
+              </div>
             </div>
           </div>
         </div>
@@ -1742,11 +1862,14 @@ export default function HorariosPage() {
   <RequireAuth>
   <Layout title="Horários - Superação Flux" fullWidth>
   <div className="w-full px-4 py-6 sm:px-0">
-        <div className="sm:flex sm:items-center mb-6">
+        <div className="sm:flex sm:items-center mb-6 fade-in-1">
           <div className="sm:flex-auto">
-            <h1 className="text-xl font-semibold text-gray-900">Grade de Horários</h1>
-            <p className="mt-2 text-sm text-gray-700">
-              Visualize e gerencie os horários fixos dos alunos por modalidade.
+            <h1 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+              <i className="fas fa-calendar-alt text-primary-600"></i>
+              Grade de Horários
+            </h1>
+            <p className="mt-2 text-sm text-gray-600">
+              Gerencie os horários fixos dos alunos de forma organizada e profissional.
             </p>
           </div>
           <div className="mt-4 sm:mt-0 sm:ml-16 sm:flex-none space-x-3">
@@ -1755,8 +1878,12 @@ export default function HorariosPage() {
         </div>
 
         {/* Seletor de Modalidade (buttons) - moved outside the white card */}
-        <div className="mb-4">
-          <div className="flex flex-wrap gap-2">
+        <div className="mb-6 fade-in-2">
+          <label className="block text-sm font-semibold text-gray-700 mb-3">
+            <i className="fas fa-filter mr-2 text-primary-600"></i>
+            Selecione a Modalidade
+          </label>
+          <div className="flex flex-wrap gap-3">
             {(modalidades || []).map((modalidade, idx) => {
               const mid = (modalidade as any).id || (modalidade as any)._id || '';
               const color = (modalidade as any)?.cor || '#3B82F6';
@@ -1765,9 +1892,14 @@ export default function HorariosPage() {
                 <button
                   key={(modalidade as any).id ?? (modalidade as any)._id ?? idx}
                   onClick={() => setModalidadeSelecionada(String(mid))}
-                  className={`flex items-center gap-2 px-3 py-1 rounded-full text-sm ${isSelected ? 'bg-primary-600 text-white' : 'bg-white border'}`}
+                  style={{
+                    backgroundColor: isSelected ? color : 'white',
+                    borderColor: isSelected ? color : '#E5E7EB',
+                    color: isSelected ? 'white' : '#374151'
+                  }}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all`}
                 >
-                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
+                  <span className="w-2.5 h-2.5 rounded-full border border-white" style={{ backgroundColor: color }} />
                   <span>{modalidade.nome}</span>
                 </button>
               );
@@ -1778,20 +1910,20 @@ export default function HorariosPage() {
         {/* Grade de horários */}
         {/* Only render the heavy schedule after hydration on client to avoid SSR/CSR mismatch */}
         {mounted && (
-          <div className="shadow ring-1 ring-black ring-opacity-5 md:rounded-lg">
+          <div className="bg-white rounded-md overflow-hidden border border-gray-200 fade-in-3">
             {/* Horário de funcionamento removido da UI por decisão do produto; a lógica de filtragem por openTime/closeTime permanece. */}
             <div className="overflow-auto max-h-[75vh]">{/* table scrolls internally */}
               <table className="w-full table-fixed text-sm border-collapse">
-            <thead className="bg-white border-b">
+            <thead className="bg-white border-b border-gray-200">
               <tr>
-                <th scope="col" className="sticky top-0 left-0 z-20 px-2 py-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-24 bg-white border border-gray-200">
+                <th scope="col" className="sticky top-0 left-0 z-20 px-2 py-2 text-center text-xs font-bold text-gray-700 uppercase tracking-wider w-20 bg-white border-r border-gray-200">
                   Horário
                 </th>
                 {visibleDays.map((dayIndex) => (
                   <th
                     key={dayIndex}
                     scope="col"
-                    className="sticky top-0 z-10 px-3 py-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider min-w-[88px] bg-gray-50 border border-gray-200"
+                    className="sticky top-0 z-10 px-3 py-2 text-center text-xs font-bold text-gray-700 uppercase tracking-wider min-w-[88px] bg-white border-r border-gray-200"
                   >
                     {diasSemana[dayIndex]}
                   </th>
@@ -1799,9 +1931,9 @@ export default function HorariosPage() {
               </tr>
             </thead>
             <tbody className="bg-white">
-              {visibleTimes.map((horarioSlot) => (
-                <tr key={horarioSlot} className="align-top">
-                  <td className="sticky left-0 z-10 p-2 whitespace-nowrap text-sm font-medium text-gray-900 bg-white border border-gray-200 h-full">
+              {visibleTimes.map((horarioSlot, idx) => (
+                <tr key={horarioSlot} className={`align-top fade-in-${Math.min((idx % 8) + 1, 8)}`}>
+                  <td className="sticky left-0 z-10 p-2 whitespace-nowrap text-sm font-medium text-gray-900 bg-white border-r border-gray-200 h-full">
                     <div className="h-full flex items-center justify-center text-sm font-medium text-center">{horarioSlot}</div>
                   </td>
                   {visibleDays.map((dayIndex) => {
@@ -1839,11 +1971,15 @@ export default function HorariosPage() {
                             if (mod2 && typeof mod2.limiteAlunos === 'number') capacity = mod2.limiteAlunos;
                           }
                         }
-                        // Exclude students flagged as emEspera from capacity counts
+                        // Exclude students flagged as emEspera, congelado, or ausente from capacity counts
                         const count = visibleAlunos.filter((h: any) => {
                           try {
                             const local = localFlags[h._id] || {};
-                            return !(h.emEspera === true || local.emEspera === true);
+                            // Check both alunoId fields and direct fields (for backward compatibility)
+                            const isEmEspera = (h.alunoId?.emEspera === true || h.emEspera === true) || local.emEspera === true;
+                            const isCongelado = (h.alunoId?.congelado === true || h.congelado === true) || local.congelado === true;
+                            const isAusente = (h.alunoId?.ausente === true || h.ausente === true) || local.ausente === true;
+                            return !(isEmEspera || isCongelado || isAusente);
                           } catch (e) { return true; }
                         }).length;
                         if (capacity !== undefined && count >= capacity) { anyExceeded = true; break; }
@@ -1855,25 +1991,26 @@ export default function HorariosPage() {
                     const c = timeToMinutes(closeTime);
                     const m = timeToMinutes(horarioSlot);
                     // default page-wide availability
-                    let isOpen = o < c ? (m >= o && m < c) : true;
+                    let isOpen = o < c ? (m >= o && m <= c) : true;
 
                     // If a modalidade is selected, determine availability from the modalidade
                     if (modalidadeSelecionada) {
                       const mod = modalidades.find(mo => getMid(mo) === modalidadeSelecionada) as any;
                       if (mod) {
                         // Check day availability: if modalidade defines diasSemana, require the day to be included
-                        const dayAllowed = Array.isArray(mod.diasSemana) && mod.diasSemana.length > 0 ? (mod.diasSemana.includes(dayIndex)) : true;
+                        const dayAllowed = Array.isArray(mod.diasSemana) && mod.diasSemana.length > 0 ? (mod.diasSemana.map((d:number)=> d>6? d-1: d).includes(dayIndex)) : true;
 
                         if (!dayAllowed) {
                           isOpen = false;
                         } else if (Array.isArray(mod.horariosDisponiveis) && mod.horariosDisponiveis.length > 0) {
                           // If modalidade has explicit horariosDisponiveis, use them (they include diasSemana + horaInicio/horaFim)
                           const match = mod.horariosDisponiveis.some((hd: any) => {
-                            const hdDays = Array.isArray(hd.diasSemana) && hd.diasSemana.length > 0 ? hd.diasSemana : [dayIndex];
+                            const hdDaysRaw = Array.isArray(hd.diasSemana) && hd.diasSemana.length > 0 ? hd.diasSemana : [dayIndex];
+                            const hdDays = hdDaysRaw.map((d:number)=> d>6? d-1: d);
                               if (!hdDays.includes(dayIndex)) return false;
                             const hi = timeToMinutes(hd.horaInicio);
                             const hf = timeToMinutes(hd.horaFim);
-                            return m >= hi && m < hf;
+                            return m >= hi && m <= hf;
                           });
                           isOpen = !!match;
                         } else if (mod.horarioFuncionamento) {
@@ -1883,12 +2020,12 @@ export default function HorariosPage() {
                           const manhaFim = hf?.manha?.fim ? timeToMinutes(hf.manha.fim) : null;
                           const tardeInicio = hf?.tarde?.inicio ? timeToMinutes(hf.tarde.inicio) : null;
                           const tardeFim = hf?.tarde?.fim ? timeToMinutes(hf.tarde.fim) : null;
-                          const inManha = manhaInicio !== null && manhaFim !== null ? (m >= manhaInicio && m < manhaFim) : false;
-                          const inTarde = tardeInicio !== null && tardeFim !== null ? (m >= tardeInicio && m < tardeFim) : false;
+                          const inManha = manhaInicio !== null && manhaFim !== null ? (m >= manhaInicio && m <= manhaFim) : false;
+                          const inTarde = tardeInicio !== null && tardeFim !== null ? (m >= tardeInicio && m <= tardeFim) : false;
                           isOpen = inManha || inTarde;
                         } else {
                           // No horario info on modalidade: keep page-wide interval
-                          isOpen = o < c ? (m >= o && m < c) : true;
+                          isOpen = o < c ? (m >= o && m <= c) : true;
                         }
                       }
                     }
@@ -1920,9 +2057,9 @@ export default function HorariosPage() {
                           setEditingMemberIds([]);
                           setShowModal(true);
                         }}
-                        className={`p-2 align-top border border-gray-200 h-full ${(!isOpen) ? 'cursor-not-allowed opacity-80' : ((isOpen && (!turmas || turmas.length === 0)) ? 'cursor-pointer' : 'cursor-default')}`}
+                        className={`p-2 border-r border-b border-gray-200 h-full ${(!isOpen) ? 'cursor-not-allowed opacity-80' : ((isOpen && (!turmas || turmas.length === 0)) ? 'cursor-pointer' : 'cursor-default')}`}
                       >
-                            <div className={`${!isOpen ? 'bg-red-50' : (turmas && turmas.length > 0) ? 'bg-white' : 'bg-white hover:bg-gray-50'} rounded-md p-2 flex flex-col h-full`}>
+                            <div className={`${!isOpen ? 'bg-red-50' : (turmas && turmas.length > 0) ? 'bg-white' : 'bg-white hover:bg-gray-50'} rounded-md p-2 flex flex-col justify-center h-full`}>
                           {isOpen ? (
                             // open interval: show turmas or 'TURMA VAGA'
                             (turmas && turmas.length > 0) ? (
@@ -1955,54 +2092,83 @@ export default function HorariosPage() {
                                     } catch (e) {
                                       // ignore
                                     }
-                                    // Exclude emEspera from displayed capacity count, but still list them
+                                    // Exclude emEspera, congelado, and ausente from displayed capacity count (they free up spots)
                                     const count = visibleAlunos.filter((h: any) => {
                                       try {
                                         const local = localFlags[h._id] || {};
-                                        return !(h.emEspera === true || local.emEspera === true);
+                                        // Check both alunoId fields and direct fields (for backward compatibility)
+                                        const isEmEspera = (h.alunoId?.emEspera === true || h.emEspera === true) || local.emEspera === true;
+                                        const isCongelado = (h.alunoId?.congelado === true || h.congelado === true) || local.congelado === true;
+                                        const isAusente = (h.alunoId?.ausente === true || h.ausente === true) || local.ausente === true;
+                                        return !(isEmEspera || isCongelado || isAusente);
                                       } catch (e) { return true; }
                                     }).length;
                                     const exceeded = capacity !== undefined && count >= capacity;
                                     const explicitTurmaObs = (turma as any).observacaoTurma;
                                     const turmaObsStr = explicitTurmaObs ? String(explicitTurmaObs).trim() : '';
-                                    const turmaClass = `${exceeded ? 'border-red-200 bg-red-50 text-red-800' : 'border-gray-200 bg-primary-50 text-primary-800'} border px-3 py-2 rounded text-xs mb-1 shadow-sm flex flex-col`;
+                                    const turmaClass = `${exceeded ? 'border-red-200 bg-red-50 text-red-800' : 'border-gray-200 bg-primary-50 text-primary-800'} border px-3 py-2 rounded-md text-xs mb-1 shadow-lg flex flex-col`;
                                     try { if (typeof window !== 'undefined') console.debug('renderTurma: turma', { professor: turma.professorNome, turmaObs: turma.observacaoTurma, visibleAlunos: visibleAlunos.map((a:any)=>({id:a._id, obs: a.observacoes})) }); } catch(e) {}
 
                                     return (
                                       <div key={turma.professorId + turma.horarioFim} className={turmaClass}>
                                         <div className="flex items-center justify-between mb-1">
-                                          <div className="font-medium text-left"><span className="text-sm">{turma.professorNome ? (turma.professorNome.startsWith('Personal') ? turma.professorNome : 'Personal ' + turma.professorNome) : ''}</span></div>
+                                          <div className="font-medium text-left">
+                                            {turma.professorNome && (
+                                              (() => {
+                                                // Try to get the color from turma.professorCor, else from professores array
+                                                let cor = turma.professorCor;
+                                                if (!cor && turma.professorId) {
+                                                  const profObj = professores.find(p => p._id === turma.professorId);
+                                                  cor = profObj?.cor || '#3B82F6';
+                                                }
+                                                return (
+                                                  <span
+                                                    className="inline-block px-2 py-0.5 rounded-md font-medium text-white text-[11px] border border-gray-200 shadow-sm transition-colors duration-150"
+                                                    style={{ backgroundColor: cor }}
+                                                  >
+                                                    {turma.professorNome.replace(/^Personal\s*/i, '')}
+                                                  </span>
+                                                );
+                                              })()
+                                            )}
+                                          </div>
                                           <div className={`text-[11px] ${exceeded ? 'text-red-700 font-semibold' : 'text-gray-600'}`}>{count}{capacity ? `/${capacity}` : ''}</div>
                                         </div>
                                         {turmaObsStr ? (
                                           <div className="mb-2 text-left">
-                                            <span className="inline-block text-xs px-2 py-0.5 bg-blue-100 text-blue-800 rounded font-semibold">
+                                            <span className="inline-block text-xs px-2 py-0.5 bg-blue-100 text-blue-800 rounded-md font-semibold">
                                               {turmaObsStr.replace(/\[CONGELADO\]|\[AUSENTE\]/g, '').trim()}
                                             </span>
                                           </div>
                                         ) : null}
                                         <div className="space-y-2 max-h-40 overflow-y-auto text-xs">
                                           {visibleAlunos.map((horario: any) => (
-                                            <div key={horario._id} className="bg-white bg-opacity-60 px-2 py-1 rounded text-xs w-full">
-                                              <div className="w-full">
-                                                <div className="flex items-center justify-between">
-                                                  <div className="flex items-center">
-                                                    <i className="fas fa-user fa-xs text-primary-600 mr-2" aria-hidden="true" />
+                                            <div key={horario._id} className="bg-white bg-opacity-60 px-2 py-1 rounded-md text-xs w-full shadow-sm border border-gray-100 flex items-center justify-center">
+                                              <div className="w-full overflow-hidden my-auto">
+                                                <div className="flex items-center justify-between gap-1">
+                                                  <div className="flex items-center min-w-0 flex-1">
+                                                    <i className="fas fa-user fa-xs text-primary-600 mr-2 flex-shrink-0" aria-hidden="true" />
                                                     {
                                                       (() => {
                                                         const obs = String(horario.observacoes || '');
                                                         const local = localFlags[horario._id] || {};
-                                                        // Prefer explicit boolean fields from the horario document when available
-                                                        const docCongelado = horario.congelado === true;
-                                                        const docAusente = horario.ausente === true;
-                                                        const isCongelado = docCongelado || (local.congelado === true) || obs.includes('[CONGELADO]');
-                                                        const isAusente = docAusente || (local.ausente === true) || obs.includes('[AUSENTE]');
+                                                        
+                                                        // Usar campos do ALUNO ao invés do horário
+                                                        const isCongelado = horario.alunoId?.congelado === true;
+                                                        const isAusente = horario.alunoId?.ausente === true;
+                                                        const isEmEspera = horario.alunoId?.emEspera === true;
+                                                        
+                                                        // Debug
+                                                        if (isCongelado || isAusente || isEmEspera) {
+                                                          console.log(`[DEBUG] ${horario.alunoId?.nome}: congelado=${isCongelado}, ausente=${isAusente}, emEspera=${isEmEspera}`);
+                                                        }
+                                                        
                                                         const tooltipParts: string[] = [];
                                                         if (isCongelado) tooltipParts.push('CONGELADO: matrícula congelada (não cobra/pausa)');
                                                         if (isAusente) tooltipParts.push('AUSENTE: ausência registrada');
                                                         const tooltip = tooltipParts.join(' • ');
                                                         return (
-                                                          <div title={tooltip || undefined} className="flex flex-col">
+                                                          <div title={tooltip || undefined} className="flex flex-col w-full overflow-hidden min-w-0">
                                                             <button
                                                               onClick={(e) => {
                                                                 e.stopPropagation();
@@ -2010,20 +2176,33 @@ export default function HorariosPage() {
                                                                 setShowAddAlunoModal(false);
                                                                 setShowImportModal(false);
                                                                 setShowModalLote({open: false});
-                                                                const rawProfName = (turma && (turma.professorNome || (turma.professorId && (turma.professorId.nome || turma.professorId))) ) || '';
-                                                                const enriched = { ...horario, professorNome: (rawProfName ? (String(rawProfName).startsWith('Personal') ? String(rawProfName) : 'Personal ' + String(rawProfName)) : '') };
-                                                                setSelectedStudentHorario(enriched);
-                                                                setShowStudentDetailModal(true);
+                                                                openStudentDetailModal(horario, turma);
                                                               }}
-                                                              className="text-left font-medium text-xs text-gray-800 hover:underline"
+                                                              className={`text-left font-medium text-xs hover:underline truncate ${isCongelado || isAusente || isEmEspera ? 'line-through text-gray-400' : 'text-gray-800'}`}
+                                                              style={{
+                                                                color: isAusente ? '#ef4444' : (isCongelado ? '#0ea5e9' : (isEmEspera ? '#eab308' : undefined))
+                                                              }}
                                                               title="Ver detalhes do aluno"
                                                             >
                                                               {horario.alunoId?.nome}
                                                             </button>
-                                                            <div className="mt-1 flex items-center gap-2 text-sm">
-                                                                                    {isCongelado && <i className="fas fa-snowflake text-sky-500" aria-hidden="true" title="Congelado" />}
-                                                                                    {isAusente && <i className="fas fa-user-clock text-rose-500" aria-hidden="true" title="Ausente recorrente" />}
-                                                                                    {(horario.emEspera === true || (local.emEspera === true)) && <i className="fas fa-hourglass-half text-yellow-600" aria-hidden="true" title="Em espera (não conta na turma)" />}
+                                                            {/* Badges de status - apenas ícones com tooltip */}
+                                                            <div className="mt-1.5 flex items-center gap-2">
+                                                              {isCongelado && (
+                                                                <i className="fas fa-snowflake text-sky-500 cursor-help text-sm" title="Congelado - matrícula pausada" />
+                                                              )}
+                                                              {isAusente && (
+                                                                <i className="fas fa-user-clock text-rose-500 cursor-help text-sm" title="Ausente - parou de vir" />
+                                                              )}
+                                                              {isEmEspera && (
+                                                                <i className="fas fa-hourglass-half text-amber-500 cursor-help text-sm" title="Em espera - não conta na turma" />
+                                                              )}
+                                                              {horario.alunoId?.periodoTreino && (
+                                                                <i className="fas fa-clock text-green-500 cursor-help text-sm" title={`Período: ${horario.alunoId.periodoTreino}`} />
+                                                              )}
+                                                              {horario.alunoId?.parceria && (
+                                                                <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAC1UlEQVR4AbyWg5LlQBiFY3uSu7Zt27Zt27Zt27Zt60G2tC8w/3aWk/qvkkGqzuU53V+7qSwPQ6S5rttM07Sptm3PJZqXQ5pLypwci8UakjoUIpoo8HDE1EgQhC/kcyYR5IZoms6UJOmtaZo1/zT418OSypuwLPsDh3JHpK7vlmXV+NsTBmn5N2zMXZGeeEneZcpxnLYpA7k0HGS+1aZUVZ336wdZAGNNHzDX9wupvmCs6gVsASs0hKIooykyO5f6X4RaxcH7sCya3i4BRpdDAxiGMeUfgDqyWWQA+9Q4VHhoAHP74MgA2uyO2QfQF3cDi0D8077hcStzzk0M+nYMBnNtX1CHN/0lZWhjUAY1DEjuXgv4qkWA5piEAHitFs2IC8CVzR/0kcnnvU+vpzKuTgOhXqn0AKTO1VEB7qN5QLNM0Neharghe70Y+IoFUwPoS7qhsLllIPbN7xx6zpgb+qUAoClwLk1BQWVwIwTgnJ8UGiDj1ozkAIyrxx1XvnLhoM9WwXu3NDzAvdnJAcRWlVDIfbYAaJ4N+pqVj7ZvHB6VHECb1QGFrF1DAPmmtY0EoI5qlhyA7Gw4NLIpIN/R0aErdx/P84cuMQCjS+C9WYKCfM3iwdNMFcF7HfClFpkvYpvKyfcBoWEZTP1yEdASDwFfnZLhWv5wLogtK6beCdUJrVDY2j8Cdb86tgWu6D2R33u+Xi8G98l8sMiEU4Y1AcZU/FxqAOvACFSwOr4lClt7h+FDaU4nv6d+S+CAommUSwkgtqgIcrdaWYUuG37h7vOFCIAs3+inYRjxVYrE7X7G0/MGgGzJ+Ji+MtXfwvMGwNw8AAHoy7pHu5Coqjo3bNDfKX8OvXHKZqlCVqN0wJvlA98xAQImYNfMBthd+kDnrpkBcieVBRgVVsCQOEPrzinQjqPQfiETAzKACnCLioragbrSwFAppSYGmpkF7J5bQoId4XMA6lRclYDTIrUAAAAASUVORK5CYII=" alt="TOTALPASS" style={{ width: '14px', height: '14px', cursor: 'help' }} title={`Parceria: ${horario.alunoId.parceria}`} />
+                                                              )}
                                                             </div>
                                                           </div>
                                                         );
@@ -2039,7 +2218,7 @@ export default function HorariosPage() {
                                                   if (studentObs) {
                                                     return (
                                                       <div className="mt-1 mb-1 text-left">
-                                                        <span className="inline-block text-xs px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded font-semibold">{studentObs}</span>
+                                                        <span className="inline-block text-xs px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded-md font-semibold">{studentObs}</span>
                                                       </div>
                                                     );
                                                   }
@@ -2050,42 +2229,37 @@ export default function HorariosPage() {
                                           ))}
                                         </div>
                                         {/* Botões de ação da turma */}
-                                        <div className="mt-2 flex items-center justify-center gap-2">
+                                        <div className="mt-2 flex items-center justify-center gap-1.5">
                                           <button
                                             onClick={(e) => { e.stopPropagation(); setAddAlunoTurma({ professorId: turma.professorId, diaSemana: dayIndex, horarioInicio: horarioSlot, horarioFim: turma.horarioFim }); setShowAddAlunoModal(true); }}
-                                            title="Adicionar aluno"
-                                            className="p-1 w-8 h-8 flex items-center justify-center text-primary-600 hover:text-primary-700 rounded bg-white/30"
+                                            title="Adicionar múltiplos alunos"
+                                            className="p-1 w-7 h-7 flex items-center justify-center text-gray-500"
                                           >
-                                            <span className="sr-only">Adicionar aluno</span>
-                                            <i className="fas fa-plus" aria-hidden="true" />
+                                            <i className="fas fa-plus text-xs" aria-hidden="true" />
                                           </button>
 
-                                          {/* Single-add button: add one aluno (opens modal with search/create) */}
                                           <button
                                             onClick={(e) => { e.stopPropagation(); setAddAlunoTurma({ professorId: turma.professorId, diaSemana: dayIndex, horarioInicio: horarioSlot, horarioFim: turma.horarioFim }); setShowAddSingleAlunoModal(true); setSingleAlunoSearch(''); setSingleAlunoSelectedId(null); setSingleAlunoName(''); setSingleAlunoObservacoes(''); }}
                                             title="Adicionar 1 aluno"
-                                            className="p-1 w-8 h-8 flex items-center justify-center text-primary-600 hover:text-primary-700 rounded"
+                                            className="p-1 w-7 h-7 flex items-center justify-center text-gray-500"
                                           >
-                                            <span className="sr-only">Adicionar um aluno</span>
-                                            <i className="fas fa-user-plus" aria-hidden="true" />
+                                            <i className="fas fa-user-plus text-xs" aria-hidden="true" />
                                           </button>
 
                                           <button
                                             onClick={(e) => { e.stopPropagation(); openEditTurmaGroup(turma); }}
                                             title="Editar turma"
-                                            className="p-1 w-8 h-8 flex items-center justify-center text-primary-600 hover:text-primary-700 rounded"
+                                            className="p-1 w-7 h-7 flex items-center justify-center text-gray-500"
                                           >
-                                            <span className="sr-only">Editar turma</span>
-                                            <i className="fas fa-edit" aria-hidden="true" />
+                                            <i className="fas fa-edit text-xs" aria-hidden="true" />
                                           </button>
 
                                           <button
                                             onClick={(e) => { e.stopPropagation(); if (!confirm('Excluir TODA a turma? Isso removerá todos os alunos deste horário.')) return; handleDeleteTurma(turma); }}
                                             title="Excluir turma inteira"
-                                            className="p-1 w-8 h-8 flex items-center justify-center text-primary-600 hover:text-primary-700 rounded"
+                                            className="p-1 w-7 h-7 flex items-center justify-center text-gray-500"
                                           >
-                                            <span className="sr-only">Excluir turma</span>
-                                            <i className="fas fa-trash" aria-hidden="true" />
+                                            <i className="fas fa-trash text-xs" aria-hidden="true" />
                                           </button>
                                         </div>
                                       </div>
@@ -2114,23 +2288,29 @@ export default function HorariosPage() {
                                       setEditingMemberIds([]);
                                       setShowModal(true);
                                     }}
-                                    className="inline-flex items-center gap-2 px-2 py-1 text-xs rounded border border-dashed border-gray-300 text-gray-600 hover:bg-gray-50"
+                                    className="p-1 w-7 h-7 flex items-center justify-center text-gray-500"
                                     title="Adicionar nova turma neste horário"
                                   >
-                                    <span className="font-bold text-sm">+</span>
-                                    <span>Adicionar turma</span>
+                                    <i className="fas fa-plus text-xs"></i>
                                   </button>
                                 </div>
                               </div>
                             ) : (
-                              <div className="h-full w-full flex items-center justify-center">
-                                <span className="text-sm font-semibold text-green-700 text-center">TURMA VAGA</span>
+                              <div className="h-full w-full flex items-center justify-center p-4">
+                                <div className="text-center">
+                                  <i className="fas fa-check-circle text-green-600 text-base mb-1"></i>
+                                  <p className="text-xs font-semibold text-green-700">TURMA VAGA</p>
+                                  <p className="text-xs text-gray-500 mt-1">Clique para adicionar</p>
+                                </div>
                               </div>
                             )
                           ) : (
                             // blocked slot for this modalidade/day/time
-                            <div className="flex items-center justify-center flex-1">
-                              <span className="inline-block px-2 py-1 text-xs font-semibold text-red-700 bg-red-50 rounded text-center">INDISPONÍVEL</span>
+                            <div className="flex items-center justify-center flex-1 p-4">
+                              <div className="text-center">
+                                <i className="fas fa-ban text-red-600 text-base mb-1"></i>
+                                <p className="text-xs font-semibold text-red-700 bg-red-50 px-3 py-1.5 rounded-md">INDISPONÍVEL</p>
+                              </div>
                             </div>
                           )}
                         </div>
@@ -2157,11 +2337,11 @@ export default function HorariosPage() {
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full" style={{ zIndex: 9999 }}>
           <div className="relative top-24 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
             <div className="mt-3">
-              <h3 className="text-lg font-medium text-gray-900 mb-2">Confirmação de Aluno Similar</h3>
+              <h3 className="text-base font-medium text-gray-900 mb-2">Confirmação de Aluno Similar</h3>
               <p className="text-sm text-gray-700 mb-3">O nome &quot;{confirmAlunoDialog.name}&quot; parece corresponder a um aluno já cadastrado. O que deseja fazer?</p>
               <div className="mb-3">
                 {confirmAlunoDialog.candidates.map(c => (
-                  <div key={c.aluno._id} className="p-2 border rounded mb-2">
+                  <div key={c.aluno._id} className="p-2 border rounded-md mb-2">
                     <div className="font-medium">{c.aluno.nome}</div>
                     <div className="text-xs text-gray-500">Similaridade: {(c.score*100).toFixed(0)}%</div>
                     <div className="text-xs text-gray-500">Modalidade: {c.aluno.modalidadeId?.nome || '—'}</div>
@@ -2176,7 +2356,7 @@ export default function HorariosPage() {
                     setConfirmAlunoDialog(null);
                     pendingAlunoResolve.current = null;
                   }}
-                  className="px-3 py-1 border rounded text-sm"
+                  className="px-3 py-1 border rounded-md text-sm"
                 >Criar novo</button>
                 <button
                   onClick={() => {
@@ -2185,7 +2365,7 @@ export default function HorariosPage() {
                     setConfirmAlunoDialog(null);
                     pendingAlunoResolve.current = null;
                   }}
-                  className="px-3 py-1 border rounded text-sm"
+                  className="px-3 py-1 border rounded-md text-sm"
                 >Pular</button>
                 <button
                   onClick={() => {
@@ -2195,7 +2375,7 @@ export default function HorariosPage() {
                     setConfirmAlunoDialog(null);
                     pendingAlunoResolve.current = null;
                   }}
-                  className="px-3 py-1 bg-primary-600 text-white rounded text-sm"
+                  className="px-3 py-1 bg-primary-600 text-white rounded-md text-sm"
                 >Usar: {confirmAlunoDialog.candidates[0].aluno.nome}</button>
               </div>
             </div>
@@ -2203,35 +2383,103 @@ export default function HorariosPage() {
         </div>
       )}
       {showModal && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
-            <div className="mt-3">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">
-                {editingMode === 'turma' ? 'Editar Turma' : editingMode === 'single' ? 'Editar Horário' : 'Cadastrar Nova Turma'}
-              </h3>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  {editingMode === 'turma' ? (
-                    <p className="text-sm text-gray-600">Editando a turma selecionada. As alterações serão aplicadas a todos os alunos dessa turma.</p>
-                  ) : editingMode === 'single' ? (
-                    <p className="text-sm text-gray-600">Editando o horário selecionado.</p>
-                  ) : null }
-                </div>
+        <div className="fixed inset-0 bg-black bg-opacity-60 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-4">
+          <div className="relative w-full max-w-2xl bg-white rounded-md shadow-md border border-gray-200">
+            {/* Header (plain) */}
+            <div className="px-5 py-3 border-b">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                  <i className={`fas ${editingMode === 'turma' ? 'fa-users' : editingMode === 'single' ? 'fa-user-edit' : 'fa-plus-circle'} text-xs`}></i>
+                  {editingMode === 'turma' ? 'Editar Turma' : editingMode === 'single' ? 'Editar Horário' : 'Cadastrar Nova Turma'}
+                </h3>
+                <button
+                  onClick={() => {
+                    setShowModal(false);
+                    setFormData({
+                      alunoId: '',
+                      professorId: '',
+                      diaSemana: 1,
+                      horarioInicio: '',
+                      horarioFim: '',
+                      observacoes: '',
+                      observacaoTurma: '',
+                      modalidadeId: ''
+                    });
+                  }}
+                  className="text-gray-700 hover:text-gray-900 transition-colors"
+                >
+                  <i className="fas fa-times text-base"></i>
+                </button>
+              </div>
+              {editingMode === 'turma' && (
+                <p className="text-xs text-gray-500 mt-2">
+                  <i className="fas fa-info-circle mr-1 text-xs"></i>
+                  As alterações serão aplicadas a todos os alunos dessa turma.
+                </p>
+              )}
+              {editingMode === 'single' && (
+                <p className="text-sm text-gray-500 mt-2">
+                  <i className="fas fa-info-circle mr-1"></i>
+                  Editando o horário individual selecionado.
+                </p>
+              )}
+            </div>
 
+            {/* Turma summary header (when editing a turma) */}
+            {editingMode === 'turma' && (
+              <div className="px-5 py-3 border-b bg-gray-50">
+                <div className="flex items-center justify-between">
+                  <div className="text-sm text-gray-700">
+                    <div className="font-medium">{professores.find(p => p._id === formData.professorId)?.nome || '— professor não selecionado —'}</div>
+                    <div className="text-xs text-gray-500">{diasSemana[formData.diaSemana || 0]} • {formData.horarioInicio || '—'} — {formData.horarioFim || '—'}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-sm font-semibold">{(editingMemberIds && editingMemberIds.length) || 0} aluno{(editingMemberIds && editingMemberIds.length) === 1 ? '' : 's'}</div>
+                    <div className="text-xs text-gray-500">
+                      {(() => {
+                        try {
+                          const mid = formData.modalidadeId || modalidadeSelecionada || '';
+                          const mod = modalidades.find(m => getMid(m) === mid) as any;
+                          return mod && typeof mod.limiteAlunos === 'number' ? `Limite: ${mod.limiteAlunos}` : 'Limite: —';
+                        } catch (e) {
+                          return 'Limite: —';
+                        }
+                      })()}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            {/* Content */}
+            <div className="p-6">
+              <form onSubmit={handleSubmit} className="space-y-6">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Professor</label>
-                  <div className="mt-2 flex flex-wrap gap-2">
+                  <label className="block text-sm font-semibold text-gray-700 mb-3">
+                    <i className="fas fa-chalkboard-teacher mr-2 text-primary-600"></i>
+                    Professor
+                  </label>
+                  <div className="flex flex-wrap gap-2">
                     {professores.map((professor) => {
                       const selected = formData.professorId === professor._id;
+                      const professorCor = professor.cor || '#3B82F6';
                       return (
                         <button
                           key={professor._id}
                           type="button"
                           onClick={() => setFormData({...formData, professorId: professor._id})}
-                          className={`px-3 py-1 text-sm rounded border ${selected ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-200'} hover:shadow-sm`}
+                          style={{
+                            backgroundColor: selected ? professorCor : 'white',
+                            borderColor: selected ? professorCor : '#E5E7EB',
+                            color: selected ? 'white' : '#374151'
+                          }}
+                          className={`px-4 py-2 text-sm font-medium rounded-pill rounded-md border-2 transition-all ${
+                            selected ? 'shadow-md ring-2 ring-offset-1' : 'hover:border-gray-400'
+                          }`}
                           aria-pressed={selected}
                         >
                           {professor.nome}
+                          {selected && <i className="fas fa-check ml-2"></i>}
                         </button>
                       );
                     })}
@@ -2239,129 +2487,211 @@ export default function HorariosPage() {
                   {formData.professorId ? (
                     <input type="hidden" name="professorId" value={formData.professorId} required />
                   ) : (
-                    <div className="text-red-500 text-xs mt-1">Selecione um professor</div>
+                    <div className="text-red-600 text-sm mt-2 flex items-center gap-1">
+                      <i className="fas fa-exclamation-circle"></i>
+                      Selecione um professor
+                    </div>
                   )}
                 { /* Hidden modalidadeId to be sent on create */ }
                 <input type="hidden" name="modalidadeId" value={formData.modalidadeId || modalidadeSelecionada || ''} />
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Dia da Semana</label>
-                  {(() => {
-                    const avail = getModalidadeAvailability();
-                    return (
-                      <select
-                        value={formData.diaSemana}
-                        onChange={(e) => setFormData({...formData, diaSemana: parseInt(e.target.value)})}
-                        className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                        required
-                      >
-                        {avail.days.map((index: number) => (
-                          <option key={index} value={index}>
-                            {diasSemana[index]}
-                          </option>
-                        ))}
-                      </select>
-                    );
-                  })()}
-                </div>
-
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">Horário Início</label>
-                    <select
-                      value={formData.horarioInicio}
-                      onChange={(e) => {
-                        const newInicio = e.target.value;
-                        // compute default fim based on modalidade duration (minutes)
-                        let defaultFim = formData.horarioFim;
-                        try {
-                          const modId = formData.modalidadeId || modalidadeSelecionada || '';
-                          const mod = modalidades.find(m => getMid(m) === modId) as any;
-                          const dur = mod && typeof mod.duracao === 'number' ? mod.duracao : undefined;
-                          if (dur && newInicio) {
-                            const startMinutes = timeToMinutes(newInicio);
-                            const endMinutes = startMinutes + dur;
-                            // find the smallest slot in horariosDisponiveis that is >= endMinutes
-                            const candidate = horariosDisponiveis.find(h => timeToMinutes(h) >= endMinutes);
-                            if (candidate) defaultFim = candidate;
-                          }
-                        } catch (err) {
-                          // ignore and keep existing horarioFim
-                        }
-                        setFormData({...formData, horarioInicio: newInicio, horarioFim: defaultFim});
-                      }}
-                      className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                      required
-                    >
-                      <option value="">Selecione</option>
-                      {getModalidadeAvailability().times.map((horario) => (
-                        <option key={horario} value={horario}>
-                          {horario}
-                        </option>
-                      ))}
-                    </select>
+                    <label className="block text-sm font-semibold text-gray-700 mb-3">
+                      <i className="fas fa-calendar-week mr-2 text-primary-600"></i>
+                      Dia da Semana
+                    </label>
+                    {(() => {
+                      const avail = getModalidadeAvailability();
+                      return (
+                        <div className="mt-1 flex flex-wrap gap-2">
+                          {avail.days.map((index: number) => {
+                            const selected = formData.diaSemana === index;
+                            return (
+                              <button
+                                key={index}
+                                type="button"
+                                onClick={() => setFormData({ ...formData, diaSemana: index })}
+                                aria-pressed={selected}
+                                className={`px-3 py-1.5 text-sm font-medium rounded-full border transition-all ${selected ? 'bg-primary-600 text-white border-primary-600' : 'bg-white text-gray-700 border-gray-200 hover:border-gray-300'}`}
+                              >
+                                {diasSemana[index].substring(0,3)}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">Horário Fim</label>
-                    <select
-                      value={formData.horarioFim}
-                      onChange={(e) => setFormData({...formData, horarioFim: e.target.value})}
-                      className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                      required
-                    >
-                      <option value="">Selecione</option>
-                      {getModalidadeAvailability().times.map((horario) => (
-                        <option key={horario} value={horario}>
-                          {horario}
-                        </option>
-                      ))}
-                    </select>
+                    {editingMode === 'turma' ? (
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-3">
+                          <i className="fas fa-clock mr-2 text-primary-600"></i>
+                          Horário Início
+                        </label>
+                        <select
+                          value={formData.horarioInicio}
+                          onChange={(e) => {
+                            const newInicio = e.target.value;
+                            let defaultFim = formData.horarioFim;
+                            try {
+                              const modId = formData.modalidadeId || modalidadeSelecionada || '';
+                              const mod = modalidades.find(m => getMid(m) === modId) as any;
+                              const dur = mod && typeof mod.duracao === 'number' ? mod.duracao : undefined;
+                              if (dur && newInicio) {
+                                const startMinutes = timeToMinutes(newInicio);
+                                const endMinutes = startMinutes + dur;
+                                const candidate = horariosDisponiveis.find(h => timeToMinutes(h) >= endMinutes);
+                                if (candidate) defaultFim = candidate;
+                              }
+                            } catch (err) { }
+                            setFormData({...formData, horarioInicio: newInicio, horarioFim: defaultFim});
+                          }}
+                          className="mt-1 block w-full border-2 border-gray-300 rounded-md px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all"
+                          required
+                        >
+                          <option value="">Selecione</option>
+                          {getModalidadeAvailability().times.map((horario) => (
+                            <option key={horario} value={horario}>{horario}</option>
+                          ))}
+                        </select>
+                        <p className="text-xs text-gray-500 mt-2">O horário fim será definido automaticamente conforme a duração da modalidade ({(() => {
+                          try {
+                            const modId = formData.modalidadeId || modalidadeSelecionada || '';
+                            const mod = modalidades.find(m => getMid(m) === modId) as any;
+                            const dur = mod && typeof mod.duracao === 'number' ? mod.duracao : undefined;
+                            return dur ? `${dur} min` : 'padrão';
+                          } catch (e) { return 'padrão'; }
+                        })()}). Fim atual: <span className="font-medium">{formData.horarioFim || '—'}</span></p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-3">
+                            <i className="fas fa-clock mr-2 text-primary-600"></i>
+                            Horário Início
+                          </label>
+                          <select
+                            value={formData.horarioInicio}
+                            onChange={(e) => {
+                              const newInicio = e.target.value;
+                              let defaultFim = formData.horarioFim;
+                              try {
+                                const modId = formData.modalidadeId || modalidadeSelecionada || '';
+                                const mod = modalidades.find(m => getMid(m) === modId) as any;
+                                const dur = mod && typeof mod.duracao === 'number' ? mod.duracao : undefined;
+                                if (dur && newInicio) {
+                                  const startMinutes = timeToMinutes(newInicio);
+                                  const endMinutes = startMinutes + dur;
+                                  const candidate = horariosDisponiveis.find(h => timeToMinutes(h) >= endMinutes);
+                                  if (candidate) defaultFim = candidate;
+                                }
+                              } catch (err) { }
+                              setFormData({...formData, horarioInicio: newInicio, horarioFim: defaultFim});
+                            }}
+                            className="mt-1 block w-full border-2 border-gray-300 rounded-md px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all"
+                            required
+                          >
+                            <option value="">Selecione</option>
+                            {getModalidadeAvailability().times.map((horario) => (
+                              <option key={horario} value={horario}>{horario}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-3">
+                            <i className="fas fa-clock mr-2 text-primary-600"></i>
+                            Horário Fim
+                          </label>
+                          <select
+                            value={formData.horarioFim}
+                            onChange={(e) => setFormData({...formData, horarioFim: e.target.value})}
+                            className="mt-1 block w-full border-2 border-gray-300 rounded-md px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all"
+                            required
+                          >
+                            <option value="">Selecione</option>
+                            {getModalidadeAvailability().times.map((horario) => (
+                              <option key={horario} value={horario}>{horario}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 
                 {/* Show per-aluno observations only when creating/editing a single aluno, not when editing the whole turma */}
                 {editingMode !== 'turma' && (
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">Observações</label>
+                    <label className="block text-sm font-semibold text-gray-700 mb-3">
+                      <i className="fas fa-sticky-note mr-2 text-primary-600"></i>
+                      Observações
+                    </label>
                     <textarea
                       value={formData.observacoes}
                       onChange={(e) => setFormData({...formData, observacoes: e.target.value})}
-                      className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                      rows={2}
-                      placeholder="Observações opcionais..."
+                      className="mt-1 block w-full border-2 border-gray-300 rounded-md px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all"
+                      rows={3}
+                      placeholder="Observações opcionais sobre este horário..."
                     />
                   </div>
                 )}
 
                 {editingMode === 'turma' && (
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">Observação da Turma (visível para toda a turma)</label>
+                    <label className="block text-sm font-semibold text-gray-700 mb-3">
+                      <i className="fas fa-users mr-2 text-primary-600"></i>
+                      Observação da Turma
+                    </label>
                     <textarea
                       value={formData.observacaoTurma}
                       onChange={(e) => setFormData({...formData, observacaoTurma: e.target.value})}
-                      className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                      rows={2}
+                      className="mt-1 block w-full border-2 border-gray-300 rounded-md px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all"
+                      rows={3}
                       placeholder="Observação que será aplicada à turma inteira..."
                     />
+                    <p className="text-xs text-gray-500 mt-2">
+                      <i className="fas fa-info-circle mr-1"></i>
+                      Esta observação será visível para todos os alunos da turma.
+                    </p>
                   </div>
                 )}
 
-                <div className="flex justify-end space-x-3 pt-4">
+                {/* Action Buttons */}
+                <div className="flex justify-end gap-3 pt-6 border-t border-gray-200">
                   <button
                     type="button"
-                    onClick={() => { setShowModal(false); setEditingMode('create'); setEditingMemberIds(null); setSelectedHorarioId(null); }}
-                    className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+                    onClick={() => { 
+                      setShowModal(false); 
+                      setEditingMode('create'); 
+                      setEditingMemberIds(null); 
+                      setSelectedHorarioId(null); 
+                    }}
+                    className="px-6 py-2.5 border-2 border-gray-300 rounded-md text-sm font-semibold text-gray-700 hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-all"
                   >
+                    <i className="fas fa-times mr-2"></i>
                     Cancelar
                   </button>
                   <button
                     type="submit"
                     disabled={loading}
-                    className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50"
+                    className="px-6 py-2.5 border border-transparent rounded-md shadow-sm text-sm font-semibold text-white bg-gradient-to-r from-primary-600 to-primary-700 hover:from-primary-700 hover:to-primary-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                   >
-                    {loading ? 'Salvando...' : 'Salvar'}
+                    {loading ? (
+                      <>
+                        <i className="fas fa-spinner fa-spin mr-2"></i>
+                        Salvando...
+                      </>
+                    ) : (
+                      <>
+                        <i className="fas fa-check mr-2"></i>
+                        Salvar
+                      </>
+                    )}
                   </button>
                 </div>
               </form>
@@ -2374,7 +2704,7 @@ export default function HorariosPage() {
       {showImportModal && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
           <div className="relative top-16 mx-auto p-6 border w-[720px] shadow-lg rounded-md bg-white">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Importar Turma (colar nomes)</h3>
+            <h3 className="text-base font-medium text-gray-900 mb-4">Importar Turma (colar nomes)</h3>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700">Cole os nomes (uma linha por aluno)</label>
@@ -2392,15 +2722,15 @@ export default function HorariosPage() {
                     <button type="button" onClick={() => setImportEntries(prev => prev.map(p => ({...p, selected: false})))} className="text-xs text-gray-600">Desmarcar</button>
                   </div>
                 </div>
-                <div className="mt-2 max-h-40 overflow-y-auto border rounded p-2 bg-white">
+                <div className="mt-2 max-h-40 overflow-y-auto border rounded-md p-2 bg-white">
                   {importEntries.length === 0 && <div className="text-xs text-gray-500">Nenhuma linha detectada ainda.</div>}
                   {importEntries.map((entry, idx) => (
                     <div key={entry.id} className="flex items-start gap-2 mb-2">
                       <input type="checkbox" checked={entry.selected} onChange={e => setImportEntries(prev => prev.map(p => p.id === entry.id ? {...p, selected: e.target.checked} : p))} className="mt-1" />
                       <div className="flex-1">
-                        <input value={entry.name} onChange={e => setImportEntries(prev => prev.map(p => p.id === entry.id ? {...p, name: e.target.value} : p))} className="w-full border border-gray-200 rounded px-2 py-1 text-sm" />
+                        <input value={entry.name} onChange={e => setImportEntries(prev => prev.map(p => p.id === entry.id ? {...p, name: e.target.value} : p))} className="w-full border border-gray-200 rounded-md px-2 py-1 text-sm" />
                         <div className="mt-1 flex items-center gap-2">
-                          <select value={entry.alunoId || ''} onChange={e => setImportEntries(prev => prev.map(p => p.id === entry.id ? {...p, alunoId: e.target.value || undefined} : p))} className="text-xs border border-gray-200 rounded px-2 py-1">
+                          <select value={entry.alunoId || ''} onChange={e => setImportEntries(prev => prev.map(p => p.id === entry.id ? {...p, alunoId: e.target.value || undefined} : p))} className="text-xs border border-gray-200 rounded-md px-2 py-1">
                             <option value="">— selecionar aluno (opcional) —</option>
                             {alunos.slice(0,200).map(a => (
                               <option key={a._id} value={a._id}>{a.nome}</option>
@@ -2479,18 +2809,18 @@ export default function HorariosPage() {
               <button
                 type="button"
                 onClick={() => { setShowImportModal(false); setImportText(''); setImportResults(null); }}
-                className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
+                className="px-3 py-1.5 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
               >Cancelar</button>
               <button
                 type="button"
                 disabled={importing || !importProfessorId || !importHorarioInicio || !importHorarioFim || importEntries.filter(e=>e.selected).length===0}
                 onClick={handleImportClick}
-                className="px-4 py-2 bg-primary-600 text-white rounded-md disabled:opacity-50"
+                className="px-3 py-1.5 bg-primary-600 text-white rounded-md disabled:opacity-50"
               >{importing ? 'Importando...' : `Importar (${importEntries.filter(e=>e.selected).length})`}</button>
             </div>
 
             {importResults && (
-              <div className="mt-4 bg-gray-50 p-3 rounded">
+              <div className="mt-4 bg-gray-50 p-3 rounded-md">
                 <div className="text-sm">Sucesso: {importResults.successes}</div>
                 <div className="text-sm">Falhas: {importResults.failures.length}</div>
                 {importResults.failures.length > 0 && (
@@ -2507,13 +2837,13 @@ export default function HorariosPage() {
 
       {/* Modal: adicionar um aluno individualmente (search/create) */}
       {showAddSingleAlunoModal && addAlunoTurma && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-          <div className="relative top-24 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Adicionar um aluno</h3>
-            <div className="space-y-3">
-              <div className="text-sm text-gray-700">
-                Escolha um aluno existente ou crie um novo. Se criar um novo, confirme explicitamente para evitar duplicatas.
-              </div>
+        <div className="fixed inset-0 bg-black bg-opacity-60 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-4">
+          <div className="relative w-full max-w-2xl bg-white rounded-md shadow-lg border border-gray-200">
+            <div className="px-5 py-3 border-b">
+              <h3 className="text-base font-medium text-gray-900">Adicionar um aluno</h3>
+              <p className="text-sm text-gray-600 mt-1">Escolha um aluno existente ou crie um novo. Se criar um novo, confirme explicitamente para evitar duplicatas.</p>
+            </div>
+            <div className="p-5 space-y-3">
               <div className="flex items-center gap-3">
                 <label className="flex items-center gap-3">
                   <span className="text-sm">Usar existente</span>
@@ -2542,9 +2872,9 @@ export default function HorariosPage() {
                     className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
                   />
                   {singleAlunoSearch && (
-                    <div className="mt-2 max-h-40 overflow-y-auto border rounded p-1 bg-white">
+                    <div className="mt-2 max-h-40 overflow-y-auto border rounded-md p-1 bg-white">
                       {(alunos || []).filter(a => String(a.nome || '').toLowerCase().includes(singleAlunoSearch.toLowerCase())).slice(0,10).map(a => (
-                        <div key={a._id} className={`p-2 rounded hover:bg-gray-50 ${singleAlunoSelectedId === a._id ? 'bg-primary-50' : 'cursor-pointer'}`} onClick={() => { setSingleAlunoSelectedId(a._id); setSingleAlunoName(a.nome); }}>
+                        <div key={a._id} className={`p-2 rounded-md hover:bg-gray-50 ${singleAlunoSelectedId === a._id ? 'bg-primary-50' : 'cursor-pointer'}`} onClick={() => { setSingleAlunoSelectedId(a._id); setSingleAlunoName(a.nome); }}>
                           <div className="text-sm font-medium">{a.nome}</div>
                           <div className="text-xs text-gray-500">{a.email || ''}</div>
                         </div>
@@ -2571,7 +2901,7 @@ export default function HorariosPage() {
               </div>
 
               <div className="flex justify-end space-x-2">
-                <button onClick={() => { setShowAddSingleAlunoModal(false); setSingleAlunoSearch(''); setSingleAlunoSelectedId(null); setSingleAlunoName(''); setSingleAlunoObservacoes(''); }} className="px-3 py-1 border rounded">Cancelar</button>
+                <button onClick={() => { setShowAddSingleAlunoModal(false); setSingleAlunoSearch(''); setSingleAlunoSelectedId(null); setSingleAlunoName(''); setSingleAlunoObservacoes(''); }} className="px-3 py-1 border rounded-md">Cancelar</button>
                 <button
                   onClick={async () => {
                     try {
@@ -2628,7 +2958,7 @@ export default function HorariosPage() {
                       setLoading(false);
                     }
                   }}
-                  className="px-3 py-1 bg-primary-600 text-white rounded disabled:opacity-50"
+                  className="px-3 py-1 bg-primary-600 text-white rounded-md disabled:opacity-50"
                   disabled={(singleAddMode === 'select' && !singleAlunoSelectedId) || (singleAddMode === 'create' && !singleAlunoName)}
                 >Adicionar</button>
               </div>
@@ -2639,7 +2969,14 @@ export default function HorariosPage() {
       
       {/* Student detail modal (cleaned up) */}
       {showStudentDetailModal && selectedStudentHorario && (
-        <StudentDetailModal isOpen={showStudentDetailModal} onClose={() => setShowStudentDetailModal(false)} horario={selectedStudentHorario} modalidades={modalidades} horarios={horarios} onRefresh={fetchHorarios} />
+        <StudentDetailModal 
+          isOpen={showStudentDetailModal} 
+          onClose={() => setShowStudentDetailModal(false)} 
+          horario={selectedStudentHorario} 
+          modalidades={modalidades} 
+          horarios={[]} 
+          onRefresh={fetchHorarios} 
+        />
       )}
 
       </Layout>

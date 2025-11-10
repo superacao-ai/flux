@@ -40,9 +40,9 @@ export async function POST(request: NextRequest) {
     await connectDB();
     
     const body = await request.json();
-    const { nome, email, telefone, especialidades } = body;
+    const { nome, email, telefone, especialidades, cor } = body;
 
-    console.log('📨 Dados recebidos na API:', { nome, email, telefone, especialidades });
+    console.log('📨 Dados recebidos na API:', { nome, email, telefone, especialidades, cor });
 
     // Validações básicas
     if (!nome) {
@@ -83,6 +83,11 @@ export async function POST(request: NextRequest) {
     // Adicionar telefone apenas se fornecido
     if (telefone && telefone.trim()) {
       dadosProfessor.telefone = telefone;
+    }
+
+    // Adicionar cor se fornecida
+    if (cor && cor.trim()) {
+      dadosProfessor.cor = cor;
     }
 
     const novoProfessor = new Professor(dadosProfessor);

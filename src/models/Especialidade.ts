@@ -33,7 +33,7 @@ const EspecialidadeSchema = new Schema<IEspecialidade>({
 });
 
 // Índices
-EspecialidadeSchema.index({ nome: 1 });
+// `nome` já tem unique: true, não precisa de index duplicado
 EspecialidadeSchema.index({ ativo: 1 });
 
 export const Especialidade = models.Especialidade || model<IEspecialidade>('Especialidade', EspecialidadeSchema);

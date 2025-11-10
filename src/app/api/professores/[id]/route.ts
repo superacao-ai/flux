@@ -11,7 +11,7 @@ export async function GET(
 ) {
   try {
     await connectDB();
-    const params = context?.params || {};
+    const params = await context?.params || {};
     
     if (!mongoose.Types.ObjectId.isValid(params.id)) {
       return NextResponse.json(
@@ -51,7 +51,7 @@ export async function PUT(
 ) {
   try {
     await connectDB();
-    const params = context?.params || {};
+    const params = await context?.params || {};
     
     if (!mongoose.Types.ObjectId.isValid(params.id)) {
       return NextResponse.json(
@@ -61,7 +61,9 @@ export async function PUT(
     }
 
     const body = await request.json();
-    const { nome, email, telefone, especialidades, ativo } = body;
+    const { nome, email, telefone, especialidades, ativo, cor } = body;
+
+    console.log('🎨 PUT Professor - Dados recebidos:', { nome, email, telefone, especialidades, ativo, cor });
 
     // Validações básicas
     if (!nome) {
@@ -106,6 +108,11 @@ export async function PUT(
       dadosAtualizacao.telefone = telefone;
     } else {
       dadosAtualizacao.$unset = { ...dadosAtualizacao.$unset, telefone: 1 }; // Remove o campo se vazio
+    }
+
+    // Adicionar cor se fornecida
+    if (cor && cor.trim()) {
+      dadosAtualizacao.cor = cor;
     }
 
     // Atualizar professor
@@ -155,7 +162,7 @@ export async function DELETE(
 ) {
   try {
     await connectDB();
-    const params = context?.params || {};
+    const params = await context?.params || {};
     
     if (!mongoose.Types.ObjectId.isValid(params.id)) {
       return NextResponse.json(

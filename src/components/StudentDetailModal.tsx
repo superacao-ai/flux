@@ -15,7 +15,16 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
   const [modalEditing, setModalEditing] = useState(false);
   const [modalEditName, setModalEditName] = useState('');
   const [modalEditObservacoes, setModalEditObservacoes] = useState('');
-  const [localFlags, setLocalFlags] = useState<Record<string, { congelado?: boolean; ausente?: boolean; emEspera?: boolean }>>({});
+  const [alunoPeriodo, setAlunoPeriodo] = useState<string | null>(null);
+  const [alunoParceria, setAlunoParceria] = useState<string | null>(null);
+  const [alunoCongelado, setAlunoCongelado] = useState<boolean>(false);
+  const [alunoAusente, setAlunoAusente] = useState<boolean>(false);
+  const [alunoEmEspera, setAlunoEmEspera] = useState<boolean>(false);
+  const [showMergeModal, setShowMergeModal] = useState(false);
+  const [alunos, setAlunos] = useState<any[]>([]);
+  const [selectedAlunoToMerge, setSelectedAlunoToMerge] = useState<string | null>(null);
+  const [loadingAlunos, setLoadingAlunos] = useState(false);
+  const [mergeSearchText, setMergeSearchText] = useState<string>('');
 
   const diasSemana = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 
@@ -28,20 +37,51 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
     return (found && ((found as any).cor || '#3B82F6')) || m.cor || '#3B82F6';
   };
 
+  // Retorna a cor do status do aluno
+  const getStatusColor = (): string => {
+    if (alunoAusente) return '#ef4444'; // vermelho
+    if (alunoCongelado) return '#0ea5e9'; // azul
+    if (alunoEmEspera) return '#eab308'; // amarelo
+    return '#1f2937'; // cinza (padrão)
+  };
+
   useEffect(() => {
     if (!horario) return;
     const name = horario.alunoId?.nome || horario.aluno?.nome || horario.nome || '';
     setModalEditName(name);
-    setModalEditObservacoes(String(horario.observacoes || ''));
+    setModalEditObservacoes(String(horario.alunoId?.observacoes || horario.aluno?.observacoes || ''));
     setModalEditing(false);
-    // initialize flags based on observacoes markers if present
-    const obsRaw = String(horario.observacoes || '');
-    // Prefer explicit boolean fields when present on the horario document
-    const fromDocCongelado = horario.congelado === true;
-    const fromDocAusente = horario.ausente === true;
-    const fromDocEmEspera = horario.emEspera === true;
-    setLocalFlags({ [horario._id]: { congelado: fromDocCongelado || obsRaw.includes('[CONGELADO]'), ausente: fromDocAusente || obsRaw.includes('[AUSENTE]'), emEspera: fromDocEmEspera || obsRaw.includes('[EM_ESPERA]') } });
+    
+    // initialize aluno linked info if present
+    const aluno = horario.alunoId || horario.aluno;
+    
+    if (aluno) {
+      setAlunoPeriodo(aluno.periodoTreino || null);
+      setAlunoParceria(aluno.parceria || aluno.parceriaNome || null);
+      setAlunoCongelado(aluno.congelado === true);
+      setAlunoAusente(aluno.ausente === true);
+      setAlunoEmEspera(aluno.emEspera === true);
+    } else {
+      // Reset states se não há aluno
+      setAlunoCongelado(false);
+      setAlunoAusente(false);
+      setAlunoEmEspera(false);
+    }
   }, [horario]);
+
+  // Handle ESC key to close modal
+  useEffect(() => {
+    if (!isOpen) return;
+    
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   const getMid = (m: any) => (m && ((m as any).id || (m as any)._id)) || '';
 
@@ -49,95 +89,145 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
     try { if (onRefresh) await onRefresh(); } catch (e) { console.error(e); }
   };
 
-  const toggleCongelado = async (id: string) => {
-    // compute new value from previous state to avoid stale reads
-    let newCongelado = false;
-    setLocalFlags(prev => {
-      const cur = prev[id] || {};
-      newCongelado = !cur.congelado;
-      return { ...prev, [id]: { ...cur, congelado: newCongelado } };
-    });
+  // Toggle / persist aluno.congelado (mutuamente exclusivo com ausente e emEspera)
+  const toggleAlunoCongelado = async () => {
     try {
-      const body: any = { congelado: newCongelado };
-    // no-op: debug log removed
-      const resp = await fetch(`/api/horarios/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    const data = await resp.json();
-      if (!data || !data.success) throw new Error(data && data.error ? data.error : 'Erro');
-      // If the server returned the updated document, use its flags to sync UI immediately
-      const returned = data.data || {};
-      const serverCongelado = returned.congelado === true;
-      const serverAusente = returned.ausente === true;
-      const serverEmEspera = returned.emEspera === true;
-      setLocalFlags(prev => ({ ...prev, [id]: { congelado: serverCongelado, ausente: serverAusente, emEspera: serverEmEspera } }));
+      const aluno = horario.alunoId || horario.aluno;
+      if (!aluno || !aluno._id) { alert('Aluno não encontrado'); return; }
+      const alunoId = String(aluno._id);
+      const newValue = !alunoCongelado;
+
+      // Se ativando congelado, desativa ausente e emEspera
+      const updateBody: any = { congelado: newValue };
+      if (newValue) {
+        updateBody.ausente = false;
+        updateBody.emEspera = false;
+      }
+      
+      const resp = await fetch(`/api/alunos/${alunoId}`, { 
+        method: 'PUT', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify(updateBody) 
+      });
+      const data = await resp.json();
+      
+      if (!data || !data.success) {
+        throw new Error(data?.error || 'Erro ao atualizar aluno');
+      }
+      
+      // Sync UI
+      const congelado = data.data?.congelado === true;
+      setAlunoCongelado(congelado);
+      setAlunoAusente(data.data?.ausente === true);
+      setAlunoEmEspera(data.data?.emEspera === true);
+      
+      // Atualizar o objeto aluno no horario
+      if (horario.alunoId) {
+        Object.assign(horario.alunoId, data.data);
+      }
+      
       await fetchAndRefresh();
-    } catch (err) {
-  console.error('Erro ao togglear congelado:', err);
-  alert('Erro ao marcar congelado.');
-      // revert local flag
-      setLocalFlags(prev => { const cur = prev[id] || {}; return { ...prev, [id]: { ...cur, congelado: !cur.congelado } }; });
+    } catch (err: any) {
+      console.error('Erro ao atualizar congelado:', err);
+      alert('Erro ao atualizar informação do aluno: ' + (err?.message || 'erro'));
     }
   };
 
-  const toggleAusente = async (id: string) => {
-    // compute new value first to avoid stale reads
-    let newAusente = false;
-    setLocalFlags(prev => {
-      const cur = prev[id] || {};
-      newAusente = !cur.ausente;
-      return { ...prev, [id]: { ...cur, ausente: newAusente } };
-    });
+  // Toggle / persist aluno.ausente (mutuamente exclusivo com congelado e emEspera)
+  const toggleAlunoAusente = async () => {
     try {
-      const body: any = { ausente: newAusente };
-    // no-op: debug log removed
-    const resp = await fetch(`/api/horarios/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    const data = await resp.json();
-      if (!data || !data.success) throw new Error(data && data.error ? data.error : 'Erro');
-      const returned = data.data || {};
-      const serverCongelado = returned.congelado === true;
-      const serverAusente = returned.ausente === true;
-      const serverEmEspera = returned.emEspera === true;
-      setLocalFlags(prev => ({ ...prev, [id]: { congelado: serverCongelado, ausente: serverAusente, emEspera: serverEmEspera } }));
+      const aluno = horario.alunoId || horario.aluno;
+      if (!aluno || !aluno._id) { alert('Aluno não encontrado'); return; }
+      const alunoId = String(aluno._id);
+      const newValue = !alunoAusente;
+      
+      // Se ativando ausente, desativa congelado e emEspera
+      const updateBody: any = { ausente: newValue };
+      if (newValue) {
+        updateBody.congelado = false;
+        updateBody.emEspera = false;
+      }
+      
+      const resp = await fetch(`/api/alunos/${alunoId}`, { 
+        method: 'PUT', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify(updateBody) 
+      });
+      const data = await resp.json();
+      
+      if (!data || !data.success) {
+        throw new Error(data?.error || 'Erro ao atualizar aluno');
+      }
+      
+      // Sync UI
+      const ausente = data.data?.ausente === true;
+      setAlunoAusente(ausente);
+      setAlunoCongelado(data.data?.congelado === true);
+      setAlunoEmEspera(data.data?.emEspera === true);
+      if (horario.alunoId) Object.assign(horario.alunoId, data.data);
       await fetchAndRefresh();
-    } catch (err) {
-  console.error('Erro ao togglear ausente:', err);
-  alert('Erro ao marcar ausente.');
-      // revert local flag
-      setLocalFlags(prev => { const cur = prev[id] || {}; return { ...prev, [id]: { ...cur, ausente: !cur.ausente } }; });
+    } catch (err: any) {
+      console.error('Erro ao atualizar ausente:', err);
+      alert('Erro ao atualizar informação do aluno: ' + (err?.message || 'erro'));
     }
   };
 
-  const toggleEmEspera = async (id: string) => {
-    let newEm = false;
-    setLocalFlags(prev => {
-      const cur = prev[id] || {};
-      newEm = !cur.emEspera;
-      return { ...prev, [id]: { ...cur, emEspera: newEm } };
-    });
+  // Toggle / persist aluno.emEspera (mutuamente exclusivo com congelado e ausente)
+  const toggleAlunoEmEspera = async () => {
     try {
-      const body: any = { emEspera: newEm };
-  // no-op: debug log removed
-  const resp = await fetch(`/api/horarios/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-  const data = await resp.json();
-      if (!data || !data.success) throw new Error(data && data.error ? data.error : 'Erro');
-      const returned = data.data || {};
-      const serverCongelado = returned.congelado === true;
-      const serverAusente = returned.ausente === true;
-      const serverEmEspera = returned.emEspera === true;
-      setLocalFlags(prev => ({ ...prev, [id]: { congelado: serverCongelado, ausente: serverAusente, emEspera: serverEmEspera } }));
+      const aluno = horario.alunoId || horario.aluno;
+      if (!aluno || !aluno._id) { alert('Aluno não encontrado'); return; }
+      const alunoId = String(aluno._id);
+      const newValue = !alunoEmEspera;
+
+      // Se ativando emEspera, desativa congelado e ausente
+      const updateBody: any = { emEspera: newValue };
+      if (newValue) {
+        updateBody.congelado = false;
+        updateBody.ausente = false;
+      }
+      
+      const resp = await fetch(`/api/alunos/${alunoId}`, { 
+        method: 'PUT', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify(updateBody) 
+      });
+      const data = await resp.json();
+      
+      if (!data || !data.success) {
+        throw new Error(data?.error || 'Erro ao atualizar aluno');
+      }
+      
+      // Sync UI
+      const emEspera = data.data?.emEspera === true;
+      setAlunoEmEspera(emEspera);
+      setAlunoCongelado(data.data?.congelado === true);
+      setAlunoAusente(data.data?.ausente === true);
+      if (horario.alunoId) Object.assign(horario.alunoId, data.data);
       await fetchAndRefresh();
-    } catch (err) {
-      console.error('Erro ao togglear emEspera:', err);
-      alert('Erro ao marcar em espera.');
-      setLocalFlags(prev => { const cur = prev[id] || {}; return { ...prev, [id]: { ...cur, emEspera: !cur.emEspera } }; });
+    } catch (err: any) {
+      console.error('Erro ao atualizar emEspera:', err);
+      alert('Erro ao atualizar informação do aluno: ' + (err?.message || 'erro'));
     }
   };
 
-  const updateHorarioObservacoes = async (id: string, newObservacoes?: string) => {
+  const updateAlunoObservacoes = async (newObservacoes?: string) => {
     if (typeof newObservacoes === 'undefined') return;
     try {
-      const resp = await fetch(`/api/horarios/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ observacoes: newObservacoes }) });
+      const aluno = horario.alunoId || horario.aluno;
+      if (!aluno || !aluno._id) { alert('Aluno não encontrado'); return; }
+      
+      const alunoId = String(aluno._id);
+      const resp = await fetch(`/api/alunos/${alunoId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ observacoes: newObservacoes }) });
       const data = await resp.json();
       if (data && data.success) {
+        // Atualizar o aluno com os dados atualizados
+        if (data.data) {
+          if (horario.alunoId) {
+            Object.assign(horario.alunoId, data.data);
+          }
+          setModalEditObservacoes(String(data.data.observacoes || ''));
+        }
         await fetchAndRefresh();
       } else {
         alert('Erro ao atualizar observações: ' + (data.error || 'erro'));
@@ -175,8 +265,14 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
       const resp = await fetch(`/api/alunos/${aluno._id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nome: novo.trim() }) });
       const data = await resp.json();
       if (data && data.success) {
+        // Atualizar o modal com o nome atualizado imediatamente
+        if (data.data && horario.alunoId) {
+          Object.assign(horario.alunoId, data.data);
+          // if backend returned periodo/parceria keep in sync
+          if (data.data.periodoTreino) setAlunoPeriodo(data.data.periodoTreino);
+          if (data.data.parceria) setAlunoParceria(data.data.parceria);
+        }
         await fetchAndRefresh();
-        setModalEditing(false);
       } else {
         alert('Erro ao atualizar aluno: ' + (data && data.error ? data.error : 'erro'));
       }
@@ -186,111 +282,380 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
     }
   };
 
-  if (!isOpen || !horario) return null;
+  const fetchAlunos = async () => {
+    setLoadingAlunos(true);
+    try {
+      const resp = await fetch('/api/alunos');
+      const data = await resp.json();
+      if (data && data.success) {
+        // Filtrar alunos excluindo o atual
+        const currentAlunoId = horario.alunoId?._id || horario.alunoId;
+        const filtered = (data.data || []).filter((a: any) => String(a._id) !== String(currentAlunoId));
+        setAlunos(filtered);
+      }
+    } catch (err) {
+      console.error('Erro ao carregar alunos:', err);
+      alert('Erro ao carregar lista de alunos');
+    } finally {
+      setLoadingAlunos(false);
+    }
+  };
 
-  // derive student horarios
-  const studentId = (horario.alunoId && (horario.alunoId as any)._id) || (horario.aluno && (horario.aluno as any)?._id) || null;
-  const studentHorarios = studentId ? (horarios || []).filter((h: any) => {
-    try { const aid = (h.alunoId && (h.alunoId as any)._id) || h.alunoId; return aid && String(aid) === String(studentId); } catch { return false; }
-  }) : [];
+  const handleOpenMergeModal = async () => {
+    setShowMergeModal(true);
+    await fetchAlunos();
+  };
+
+  const mergeStudent = async () => {
+    if (!selectedAlunoToMerge) {
+      alert('Selecione um aluno para vincular');
+      return;
+    }
+
+    if (!confirm(`Tem certeza que deseja vincular todos os horários deste aluno ao selecionado? Esta ação não pode ser desfeita.`)) {
+      return;
+    }
+
+    try {
+      setLoadingAlunos(true);
+      const currentAlunoId = horario.alunoId?._id || horario.alunoId;
+      
+      // Atualizar todos os horários do aluno atual para apontar para o novo aluno
+      const resp = await fetch('/api/horarios/merge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fromAlunoId: String(currentAlunoId),
+          toAlunoId: selectedAlunoToMerge
+        })
+      });
+
+      const data = await resp.json();
+      if (data && data.success) {
+        alert(`Sucesso! ${data.data.updatedCount || 0} horário(s) vinculado(s).`);
+        setShowMergeModal(false);
+        setSelectedAlunoToMerge(null);
+        await fetchAndRefresh();
+        onClose();
+      } else {
+        alert('Erro ao vincular alunos: ' + (data.error || 'erro'));
+      }
+    } catch (err) {
+      console.error('Erro ao vincular alunos:', err);
+      alert('Erro ao vincular alunos');
+    } finally {
+      setLoadingAlunos(false);
+    }
+  };
+
+  // Toggle / persist aluno.periodoTreino (e.g., '12/36')
+  const toggleAlunoPeriodo = async () => {
+    try {
+      const aluno = horario.alunoId || horario.aluno;
+      if (!aluno || !aluno._id) { alert('Aluno não encontrado'); return; }
+      const alunoId = String(aluno._id);
+      const newValue = alunoPeriodo === '12/36' ? null : '12/36';
+      
+      const resp = await fetch(`/api/alunos/${alunoId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ periodoTreino: newValue }) });
+      const data = await resp.json();
+      
+      if (!data || !data.success) {
+        throw new Error(data?.error || 'Erro ao atualizar aluno');
+      }
+      // Sync UI
+      const periodo = data.data?.periodoTreino || null;
+      setAlunoPeriodo(periodo);
+      if (horario.alunoId) Object.assign(horario.alunoId, data.data);
+      await fetchAndRefresh();
+    } catch (err: any) {
+      console.error('Erro ao atualizar periodoTreino:', err);
+      alert('Erro ao atualizar informação do aluno: ' + (err?.message || 'erro'));
+    }
+  };
+
+  // Toggle / persist aluno.parceria (e.g., 'TOTALPASS')
+  const toggleAlunoParceria = async () => {
+    try {
+      const aluno = horario.alunoId || horario.aluno;
+      if (!aluno || !aluno._id) { alert('Aluno não encontrado'); return; }
+      const alunoId = String(aluno._id);
+      const newValue = alunoParceria === 'TOTALPASS' ? null : 'TOTALPASS';
+
+      const resp = await fetch(`/api/alunos/${alunoId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ parceria: newValue }) });
+      const data = await resp.json();
+      
+      if (!data || !data.success) {
+        throw new Error(data?.error || 'Erro ao atualizar aluno');
+      }
+      // Sync UI
+      const parceria = data.data?.parceria || data.data?.parceriaNome || null;
+      setAlunoParceria(parceria);
+      if (horario.alunoId) Object.assign(horario.alunoId, data.data);
+      await fetchAndRefresh();
+    } catch (err: any) {
+      console.error('Erro ao atualizar parceria:', err);
+      alert('Erro ao atualizar informação do aluno: ' + (err?.message || 'erro'));
+    }
+  };
+
+  if (!isOpen || !horario) return null;
 
   const modalidadeId = horario.modalidadeId || horario.aluno?.modalidadeId || horario.modalidade || null;
   const modalidadeObj = modalidades.find(m => getMid(m) === String(modalidadeId));
 
   return (
-    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50" style={{ zIndex: 9999 }} onClick={() => onClose()}>
-      <div className="relative top-24 mx-auto p-6 border w-96 max-w-full shadow-lg rounded-md bg-white" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-3">
-            <h3 className="text-lg font-semibold text-slate-800">Detalhes do aluno</h3>
-            <button onClick={() => setModalEditing(prev => !prev)} title={modalEditing ? 'Cancelar edição' : 'Editar'} aria-label={modalEditing ? 'Cancelar edição' : 'Editar'} className={`p-1 rounded ${modalEditing ? 'text-primary-700 bg-primary-100' : 'text-gray-500 hover:bg-gray-100'}`}>
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" /></svg>
+    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center" style={{ zIndex: 9999 }}>
+      <div className="relative mx-auto w-full max-w-lg bg-white rounded-md shadow-xl" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+        {/* Header */}
+        <div className="border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+          <h3 className="text-lg font-semibold text-gray-900">Detalhes do Aluno</h3>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={handleOpenMergeModal} 
+              title="Mesclar este aluno com outro existente"
+              className="px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm font-medium flex items-center gap-1"
+            >
+              <i className="fas fa-link text-sm" />
+              Mesclar
+            </button>
+            <button onClick={() => onClose()} className="text-gray-400 hover:text-gray-600 transition-colors" aria-label="Fechar">
+              <i className="fas fa-times text-lg" />
             </button>
           </div>
-          <div className="ml-4">
-            <button onClick={() => onClose()} className="text-slate-500 hover:text-slate-700" aria-label="Fechar"><i className="fas fa-times" /></button>
-          </div>
         </div>
 
-        <div className="mt-4">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <div className="text-sm text-gray-500">Nome</div>
-              {!modalEditing ? (
-                <div className="font-medium text-slate-800">{horario.alunoId?.nome || horario.aluno?.nome || horario.nome || <span className="text-gray-400 italic">Nome não informado</span>}</div>
-              ) : (
-                <input value={modalEditName} onChange={e => setModalEditName(e.target.value)} className="w-full border rounded px-2 py-1" />
-              )}
-
-              <div className="mt-2 flex items-center gap-2">
-                <button onClick={() => toggleCongelado(horario._id)} aria-pressed={!!localFlags[horario._id]?.congelado} title={localFlags[horario._id]?.congelado ? 'Descongelar' : 'Congelar'} className={`px-3 py-1 border rounded text-sm flex items-center gap-2 ${localFlags[horario._id]?.congelado ? 'bg-sky-100 border-sky-300 text-sky-800' : 'bg-white hover:bg-gray-50'}`}>{localFlags[horario._id]?.congelado ? 'Descongelar' : 'Congelar'}</button>
-                <button onClick={() => toggleAusente(horario._id)} aria-pressed={!!localFlags[horario._id]?.ausente} title={localFlags[horario._id]?.ausente ? 'Presente' : 'Ausente'} className={`px-3 py-1 border rounded text-sm flex items-center gap-2 ${localFlags[horario._id]?.ausente ? 'bg-rose-100 border-rose-300 text-rose-700' : 'bg-white hover:bg-gray-50'}`}>{localFlags[horario._id]?.ausente ? 'Presente' : 'Ausente'}</button>
-                <button onClick={() => toggleEmEspera(horario._id)} aria-pressed={!!localFlags[horario._id]?.emEspera} title={localFlags[horario._id]?.emEspera ? 'Remover da espera' : 'Colocar em espera'} className={`px-3 py-1 border rounded text-sm flex items-center gap-2 ${localFlags[horario._id]?.emEspera ? 'bg-yellow-100 border-yellow-300 text-yellow-800' : 'bg-white hover:bg-gray-50'}`}>{localFlags[horario._id]?.emEspera ? 'Remover espera' : 'Em espera'}</button>
+        {/* Content */}
+        <div className="px-6 py-4 space-y-6">
+          {modalEditing ? (
+            // MODO EDIÇÃO
+            <>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Nome do Aluno</label>
+                <input 
+                  value={modalEditName} 
+                  onChange={e => setModalEditName(e.target.value)} 
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" 
+                  placeholder="Nome do aluno"
+                />
               </div>
-              {/* server response debug removed from modal UI */}
-            </div>
-          </div>
 
-          <div className="mt-3 text-sm text-gray-500">Observações</div>
-          {!modalEditing ? (
-            <div className="mt-1 text-sm text-slate-700 whitespace-pre-wrap">{horario.observacoes ? horario.observacoes : <span className="text-gray-400 italic">Sem observações</span>}</div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Observações</label>
+                <textarea 
+                  value={modalEditObservacoes} 
+                  onChange={e => setModalEditObservacoes(e.target.value)} 
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm" 
+                  rows={4}
+                  placeholder="Adicione observações sobre o aluno..."
+                />
+              </div>
+            </>
           ) : (
-            <div className="mt-1">
-              <textarea value={modalEditObservacoes} onChange={e => setModalEditObservacoes(e.target.value)} className="w-full border rounded px-2 py-1 text-sm" rows={4} />
-              <div className="mt-2 flex gap-2 justify-end">
-                <button onClick={async () => {
+            // MODO VISUALIZAÇÃO
+            <>
+              {/* Informações Básicas */}
+              <div className="flex items-start gap-4">
+                <div className="w-12 h-12 bg-blue-500 text-white rounded-full flex items-center justify-center font-bold text-lg flex-shrink-0">
+                  {(horario.alunoId?.nome || horario.aluno?.nome || horario.nome || '?').charAt(0).toUpperCase()}
+                </div>
+                <div className="flex-1">
+                  <h4 className="text-lg font-semibold" style={{ color: getStatusColor() }}>
+                    {horario.alunoId?.nome || horario.aluno?.nome || horario.nome || 'Nome não informado'}
+                  </h4>
+                  {(horario.alunoId?.observacoes || horario.aluno?.observacoes) && (
+                    <div className="mt-3">
+                      <span className="inline-block px-3 py-1.5 bg-yellow-100 text-yellow-800 rounded-full text-xs font-semibold border border-yellow-200">
+                        <i className="fas fa-sticky-note mr-1"></i>
+                        {horario.alunoId?.observacoes || horario.aluno?.observacoes}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Status Flags */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-3">Status do Aluno</label>
+                <div className="flex gap-2 flex-wrap">
+                  <button
+                    onClick={toggleAlunoCongelado}
+                    title={alunoCongelado ? 'Remover congelado' : 'Marcar congelado'}
+                    className={`px-3 py-2 rounded-md border transition-all text-sm font-medium flex items-center gap-2 ${alunoCongelado ? 'bg-sky-50 border-sky-300 text-sky-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'}`}
+                  >
+                    <i className="fas fa-snowflake"></i>
+                    Congelado
+                  </button>
+
+                  <button
+                    onClick={toggleAlunoAusente}
+                    title={alunoAusente ? 'Remover ausente' : 'Marcar ausente'}
+                    className={`px-3 py-2 rounded-md border transition-all text-sm font-medium flex items-center gap-2 ${alunoAusente ? 'bg-rose-50 border-rose-300 text-rose-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'}`}
+                  >
+                    <i className="fas fa-user-clock"></i>
+                    Parou de Vir
+                  </button>
+
+                  <button
+                    onClick={toggleAlunoEmEspera}
+                    title={alunoEmEspera ? 'Remover em espera' : 'Marcar em espera'}
+                    className={`px-3 py-2 rounded-md border transition-all text-sm font-medium flex items-center gap-2 ${alunoEmEspera ? 'bg-amber-50 border-amber-300 text-amber-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'}`}
+                  >
+                    <i className="fas fa-hourglass-half"></i>
+                    Em Espera
+                  </button>
+
+                  <button
+                    onClick={toggleAlunoPeriodo}
+                    title={alunoPeriodo === '12/36' ? 'Remover 12/36' : 'Marcar 12/36'}
+                    className={`px-3 py-2 rounded-md border transition-all text-sm font-medium flex items-center gap-2 ${alunoPeriodo === '12/36' ? 'bg-green-50 border-green-300 text-green-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'}`}
+                  >
+                    <i className="fas fa-clock"></i>
+                    12/36
+                  </button>
+
+                  <button
+                    onClick={toggleAlunoParceria}
+                    title={alunoParceria === 'TOTALPASS' ? 'Remover TOTALPASS' : 'Marcar TOTALPASS'}
+                    className={`px-3 py-2 rounded-md border transition-all text-sm font-medium flex items-center gap-2 ${alunoParceria === 'TOTALPASS' ? 'bg-purple-50 border-purple-300 text-purple-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'}`}
+                  >
+                    <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAC1UlEQVR4AbyWg5LlQBiFY3uSu7Zt27Zt27Zt27Zt60G2tC8w/3aWk/qvkkGqzuU53V+7qSwPQ6S5rttM07Sptm3PJZqXQ5pLypwci8UakjoUIpoo8HDE1EgQhC/kcyYR5IZoms6UJOmtaZo1/zT418OSypuwLPsDh3JHpK7vlmXV+NsTBmn5N2zMXZGeeEneZcpxnLYpA7k0HGS+1aZUVZ336wdZAGNNHzDX9wupvmCs6gVsASs0hKIooykyO5f6X4RaxcH7sCya3i4BRpdDAxiGMeUfgDqyWWQA+9Q4VHhoAHP74MgA2uyO2QfQF3cDi0D8077hcStzzk0M+nYMBnNtX1CHN/0lZWhjUAY1DEjuXgv4qkWA5piEAHitFs2IC8CVzR/0kcnnvU+vpzKuTgOhXqn0AKTO1VEB7qN5QLNM0Neharghe70Y+IoFUwPoS7qhsLllIPbN7xx6zpgb+qUAoClwLk1BQWVwIwTgnJ8UGiDj1ozkAIyrxx1XvnLhoM9WwXu3NDzAvdnJAcRWlVDIfbYAaJ4N+pqVj7ZvHB6VHECb1QGFrF1DAPmmtY0EoI5qlhyA7Gw4NLIpIN/R0aErdx/P84cuMQCjS+C9WYKCfM3iwdNMFcF7HfClFpkvYpvKyfcBoWEZTP1yEdASDwFfnZLhWv5wLogtK6beCdUJrVDY2j8Cdb86tgWu6D2R33u+Xi8G98l8sMiEU4Y1AcZU/FxqAOvACFSwOr4lClt7h+FDaU4nv6d+S+CAommUSwkgtqgIcrdaWYUuG37h7vOFCIAs3+inYRjxVYrE7X7G0/MGgGzJ+Ji+MtXfwvMGwNw8AAHoy7pHu5Coqjo3bNDfKX8OvXHKZqlCVqN0wJvlA98xAQImYNfMBthd+kDnrpkBcieVBRgVVsCQOEPrzinQjqPQfiETAzKACnCLioragbrSwFAppSYGmpkF7J5bQoId4XMA6lRclYDTIrUAAAAASUVORK5CYII=" alt="TOTALPASS" style={{ width: '16px', height: '16px' }} />
+                    TOTALPASS
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="border-t border-gray-200 px-6 py-4 flex items-center justify-end gap-3">
+          {modalEditing ? (
+            <>
+              <button 
+                onClick={() => { setModalEditObservacoes(String(horario.observacoes || '')); setModalEditName(horario.alunoId?.nome || horario.aluno?.nome || ''); setModalEditing(false); }} 
+                className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 transition-colors text-sm font-medium"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={async () => {
                   try {
-                    // First save observations
-                    await updateHorarioObservacoes(horario._id, modalEditObservacoes);
-                    // If the user also edited the name, save it too
-                    if (modalEditing) {
+                    const originalName = horario.alunoId?.nome || horario.aluno?.nome || '';
+                    if (modalEditName !== originalName) {
                       await editAlunoName(horario);
                     }
+                    await updateAlunoObservacoes(modalEditObservacoes);
                     setModalEditing(false);
-                  } catch (e) { console.error(e); alert('Erro ao salvar observações'); }
-                }} className="px-3 py-1 bg-primary-600 text-white rounded text-sm">Salvar</button>
-                <button onClick={() => { setModalEditObservacoes(String(horario.observacoes || '')); setModalEditName(horario.alunoId?.nome || horario.aluno?.nome || ''); setModalEditing(false); }} className="px-3 py-1 border rounded text-sm">Cancelar</button>
-              </div>
-            </div>
+                  } catch (e) { console.error(e); alert('Erro ao salvar edições'); }
+                }} 
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm font-medium"
+              >
+                Salvar
+              </button>
+            </>
+          ) : (
+            <>
+              <button 
+                onClick={() => { setModalEditing(true); }} 
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm font-medium"
+              >
+                Editar
+              </button>
+              <button 
+                onClick={() => { if (confirm('Tem certeza que deseja remover este aluno da turma?')) { deleteHorario(horario._id); } }} 
+                className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors text-sm font-medium"
+              >
+                Remover
+              </button>
+            </>
           )}
-
-          <div className="mt-4">
-            <div className="mt-3 text-sm text-gray-500">Horários do aluno</div>
-            <div className="mt-2 space-y-2">
-              {studentHorarios.length === 0 ? (
-                <div className="text-[12px] text-gray-500">Nenhum horário encontrado</div>
-              ) : (
-                studentHorarios.map((sh: any) => {
-                  const mod = modalidades.find(m => getMid(m) === (sh.modalidadeId && ((sh.modalidadeId.id || sh.modalidadeId._id) || sh.modalidadeId)));
-                  return (
-                    <div key={String(sh._id)} className="p-2 rounded border border-gray-100 bg-white text-sm">
-                      <div className="flex items-center justify-between">
-                        <div className="min-w-0">
-                          <div className="text-[12px] text-gray-600">{diasSemana[sh.diaSemana]} • {sh.horarioInicio}{sh.horarioFim ? ' — ' + sh.horarioFim : ''}</div>
-                          <div className="text-[12px] text-gray-600">{sh.professorNome || (sh.professorId && (sh.professorId as any)?.nome) || ''}</div>
-                        </div>
-                        <div className="ml-2 text-[12px] text-gray-700 flex items-center gap-2">
-                          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: getModalidadeColor(mod || { nome: sh.modalidadeNome }) }} />
-                          <span>{mod?.nome || (sh.modalidadeNome || '')}</span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-5 border-t pt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-          <div className="flex items-center gap-2 flex-wrap">
-            <button onClick={() => { if (confirm('REMOVER ALUNO DA TURMA?')) { deleteHorario(horario._id); } }} className="px-3 py-1 bg-red-600 text-white rounded text-sm">REMOVER ALUNO DA TURMA</button>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            {/* Edits are saved via the buttons under Observações; no duplicate Save/Cancel here */}
-          </div>
         </div>
       </div>
+
+      {/* Merge Modal */}
+      {showMergeModal && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center" style={{ zIndex: 10000 }}>
+          <div className="relative mx-auto w-full max-w-md bg-white rounded-md shadow-xl" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+            {/* Header */}
+            <div className="border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900">Mesclar Aluno</h3>
+              <button onClick={() => { setShowMergeModal(false); setSelectedAlunoToMerge(null); setMergeSearchText(''); }} className="text-gray-400 hover:text-gray-600 transition-colors" aria-label="Fechar">
+                <i className="fas fa-times text-lg" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="px-6 py-4 space-y-4">
+              <div className="p-4 bg-amber-50 border border-amber-200 rounded-md">
+                <p className="text-sm text-amber-900 font-medium mb-2">
+                  <i className="fas fa-exclamation-triangle mr-2"></i>
+                  Atenção: Mesclagem Irreversível
+                </p>
+                <p className="text-xs text-amber-800">
+                  Todos os horários de <strong>{horario.alunoId?.nome || horario.aluno?.nome || 'este aluno'}</strong> serão transferidos para o aluno selecionado. <strong>Este aluno será removido do sistema.</strong>
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Pesquisar Aluno</label>
+                <input
+                  type="text"
+                  placeholder="Digite o nome do aluno..."
+                  value={mergeSearchText}
+                  onChange={(e) => setMergeSearchText(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                />
+              </div>
+
+              {loadingAlunos ? (
+                <div className="text-center py-8">
+                  <i className="fas fa-spinner fa-spin text-2xl text-blue-600" />
+                  <p className="text-sm text-gray-500 mt-2">Carregando alunos...</p>
+                </div>
+              ) : alunos.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  <p className="text-sm">Nenhum outro aluno disponível</p>
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {alunos.filter((aluno: any) => 
+                    !mergeSearchText || aluno.nome.toLowerCase().includes(mergeSearchText.toLowerCase())
+                  ).map((aluno: any) => (
+                    <label key={aluno._id} className="flex items-center p-3 border border-gray-200 rounded-md hover:bg-blue-50 cursor-pointer transition-colors">
+                      <input 
+                        type="radio" 
+                        name="merge-aluno" 
+                        value={aluno._id} 
+                        checked={selectedAlunoToMerge === aluno._id}
+                        onChange={(e) => setSelectedAlunoToMerge(e.target.value)}
+                        className="w-4 h-4 text-blue-600 cursor-pointer"
+                      />
+                      <span className="ml-3 text-sm text-gray-900 font-medium">{aluno.nome}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="border-t border-gray-200 px-6 py-4 flex justify-end gap-3">
+              <button 
+                onClick={() => { setShowMergeModal(false); setSelectedAlunoToMerge(null); setMergeSearchText(''); }} 
+                className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 transition-colors text-sm font-medium"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={mergeStudent}
+                disabled={!selectedAlunoToMerge || loadingAlunos}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+              >
+                Mesclar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

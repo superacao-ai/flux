@@ -365,13 +365,16 @@ export default function AlunosPage() {
   };
 
   return (
-    <Layout title="Alunos - Superação Flux">
+  <Layout title="Alunos - Superação Flux" fullWidth>
       <div className="px-4 py-6 sm:px-0">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 fade-in-1">
           <div className="sm:flex sm:items-center sm:space-x-6">
             <div>
-              <h1 className="text-2xl font-semibold text-gray-900">Alunos</h1>
-              <p className="mt-1 text-sm text-gray-600 max-w-xl">Gerencie o cadastro de alunos do studio — pesquise, edite e organize seus alunos.</p>
+                <h1 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+                  <i className="fas fa-users text-primary-600"></i>
+                  Alunos
+                </h1>
+                <p className="mt-2 text-sm text-gray-600 max-w-xl">Gerencie o cadastro de alunos do studio — pesquise, edite e organize seus alunos.</p>
             </div>
             <div className="mt-3 sm:mt-0 grid grid-cols-3 gap-3 sm:gap-4 ml-0 sm:ml-6">
               <div className="bg-white border border-gray-100 rounded-md p-3 shadow-sm">
@@ -390,17 +393,6 @@ export default function AlunosPage() {
           </div>
 
           <div className="flex items-center gap-3">
-            <div>
-              <button
-                type="button"
-                onClick={() => window.location.href = '/alunos/novo'}
-                className="h-10 inline-flex items-center gap-2 rounded-md bg-primary-600 text-white px-4 text-sm font-medium hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
-              >
-                <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
-                Novo Aluno
-              </button>
-            </div>
-
             {selectedAlunos.length > 0 && (
               <button
                 type="button"
@@ -415,7 +407,7 @@ export default function AlunosPage() {
         </div>
 
         {/* Search row placed above the table for clearer layout */}
-        <div className="mt-4 sm:mt-6">
+        <div className="mt-4 sm:mt-6 fade-in-2">
           <div className="flex items-center justify-between gap-4">
             <div className="relative w-full sm:w-1/2">
               <svg className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z" /></svg>
@@ -435,115 +427,115 @@ export default function AlunosPage() {
         </div>
 
         <div className="mt-6 flex flex-col">
-          <div className="-my-2 -mx-4 overflow-x-auto sm:-mx-6 lg:-mx-8">
+          <div className="-my-2 -mx-4 overflow-x-auto sm:-mx-6 lg:-mx-8 fade-in-3">
             <div className="inline-block min-w-full py-2 align-middle md:px-6 lg:px-8">
-              <div className="overflow-hidden shadow ring-1 ring-black ring-opacity-5 md:rounded-lg">
-                <table className="min-w-full divide-y divide-gray-300">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th scope="col" className="relative px-6 sm:w-12 sm:px-6">
+              <div className="overflow-hidden rounded-md border border-gray-200">
+                <table className="w-full table-fixed text-sm border-collapse">
+                  <thead className="bg-white border-b border-gray-200">
+                    <tr className="text-center">
+                      <th scope="col" className="px-3 py-2 text-center text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
                         <input
                           type="checkbox"
-                          className="absolute left-4 top-1/2 -mt-2 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                          className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
                           checked={selectAll}
                           onChange={toggleSelectAll}
                         />
                       </th>
-                      <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 sm:pl-6">
+                      <th scope="col" className="px-3 py-2 text-left text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
                         Nome
                       </th>
-                      <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                      <th scope="col" className="px-3 py-2 text-left text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
                         Email
                       </th>
-                      <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                      <th scope="col" className="px-3 py-2 text-left text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
                         Modalidades
                       </th>
-                      <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                      <th scope="col" className="px-3 py-2 text-left text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
                         Horários
                       </th>
-                      <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                      <th scope="col" className="px-3 py-2 text-left text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
                         Telefone
                       </th>
-                      <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                      <th scope="col" className="px-3 py-2 text-left text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
                         Status
                       </th>
-                      <th scope="col" className="relative py-3.5 pl-3 pr-4 sm:pr-6">
+                      <th scope="col" className="px-3 py-2 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
                         <span className="sr-only">Ações</span>
                       </th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-200 bg-white">
+                  <tbody className="bg-white">
                     {loading ? (
                       <tr>
-                        <td colSpan={7} className="px-6 py-4 text-center text-gray-500">
+                        <td colSpan={8} className="px-3 py-4 text-center text-sm text-gray-500 border-b border-gray-200">
                           Carregando alunos...
                         </td>
                       </tr>
                     ) : filteredAlunos.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="px-6 py-4 text-center text-gray-500">
+                        <td colSpan={8} className="px-3 py-4 text-center text-sm text-gray-500 border-b border-gray-200">
                           Nenhum aluno encontrado.
                         </td>
                       </tr>
                     ) : (
-                      filteredAlunos.map((aluno) => (
-                        <tr key={aluno._id} className="hover:bg-gray-50 transition-colors">
-                          <td className="relative px-6 sm:w-12 sm:px-6">
+                      filteredAlunos.map((aluno, idx) => (
+                        <tr key={aluno._id} className={`fade-in-${Math.min((idx % 8) + 1, 8)}`}>
+                          <td className="px-3 py-3 text-sm border-r border-b border-gray-200 text-center">
                             <input
                               type="checkbox"
-                              className="absolute left-4 top-1/2 -mt-2 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                              className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
                               checked={selectedAlunos.includes(aluno._id)}
                               onChange={() => toggleSelectAluno(aluno._id)}
                             />
                           </td>
-                          <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900 sm:pl-6">
+                          <td className="px-3 py-3 text-sm font-medium text-gray-900 border-r border-b border-gray-200">
                             <div className="flex items-center gap-3">
-                              <div className="h-8 w-8 rounded-full bg-gray-100 flex items-center justify-center text-sm font-semibold text-gray-700">{(aluno.nome || '').split(' ').slice(0,2).map(n=>n[0]).join('').toUpperCase()}</div>
+                              <div className="h-8 w-8 rounded-full bg-gray-100 flex items-center justify-center text-xs font-semibold text-gray-700">{(aluno.nome || '').split(' ').slice(0,2).map(n=>n[0]).join('').toUpperCase()}</div>
                               <div className="truncate" title={aluno.nome}>{aluno.nome}</div>
                             </div>
                           </td>
-                          <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+                          <td className="px-3 py-3 text-sm text-gray-500 border-r border-b border-gray-200">
                             {aluno.email}
                           </td>
-                          <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+                          <td className="px-3 py-3 text-sm text-gray-500 border-r border-b border-gray-200">
                             <div className="flex items-center space-x-2">
                               {(aluno.modalidades && aluno.modalidades.length > 0) ? (
                                 aluno.modalidades.map(m => (
                                   <div key={(m._id || m.nome)} className="flex items-center space-x-2">
                                     <div className="w-3 h-3 rounded-full" style={{ backgroundColor: getModalidadeColor(m) }}></div>
-                                    <span className="text-sm">{m.nome}</span>
+                                    <span className="text-xs">{m.nome}</span>
                                   </div>
                                 ))
                               ) : (
                                 <div className="flex items-center">
                                   <div className="w-3 h-3 rounded-full mr-2" style={{ backgroundColor: getModalidadeColor(aluno.modalidadeId) }}></div>
-                                  <span>{aluno.modalidadeId?.nome || 'N/A'}</span>
+                                  <span className="text-xs">{aluno.modalidadeId?.nome || 'N/A'}</span>
                                 </div>
                               )}
                             </div>
                           </td>
 
-                          <td className="px-3 py-4 text-sm text-gray-500">
+                          <td className="px-3 py-3 text-sm text-gray-500 border-r border-b border-gray-200">
                             {aluno.horarios && aluno.horarios.length > 0 ? (
-                              <div className="space-y-1">
+                              <div className="space-y-0.5">
                                 <div className="text-xs font-semibold text-gray-700">Treinos: {aluno.horarios.length}</div>
-                                {aluno.horarios.slice(0,3).map((h,i) => (
+                                {aluno.horarios.slice(0,2).map((h,i) => (
                                   <div key={`${h.diaSemana}-${h.horarioInicio}-${h.horarioFim}-${h.professorNome || ''}`} className="text-xs text-gray-600">
-                                    {['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'][h.diaSemana]} {h.horarioInicio}–{h.horarioFim} {h.professorNome ? `· ${h.professorNome}` : ''}
+                                    {['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'][h.diaSemana]} {h.horarioInicio}–{h.horarioFim}
                                   </div>
                                 ))}
-                                {aluno.horarios.length > 3 && <div className="text-xs text-gray-400">+{aluno.horarios.length - 3} outros</div>}
+                                {aluno.horarios.length > 2 && <div className="text-xs text-gray-400">+{aluno.horarios.length - 2} outros</div>}
                               </div>
                             ) : (
                               <div className="text-xs text-gray-400">—</div>
                             )}
                           </td>
-                          <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+                          <td className="px-3 py-3 text-sm text-gray-500 border-r border-b border-gray-200">
                             {aluno.telefone}
                           </td>
-                          <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+                          <td className="px-3 py-3 text-sm border-r border-b border-gray-200">
                             <span
-                              className={`inline-flex rounded-full px-2 text-xs font-semibold leading-5 ${
+                              className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${
                                 aluno.ativo
                                   ? 'bg-green-100 text-green-800'
                                   : 'bg-red-100 text-red-800'
@@ -552,15 +544,13 @@ export default function AlunosPage() {
                               {aluno.ativo ? 'Ativo' : 'Inativo'}
                             </span>
                           </td>
-                          <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
-                            <div className="flex items-center justify-end gap-3">
-                              <button onClick={() => abrirEdicao(aluno)} className="inline-flex items-center gap-2 px-3 py-1 text-sm rounded-md bg-white border border-gray-100 hover:bg-gray-50 text-primary-600">
-                                <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536M9 11l6-6 3 3-6 6H9v-3z"/></svg>
-                                <span>Editar</span>
+                          <td className="px-3 py-3 text-sm border-b border-gray-200">
+                            <div className="flex items-center justify-center gap-2">
+                              <button onClick={() => abrirEdicao(aluno)} className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md bg-white border border-gray-100 hover:bg-gray-50 text-primary-600">
+                                <svg className="h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536M9 11l6-6 3 3-6 6H9v-3z"/></svg>
                               </button>
-                              <button onClick={() => excluirAluno(aluno._id, aluno.nome)} className="inline-flex items-center gap-2 px-3 py-1 text-sm rounded-md bg-red-50 border border-red-100 text-red-700 hover:bg-red-100">
-                                <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M10 3h4l1 4H9l1-4z"/></svg>
-                                <span>Excluir</span>
+                              <button onClick={() => excluirAluno(aluno._id, aluno.nome)} className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md bg-red-50 border border-red-100 text-red-700 hover:bg-red-100">
+                                <svg className="h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M10 3h4l1 4H9l1-4z"/></svg>
                               </button>
                             </div>
                           </td>
@@ -580,7 +570,7 @@ export default function AlunosPage() {
       {/* Modal de Edição */}
       {showEditModal && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-          <div className="relative top-20 mx-auto p-0 border w-11/12 max-w-md shadow-lg rounded-md bg-white">
+          <div className="relative top-20 mx-auto p-0 border w-11/12 max-w-md shadow-lg rounded-md bg-white fade-in-4">
             <div className="px-6 py-4 border-b">
               <h3 className="text-lg font-medium text-gray-900">Editar Aluno</h3>
             </div>

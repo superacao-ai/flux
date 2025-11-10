@@ -64,9 +64,10 @@ export default function ModalidadesPage() {
     try {
       const response = await fetch('/api/modalidades');
 
-      // Se a resposta não for OK, logue o corpo (pode ser HTML de erro)
+      // Se a resposta não for OK, mostre alerta ao usuário e logue o corpo
       if (!response.ok) {
         const text = await response.text();
+        alert('Erro ao buscar modalidades: ' + response.status + '\n' + text);
         console.error('Erro na requisição /api/modalidades:', response.status, text);
         return;
       }
@@ -74,6 +75,7 @@ export default function ModalidadesPage() {
       const contentType = response.headers.get('content-type') || '';
       if (!contentType.includes('application/json')) {
         const text = await response.text();
+        alert('Resposta da API de modalidades não está em formato JSON.');
         console.error('Resposta /api/modalidades não é JSON:', text);
         return;
       }
@@ -82,9 +84,11 @@ export default function ModalidadesPage() {
       if (data && data.success) {
         setModalidades(data.data || []);
       } else {
+        alert('Erro ao buscar modalidades: ' + (data && data.error ? data.error : 'Formato inesperado.'));
         console.error('API /api/modalidades retornou erro ou formato inesperado:', data);
       }
     } catch (error) {
+      alert('Erro ao buscar modalidades: ' + String(error));
       console.error('Erro ao buscar modalidades:', error);
     }
   };
@@ -302,12 +306,15 @@ export default function ModalidadesPage() {
   }, [modalidades, query]);
 
   return (
-    <Layout title="Modalidades - Superação Flux">
+    <Layout title="Modalidades - Superação Flux" fullWidth>
       <div className="px-4 py-6 sm:px-0">
-        <div className="flex items-center justify-between gap-4 mb-4">
+        <div className="flex items-center justify-between gap-4 mb-4 fade-in-1">
           <div>
-            <h1 className="text-2xl font-semibold text-gray-900">Modalidades</h1>
-            <p className="mt-1 text-sm text-gray-600 max-w-xl">Gerencie as modalidades disponíveis no seu studio — nome, cor, duração e horários.</p>
+            <h1 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+              <i className="fas fa-layer-group text-primary-600"></i>
+              Modalidades
+            </h1>
+            <p className="mt-2 text-sm text-gray-600 max-w-xl">Gerencie as modalidades disponíveis no seu studio — nome, cor, duração e horários.</p>
           </div>
 
           <div>
@@ -316,16 +323,16 @@ export default function ModalidadesPage() {
               onClick={() => setShowModal(true)}
               className="h-10 inline-flex items-center gap-2 rounded-md bg-primary-600 text-white px-4 text-sm font-medium hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
             >
-              <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
+              <i className="fas fa-plus w-4 text-white" aria-hidden="true" />
               Nova Modalidade
             </button>
           </div>
         </div>
 
         {/* Search row above grid */}
-        <div className="mb-6">
+        <div className="mb-6 fade-in-2">
           <div className="relative w-full sm:w-1/2">
-            <svg className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z" /></svg>
+            <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 w-4 text-gray-400" aria-hidden="true" />
             <input
               type="text"
               value={query}
@@ -337,9 +344,9 @@ export default function ModalidadesPage() {
         </div>
 
         {/* Grid de modalidades */}
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 fade-in-3">
           {filteredModalidades.map((modalidade, idx) => (
-            <div key={(modalidade as any).id || (modalidade as any)._id || idx} className="bg-white rounded-lg shadow border border-gray-200 p-6">
+            <div key={(modalidade as any).id || (modalidade as any)._id || idx} className={`bg-white rounded-lg border border-gray-200 p-6 fade-in-${Math.min((idx % 8) + 3, 8)}`}>
               <div className="flex items-center">
                 <div
                   className="w-4 h-4 rounded-full mr-3"
@@ -395,49 +402,29 @@ export default function ModalidadesPage() {
               
               <div className="mt-4 flex justify-end gap-3">
                 <button onClick={() => editModalidade(modalidade)} className="inline-flex items-center gap-2 h-8 px-3 rounded-md bg-white border border-gray-100 hover:bg-gray-50 text-primary-600 text-sm">
-                  <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536M9 11l6-6 3 3-6 6H9v-3z"/></svg>
+                  <i className="fas fa-edit w-4 text-primary-600" aria-hidden="true" />
                   <span>Editar</span>
                 </button>
                 <button onClick={() => deleteModalidade((modalidade as any).id || (modalidade as any)._id)} className="inline-flex items-center gap-2 h-8 px-3 rounded-md bg-red-50 border border-red-100 text-red-700 hover:bg-red-100 text-sm">
-                  <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M10 3h4l1 4H9l1-4z"/></svg>
+                  <i className="fas fa-trash w-4 text-red-700" aria-hidden="true" />
                   <span>Desativar</span>
                 </button>
                 <button onClick={() => deleteModalidadeHard((modalidade as any).id || (modalidade as any)._id)} className="inline-flex items-center gap-2 h-8 px-3 rounded-md bg-red-600 text-white hover:bg-red-700 text-sm">
-                  <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v3m0 0v3m0-3h3m-3 0H9"/></svg>
+                  <i className="fas fa-trash-alt w-4 text-white" aria-hidden="true" />
                   <span>Apagar</span>
                 </button>
               </div>
             </div>
           ))}
           
-          {filteredModalidades.length === 0 && (
-            <div className="col-span-full text-center text-gray-500 py-12">
-              <div className="mx-auto h-12 w-12 rounded-full bg-primary-50 text-primary-600 flex items-center justify-center">
-                <svg className="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-              </div>
-              <h3 className="mt-2 text-sm font-medium text-gray-900">Nenhuma modalidade</h3>
-              <p className="mt-1 text-sm text-gray-500">Comece criando sua primeira modalidade.</p>
-              <div className="mt-6">
-                <button
-                  type="button"
-                  onClick={() => setShowModal(true)}
-                  className="h-10 inline-flex items-center gap-2 rounded-md bg-primary-600 text-white px-4 text-sm font-medium hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                >
-                  <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
-                  Nova Modalidade
-                </button>
-              </div>
-            </div>
-          )}
+          {/* Empty state removed */}
         </div>
       </div>
 
       {/* Modal para nova modalidade */}
       {showModal && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white fade-in-4">
             <div className="mt-3">
               <h3 className="text-lg font-medium text-gray-900 mb-4">
                 {editingModalidade ? 'Editar Modalidade' : 'Nova Modalidade'}

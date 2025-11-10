@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
     let horarios = await HorarioFixo.find(query)
       .populate({
         path: 'alunoId',
-        select: 'nome email modalidadeId',
+        select: 'nome email modalidadeId periodoTreino parceria observacoes congelado ausente emEspera',
         populate: {
           path: 'modalidadeId',
           select: 'nome cor',
@@ -32,10 +32,33 @@ export async function GET(request: NextRequest) {
         },
         options: { strictPopulate: false }
       })
-      .populate('professorId', 'nome especialidade')
+      .populate('professorId', 'nome especialidade cor')
+      .populate('modalidadeId', 'nome cor limiteAlunos')
       .sort({ diaSemana: 1, horarioInicio: 1 })
-      .select('-__v')
       .lean();
+
+    // Debug: log primeiro horário para verificar campos
+    if (horarios.length > 0) {
+      const firstH = horarios[0] as any;
+      console.log('[/api/horarios] Primeiro horário - campos importantes:', {
+        _id: firstH._id,
+        alunoNome: firstH.alunoId?.nome,
+        'aluno.congelado': firstH.alunoId?.congelado,
+        'aluno.ausente': firstH.alunoId?.ausente,
+        'aluno.emEspera': firstH.alunoId?.emEspera,
+        periodoTreino: firstH.alunoId?.periodoTreino,
+        parceria: firstH.alunoId?.parceria
+      });
+      
+      // Log de TODOS os horários com flags ativas DO ALUNO
+      const withFlags = horarios.filter((h: any) => h.alunoId?.congelado || h.alunoId?.ausente || h.alunoId?.emEspera);
+      if (withFlags.length > 0) {
+        console.log(`[/api/horarios] ${withFlags.length} horário(s) com flags ativas no aluno:`);
+        withFlags.forEach((h: any) => {
+          console.log(`  - ${h._id}: ${h.alunoId?.nome || 'sem aluno'} - congelado:${h.alunoId?.congelado}, ausente:${h.alunoId?.ausente}, emEspera:${h.alunoId?.emEspera}`);
+        });
+      }
+    }
 
     // Optional filter by professorId (supports string id matching populated or raw field)
     try {
@@ -83,7 +106,7 @@ export async function GET(request: NextRequest) {
         const matriculas = await Matricula.find({ horarioFixoId: { $in: horarioIds }, ativo: true })
           .populate({
             path: 'alunoId',
-            select: 'nome email modalidadeId',
+            select: 'nome email modalidadeId periodoTreino parceria observacoes congelado ausente emEspera',
             populate: { path: 'modalidadeId', select: 'nome cor' }
           })
           .lean();
@@ -110,6 +133,14 @@ export async function GET(request: NextRequest) {
     } catch (matErr:any) {
       console.warn('Erro ao popular matriculas para horarios:', String(matErr?.message || matErr));
     }
+    
+    // Garantir que os campos booleanos sempre existem - LENDO DO ALUNO
+    horarios = horarios.map((h: any) => ({
+      ...h,
+      congelado: h.alunoId?.congelado === true,
+      ausente: h.alunoId?.ausente === true,
+      emEspera: h.alunoId?.emEspera === true
+    }));
     
     return NextResponse.json({
       success: true,
@@ -380,7 +411,7 @@ export async function POST(request: NextRequest) {
       horarioFim,
       observacoes
     };
-    if (alunoId) payload.alunoId = alunoId;
+  // Não salvar alunoId no HorarioFixo. Matrícula é feita via /api/matriculas.
     if (modalidadeId) payload.modalidadeId = modalidadeId;
 
     // Ensure we don't set alunoId to null (convert falsy to undefined) so partial unique index works
@@ -510,8 +541,8 @@ export async function POST(request: NextRequest) {
     
     // Buscar com populate para retornar dados completos
     const horarioCompleto = await HorarioFixo.findById(horarioSalvo._id)
-      .populate('alunoId', 'nome email')
-      .populate('professorId', 'nome especialidade')
+      .populate('alunoId', 'nome email periodoTreino parceria observacoes')
+      .populate('professorId', 'nome especialidade cor')
       .select('-__v');
 
     return NextResponse.json(

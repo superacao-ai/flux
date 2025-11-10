@@ -8,10 +8,9 @@ export interface IReagendamento {
   novaData: Date;
   novoHorarioInicio: string;
   novoHorarioFim: string;
+  matriculaId?: mongoose.Types.ObjectId;
   // Optional: reference to an existing HorarioFixo that will receive the aluno
   novoHorarioFixoId?: mongoose.Types.ObjectId;
-  alunoId?: mongoose.Types.ObjectId | null;
-  origemMatriculaId?: mongoose.Types.ObjectId | null;
   professorOrigemId?: mongoose.Types.ObjectId | null;
   motivo: string;
   status: 'pendente' | 'aprovado' | 'rejeitado';
@@ -50,14 +49,8 @@ const ReagendamentoSchema = new Schema<IReagendamento>({
     ref: 'HorarioFixo',
     required: false
   },
-  // The aluno being rescheduled (explicit reference) - supports Matricula-first flows
-  alunoId: {
-    type: Schema.Types.ObjectId,
-    ref: 'Aluno',
-    required: false
-  },
-  // Optional: reference to the origin Matricula (if the student is enrolled via Matricula)
-  origemMatriculaId: {
+  // If the reagendamento references a specific matricula (student instance in a turma), store it
+  matriculaId: {
     type: Schema.Types.ObjectId,
     ref: 'Matricula',
     required: false

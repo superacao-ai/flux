@@ -47,7 +47,7 @@ export async function PATCH(request: NextRequest) {
     await HorarioFixo.updateMany(filter, { $set: updates });
 
     // Return updated docs
-    const updated = await HorarioFixo.find(filter).populate('alunoId', 'nome email').populate('professorId', 'nome especialidade');
+    const updated = await HorarioFixo.find(filter).populate('alunoId', 'nome email periodoTreino parceria observacoes').populate('professorId', 'nome especialidade');
 
     return NextResponse.json({ success: true, data: updated });
   } catch (error) {

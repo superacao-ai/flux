@@ -7,14 +7,15 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-  "seed": "node scripts/seed.js",
-  "create-admin": "node scripts/create-admin.js",
-  "wipe:modalidades": "node scripts/delete-all-modalidades.js"
+    "seed": "node scripts/seed.js",
+    "create-admin": "node scripts/create-admin.js",
+    "wipe:modalidades": "node scripts/delete-all-modalidades.js"
   },
   "dependencies": {
     "@fortawesome/fontawesome-free": "^7.1.0",
     "@heroicons/react": "^2.0.18",
     "bcryptjs": "^2.4.3",
+    "chart.js": "^4.5.1",
     "date-fns": "^2.30.0",
     "dotenv": "^17.2.3",
     "jsonwebtoken": "^9.0.2",
@@ -23,6 +24,7 @@
     "next": "15.0.0",
     "next-auth": "^4.24.5",
     "react": "^18",
+    "react-chartjs-2": "^5.3.1",
     "react-dom": "^18",
     "react-hook-form": "^7.48.2",
     "react-hot-toast": "^2.4.1",

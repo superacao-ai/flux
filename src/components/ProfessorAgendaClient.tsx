@@ -8,7 +8,12 @@ type Horario = {
   horarioInicio: string;
   horarioFim: string;
   professorId?: { _id?: string; nome?: string } | string;
-  alunoId?: { _id?: string; nome?: string } | Array<any> | null;
+  alunoId?: { 
+    _id?: string; 
+    nome?: string;
+    modalidadeId?: { _id?: string; nome?: string; cor?: string } | string;
+  } | Array<any> | null;
+  modalidadeId?: { _id?: string; nome?: string; cor?: string } | string;
   congelado?: boolean;
   ausente?: boolean;
   emEspera?: boolean;
@@ -72,12 +77,17 @@ export default function ProfessorAgendaClient() {
       try {
         setLoading(true);
         const token = localStorage.getItem('token');
+        
         const res = await fetch('/api/me/horarios', { headers: { Authorization: token ? `Bearer ${token}` : '' } });
+        
         if (!res.ok) throw new Error('Falha ao buscar horários');
         const payload = await res.json();
+        
         const list = Array.isArray(payload) ? payload : (Array.isArray(payload.data) ? payload.data : []);
+        
         setHorarios(list);
       } catch (e: any) {
+        console.error('[ProfessorAgenda] Erro:', e);
         setError(e?.message || 'Erro desconhecido');
       } finally {
         setLoading(false);
@@ -87,9 +97,26 @@ export default function ProfessorAgendaClient() {
   }, []);
 
   if (loading) return <div className="p-6">Carregando agenda...</div>;
-  if (error) return <div className="p-6 text-red-600">{error}</div>;
+  if (error) return <div className="p-6 text-red-600">Erro: {error}</div>;
 
-  if (horarios.length === 0) return <div className="p-6 text-gray-500">Nenhum horário encontrado.</div>;
+  if (horarios.length === 0) {
+    return (
+      <div className="p-6">
+        <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
+          <h3 className="text-yellow-800 font-semibold mb-2">Nenhum horário encontrado</h3>
+          <p className="text-yellow-700 text-sm">
+            Não foram encontrados horários fixos para este professor. 
+            Verifique se:
+          </p>
+          <ul className="list-disc list-inside text-yellow-700 text-sm mt-2 space-y-1">
+            <li>O professor está cadastrado no sistema</li>
+            <li>O email do login coincide com o email do cadastro do professor</li>
+            <li>Existem horários fixos atribuídos a este professor</li>
+          </ul>
+        </div>
+      </div>
+    );
+  }
 
   // Filter horarios by selectedDate's dayOfWeek
   const dayOfWeek = selectedDate.getDay();
@@ -174,95 +201,146 @@ export default function ProfessorAgendaClient() {
           <div className="text-sm text-gray-500">{dayNames[dayOfWeek]}</div>
         </div>
 
-        {/* compact upcoming dates */}
-        <div className="mb-4">
-          <div className="flex gap-2 flex-wrap">
-            {(() => {
-              const list: Date[] = [];
-              const today = new Date();
-              for (let i = 0; i < 30; i++) {
-                const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() + i);
-                if (isAvailableDate(d)) list.push(d);
-              }
-              if (list.length === 0) return null;
-              return list.map(d => {
-                const isSelected = selectedDate.toDateString() === d.toDateString();
-                return (
-                  <button key={d.toISOString()} onClick={() => setSelectedDate(d)} className={`px-2 py-1 rounded text-sm ${isSelected ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-700'}`}>
-                    {formatDate(d)}
-                  </button>
-                );
-              });
-            })()}
-          </div>
-        </div>
-
         {entries.map((g) => {
-          // filter out horario items that don't reference any valid student (avoid rendering empty placeholders)
-          const validItems = (g.items || []).filter(h => {
-            const alunos = Array.isArray(h.alunoId) ? h.alunoId : (h.alunoId ? [h.alunoId] : []);
-            return alunos.some(a => {
-              if (!a) return false;
-              if (typeof a === 'string') return String(a).trim().length > 0;
-              return Boolean(a && (a._id || a.nome || a.email || a.telefone));
-            });
-          });
+          // Não filtrar mais - mostrar todos os horários, mesmo sem alunos
+          const validItems = g.items || [];
           const sample = validItems[0] || g.items[0];
           const key = g.key;
-          return validItems.length === 0 ? null : (
-            <div key={key} className="bg-white rounded-lg shadow-sm p-4">
-              <div className="flex items-center justify-between mb-2">
-                <div>
-                  <div className="text-sm text-gray-500">{sample.horarioInicio} — {sample.horarioFim}</div>
+          
+          // Pegar modalidade do primeiro horário
+          const getModalidade = (h: Horario) => {
+            // Tentar pegar da modalidade do aluno primeiro
+            if (h.alunoId && !Array.isArray(h.alunoId) && typeof h.alunoId === 'object') {
+              const modalidade = h.alunoId.modalidadeId;
+              if (modalidade && typeof modalidade === 'object') {
+                return { nome: modalidade.nome || 'Modalidade', cor: modalidade.cor || '#3B82F6' };
+              }
+            }
+            // Senão, tentar pegar do horário fixo
+            if (h.modalidadeId && typeof h.modalidadeId === 'object') {
+              return { nome: h.modalidadeId.nome || 'Modalidade', cor: h.modalidadeId.cor || '#3B82F6' };
+            }
+            return { nome: 'Modalidade não definida', cor: '#6B7280' };
+          };
+          
+          const modalidade = getModalidade(sample);
+          const totalAlunos = validItems.reduce((acc, h) => {
+            const alunos = Array.isArray(h.alunoId) ? h.alunoId : (h.alunoId ? [h.alunoId] : []);
+            return acc + alunos.length;
+          }, 0);
+          
+          return (
+            <div key={key} className="bg-white rounded-lg shadow-sm border-l-4 p-4" style={{ borderLeftColor: modalidade.cor }}>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-3">
+                  <div>
+                    <div className="text-lg font-semibold text-gray-900">{sample.horarioInicio} — {sample.horarioFim}</div>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span 
+                        className="inline-block px-3 py-1 rounded-md text-white text-sm font-medium"
+                        style={{ backgroundColor: modalidade.cor }}
+                      >
+                        {modalidade.nome}
+                      </span>
+                      <span className="text-sm text-gray-500">
+                        {totalAlunos} {totalAlunos === 1 ? 'aluno' : 'alunos'}
+                      </span>
+                    </div>
+                  </div>
                 </div>
                 <div className="flex items-center gap-3">
-                  <button onClick={() => toggleOpenKey(key, g.items)} className="text-sm text-primary-600">Registrar</button>
+                  <button onClick={() => toggleOpenKey(key, g.items)} className="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 transition-colors text-sm font-medium">
+                    <i className="fas fa-check mr-2"></i>
+                    Registrar Presença
+                  </button>
                 </div>
               </div>
-                <div className="divide-y">
-                {validItems.map((h) => (
-                  <div key={h._id} className="py-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="text-sm font-medium flex items-center gap-2">
-                          <i className="fas fa-user w-4 text-gray-400" aria-hidden="true" />
-                          {(() => {
-                            const alunos = Array.isArray(h.alunoId) ? h.alunoId : (h.alunoId ? [h.alunoId] : []);
-                            if (alunos.length === 0) return <span className="text-gray-400">—</span>;
-                            const safeName = (a: any) => (a && (a.nome || a.email || a.telefone) ? (a.nome || a.email || a.telefone) : '—');
-                            if (alunos.length === 1) return safeName(alunos[0]);
-                            const names = alunos.slice(0, 2).map((a: any) => safeName(a));
-                            return `${names.join(', ')}${alunos.length > 2 ? ` +${alunos.length - 2}` : ''}`;
-                          })()}
-                        </div>
-                        <div className="flex items-center gap-2 text-xs">
-                          {h.congelado && <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded">Congelado</span>}
-                          {h.ausente && <span className="px-2 py-0.5 bg-yellow-50 text-yellow-800 rounded">Ausente</span>}
-                          {h.emEspera && <span className="px-2 py-0.5 bg-gray-50 text-gray-700 rounded">Em espera</span>}
+                <div className="space-y-2">
+                {totalAlunos === 0 ? (
+                  <div className="p-3 bg-gray-50 rounded-md text-center">
+                    <i className="fas fa-users text-gray-300 text-2xl mb-2"></i>
+                    <p className="text-sm text-gray-500">Nenhum aluno matriculado neste horário</p>
+                  </div>
+                ) : (
+                  validItems.map((h) => (
+                    <div key={h._id} className="p-3 bg-gray-50 rounded-md">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full flex items-center justify-center text-white font-semibold text-sm" style={{ backgroundColor: modalidade.cor }}>
+                            {(() => {
+                              const alunos = Array.isArray(h.alunoId) ? h.alunoId : (h.alunoId ? [h.alunoId] : []);
+                              if (alunos.length === 0) return '?';
+                              const first = alunos[0];
+                              const nome = typeof first === 'string' ? first : (first?.nome || first?.email || '?');
+                              return nome.charAt(0).toUpperCase();
+                            })()}
+                          </div>
+                          <div>
+                            <div className="text-sm font-medium text-gray-900">
+                              {(() => {
+                                const alunos = Array.isArray(h.alunoId) ? h.alunoId : (h.alunoId ? [h.alunoId] : []);
+                                if (alunos.length === 0) return <span className="text-gray-400">Sem aluno</span>;
+                                const safeName = (a: any) => (a && (a.nome || a.email || a.telefone) ? (a.nome || a.email || a.telefone) : '—');
+                                if (alunos.length === 1) return safeName(alunos[0]);
+                                const names = alunos.slice(0, 2).map((a: any) => safeName(a));
+                                return `${names.join(', ')}${alunos.length > 2 ? ` +${alunos.length - 2}` : ''}`;
+                              })()}
+                            </div>
+                            <div className="flex items-center gap-2 text-xs mt-1">
+                              {h.congelado && <span className="px-2 py-0.5 bg-sky-100 text-sky-700 rounded-md border border-sky-200">
+                                <i className="fas fa-snowflake mr-1"></i>Congelado
+                              </span>}
+                              {h.ausente && <span className="px-2 py-0.5 bg-rose-100 text-rose-700 rounded-md border border-rose-200">
+                                <i className="fas fa-user-clock mr-1"></i>Parou de Vir
+                              </span>}
+                              {h.emEspera && <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-md border border-amber-200">
+                                <i className="fas fa-hourglass-half mr-1"></i>Em Espera
+                              </span>}
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
 
               {openKey === key && (
-                <div className="mt-3 border-t pt-3">
-                  <div className="mb-2 text-sm font-medium">Marcar presenças</div>
-                  {validItems.flatMap(h => (Array.isArray(h.alunoId) ? h.alunoId : (h.alunoId ? [h.alunoId] : []))).map((a: any) => {
-                    const aid = typeof a === 'string' ? a : (a._id || '');
-                    const mapKey = `${key}::${aid}`;
-                    const display = typeof a === 'string' ? a : (a && (a.nome || a.email || a.telefone) ? (a.nome || a.email || a.telefone) : '—');
-                    return (
-                      <label key={aid || display} className="flex items-center gap-3 mb-2">
-                        <input type="checkbox" checked={!!attendanceMap[mapKey]} onChange={(e) => setAttendanceMap(prev => ({ ...prev, [mapKey]: e.target.checked }))} />
-                        <span className="text-sm">{display}</span>
-                      </label>
-                    );
-                  })}
-                  <div className="flex gap-2 mt-3">
-                    <button disabled={submitting} onClick={() => submitAttendance(key, g.items)} className="bg-primary-600 text-white px-3 py-1 rounded">Salvar</button>
-                    <button disabled={submitting} onClick={() => setOpenKey(null)} className="px-3 py-1 rounded border">Cancelar</button>
+                <div className="mt-4 border-t pt-4">
+                  <div className="mb-3 text-sm font-semibold text-gray-900">Marcar presenças para esta aula</div>
+                  <div className="space-y-2">
+                    {validItems.flatMap(h => (Array.isArray(h.alunoId) ? h.alunoId : (h.alunoId ? [h.alunoId] : []))).map((a: any) => {
+                      const aid = typeof a === 'string' ? a : (a._id || '');
+                      const mapKey = `${key}::${aid}`;
+                      const display = typeof a === 'string' ? a : (a && (a.nome || a.email || a.telefone) ? (a.nome || a.email || a.telefone) : '—');
+                      return (
+                        <label key={aid || display} className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded-md cursor-pointer">
+                          <input 
+                            type="checkbox" 
+                            checked={!!attendanceMap[mapKey]} 
+                            onChange={(e) => setAttendanceMap(prev => ({ ...prev, [mapKey]: e.target.checked }))}
+                            className="w-4 h-4 text-primary-600 rounded"
+                          />
+                          <span className="text-sm font-medium">{display}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                  <div className="flex gap-2 mt-4">
+                    <button 
+                      disabled={submitting} 
+                      onClick={() => submitAttendance(key, g.items)} 
+                      className="bg-primary-600 text-white px-4 py-2 rounded-md hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+                    >
+                      {submitting ? 'Salvando...' : 'Salvar Presenças'}
+                    </button>
+                    <button 
+                      disabled={submitting} 
+                      onClick={() => setOpenKey(null)} 
+                      className="px-4 py-2 rounded-md border border-gray-300 hover:bg-gray-50 transition-colors font-medium"
+                    >
+                      Cancelar
+                    </button>
                   </div>
                 </div>
               )}

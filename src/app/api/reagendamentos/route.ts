@@ -22,8 +22,22 @@ export async function GET(request: NextRequest) {
         path: 'horarioFixoId',
         populate: [
           { path: 'alunoId', select: 'nome email' },
-          { path: 'professorId', select: 'nome especialidade' }
+          { path: 'professorId', select: 'nome especialidade cor' }
         ]
+      })
+      .populate({
+        path: 'matriculaId',
+        populate: {
+          path: 'alunoId',
+          select: 'nome email'
+        }
+      })
+      .populate({
+        path: 'novoHorarioFixoId',
+        populate: {
+          path: 'professorId',
+          select: 'nome especialidade cor'
+        }
       })
       .populate('aprovadoPor', 'nome')
       .sort({ criadoEm: -1 })
@@ -51,7 +65,7 @@ export async function POST(request: NextRequest) {
     await connectDB();
     
   const body = await request.json();
-  const { horarioFixoId, dataOriginal, novaData, novoHorarioInicio, novoHorarioFim, motivo, novoHorarioFixoId, origemMatriculaId, alunoId } = body;
+  const { horarioFixoId, dataOriginal, novaData, novoHorarioInicio, novoHorarioFim, motivo, novoHorarioFixoId, matriculaId } = body;
 
     // Validações básicas
     if (!horarioFixoId || !dataOriginal || !novaData || !novoHorarioInicio || !novoHorarioFim || !motivo) {
@@ -81,9 +95,8 @@ export async function POST(request: NextRequest) {
       try { if (!fs.existsSync(logDir)) fs.mkdirSync(logDir); } catch(e) {}
       const logfile = path.join(logDir, 'debug-reagendamentos.log');
       const logEntry = { ts: new Date().toISOString(), route: 'POST /api/reagendamentos', body };
-      fs.appendFileSync(logfile, JSON.stringify(logEntry) + '\n');
-      console.warn('[DEBUG REAG] POST payload logged to', logfile, 'payload:', body);
-      console.warn(new Error('STACK TRACE FOR POST /api/reagendamentos').stack);
+  fs.appendFileSync(logfile, JSON.stringify(logEntry) + '\n');
+  console.warn('[DEBUG REAG] POST payload logged to', logfile, 'payload:', body);
     } catch (logErr:any) {
       console.warn('Failed to write debug log for POST /api/reagendamentos', String(logErr?.message || logErr));
     }
@@ -98,8 +111,7 @@ export async function POST(request: NextRequest) {
       motivo
     };
     if (novoHorarioFixoId) novoReagendamentoData.novoHorarioFixoId = novoHorarioFixoId;
-    if (origemMatriculaId) novoReagendamentoData.origemMatriculaId = origemMatriculaId;
-    if (alunoId) novoReagendamentoData.alunoId = alunoId;
+    if (matriculaId) novoReagendamentoData.matriculaId = matriculaId;
 
     // populate professorOrigemId from HorarioFixo to keep origin audit
     try {
@@ -112,17 +124,6 @@ export async function POST(request: NextRequest) {
       console.warn('Não foi possível popular professorOrigemId ao criar reagendamento:', e && (e as any).message ? (e as any).message : e);
     }
 
-    // If origemMatriculaId provided but alunoId missing, try to resolve alunoId now for convenience
-    try {
-      if (!novoReagendamentoData.alunoId && novoReagendamentoData.origemMatriculaId) {
-        const { Matricula } = await import('@/models/Matricula');
-        const mat: any = await Matricula.findById(String(novoReagendamentoData.origemMatriculaId)).select('alunoId').lean();
-        if (mat && mat.alunoId) novoReagendamentoData.alunoId = mat.alunoId;
-      }
-    } catch (e) {
-      // ignore resolution failures - not fatal
-    }
-
     const novoReagendamento = new Reagendamento(novoReagendamentoData);
 
     const reagendamentoSalvo = await novoReagendamento.save();
@@ -133,8 +134,22 @@ export async function POST(request: NextRequest) {
         path: 'horarioFixoId',
         populate: [
           { path: 'alunoId', select: 'nome email' },
-          { path: 'professorId', select: 'nome especialidade' }
+          { path: 'professorId', select: 'nome especialidade cor' }
         ]
+      })
+      .populate({
+        path: 'matriculaId',
+        populate: {
+          path: 'alunoId',
+          select: 'nome email'
+        }
+      })
+      .populate({
+        path: 'novoHorarioFixoId',
+        populate: {
+          path: 'professorId',
+          select: 'nome especialidade cor'
+        }
       })
       .select('-__v');
 

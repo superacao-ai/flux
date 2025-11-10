@@ -43,6 +43,7 @@ export default function ReagendamentosPage() {
   const [reagendamentos, setReagendamentos] = useState<Reagendamento[]>([]);
   const [horarios, setHorarios] = useState<HorarioFixo[]>([]);
   const [showModal, setShowModal] = useState(false);
+  const [showClearModal, setShowClearModal] = useState(false);
   const [formData, setFormData] = useState({
     horarioFixoId: '',
     dataOriginal: '',
@@ -50,6 +51,7 @@ export default function ReagendamentosPage() {
     motivo: ''
   });
   const [loading, setLoading] = useState(false);
+  const [clearing, setClearing] = useState(false);
 
   const diasSemana = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 
@@ -164,6 +166,32 @@ export default function ReagendamentosPage() {
     }
   };
 
+  const limparHistorico = async () => {
+    setClearing(true);
+    try {
+      const response = await fetch('/api/reagendamentos/limpar/historico', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        alert('Histórico de reagendamentos limpo com sucesso!');
+        fetchReagendamentos();
+        setShowClearModal(false);
+      } else {
+        alert('Erro ao limpar histórico: ' + data.error);
+      }
+    } catch (error) {
+      console.error('Erro ao limpar histórico:', error);
+      alert('Erro ao limpar histórico');
+    } finally {
+      setClearing(false);
+    }
+  };
+
   const formatarData = (dataStr: string) => {
     const data = new Date(dataStr);
     return data.toLocaleDateString('pt-BR');
@@ -179,16 +207,28 @@ export default function ReagendamentosPage() {
   };
 
   return (
-    <Layout title="Reagendamentos - Superação Flux">
+    <Layout title="Reagendamentos - Superação Flux" fullWidth>
       <div className="px-4 py-6 sm:px-0">
-        <div className="sm:flex sm:items-center mb-6">
+        <div className="sm:flex sm:items-center mb-6 fade-in-1">
           <div className="sm:flex-auto">
-            <h1 className="text-xl font-semibold text-gray-900">Reagendamentos</h1>
+            <h1 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+              <i className="fas fa-exchange-alt text-primary-600"></i>
+              Reagendamentos
+            </h1>
             <p className="mt-2 text-sm text-gray-700">
               Gerencie as solicitações de reagendamento de aulas.
             </p>
           </div>
-          <div className="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
+          <div className="mt-4 sm:mt-0 sm:ml-16 sm:flex-none flex gap-3">
+            <button
+              type="button"
+              onClick={() => setShowClearModal(true)}
+              className="inline-flex items-center justify-center rounded-md border border-red-300 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 shadow-sm hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 sm:w-auto"
+              title="Limpar todo o histórico de reagendamentos"
+            >
+              <i className="fas fa-trash-alt mr-2"></i>
+              Limpar Histórico
+            </button>
             <button
               type="button"
               onClick={() => setShowModal(true)}
@@ -200,7 +240,7 @@ export default function ReagendamentosPage() {
         </div>
 
         {/* Tabs para filtrar por status */}
-        <div className="mb-6">
+        <div className="mb-6 fade-in-2">
           <div className="border-b border-gray-200">
             <nav className="-mb-px flex space-x-8">
               <a href="#" className="border-primary-500 text-primary-600 whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm">
@@ -217,7 +257,7 @@ export default function ReagendamentosPage() {
         </div>
 
         {/* Lista de reagendamentos */}
-        <div className="bg-white shadow rounded-lg">
+        <div className="bg-white shadow rounded-lg fade-in-3">
           <div className="px-4 py-5 sm:p-6">
             <div className="space-y-4">
               {reagendamentos.map((reagendamento) => (
@@ -283,7 +323,7 @@ export default function ReagendamentosPage() {
       {/* Modal para novo reagendamento */}
       {showModal && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white fade-in-4">
             <div className="mt-3">
               <h3 className="text-lg font-medium text-gray-900 mb-4">Solicitar Reagendamento</h3>
               <form onSubmit={handleSubmit} className="space-y-4">
@@ -355,6 +395,59 @@ export default function ReagendamentosPage() {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de confirmação para limpar histórico */}
+      {showClearModal && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
+          <div className="relative mx-auto p-6 border w-96 shadow-lg rounded-md bg-white fade-in-5">
+            <div className="text-center">
+              <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 mb-4">
+                <i className="fas fa-exclamation-triangle text-red-600 text-lg"></i>
+              </div>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Limpar Histórico de Reagendamentos</h3>
+              <p className="text-sm text-gray-500 mb-6">
+                Tem certeza de que deseja limpar todo o histórico de reagendamentos? Esta ação <strong>não pode ser desfeita</strong>.
+              </p>
+              
+              <div className="space-y-2 mb-6 text-left bg-red-50 border border-red-200 rounded-md p-3">
+                <p className="text-sm text-red-800">
+                  <i className="fas fa-info-circle mr-2"></i>
+                  Todos os reagendamentos (pendentes, aprovados e rejeitados) serão removidos do sistema.
+                </p>
+              </div>
+
+              <div className="flex justify-center space-x-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowClearModal(false)}
+                  disabled={clearing}
+                  className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={limparHistorico}
+                  disabled={clearing}
+                  className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50 flex items-center gap-2"
+                >
+                  {clearing ? (
+                    <>
+                      <i className="fas fa-spinner fa-spin"></i>
+                      Limpando...
+                    </>
+                  ) : (
+                    <>
+                      <i className="fas fa-trash-alt"></i>
+                      Limpar Histórico
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </div>

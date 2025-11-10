@@ -37,24 +37,11 @@ export async function POST(request: NextRequest) {
     const nova = new Matricula({ horarioFixoId: hfId, alunoId: aId, ativo: true });
     await nova.save();
 
-    // Keep HorarioFixo.alunoId compatible: if after insert there's only one active matricula, set alunoId on horario
-    try {
-      const count = await Matricula.countDocuments({ horarioFixoId: hfId, ativo: true });
-      if (count === 1) {
-        target.alunoId = aId as any;
-        await target.save();
-      } else {
-        // multiple students -> clear alunoId for backward compatibility avoidance
-        target.alunoId = undefined as any;
-        await target.save();
-      }
-    } catch (e) {
-      // non-fatal
-      console.warn('Failed to sync HorarioFixo.alunoId after matricula create', e);
-    }
+    // Não atualizar mais o campo alunoId em HorarioFixo. O vínculo é sempre pela tabela Matricula.
+    // Se necessário para compatibilidade visual, pode ser populado apenas na consulta, nunca salvo.
 
     // return matricula + horario atualizado (populated)
-    const horarioAtual = await HorarioFixo.findById(hfId).populate('alunoId', 'nome email').populate('professorId', 'nome especialidade').lean();
+    const horarioAtual = await HorarioFixo.findById(hfId).populate('alunoId', 'nome email periodoTreino parceria observacoes').populate('professorId', 'nome especialidade').lean();
 
     return NextResponse.json({ success: true, data: { matricula: nova, horario: horarioAtual } }, { status: 201 });
   } catch (error: any) {

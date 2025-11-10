@@ -52,7 +52,7 @@ const modalidadeSchema = new mongoose.Schema({
 });
 
 // Índices
-modalidadeSchema.index({ nome: 1 });
+// `nome` já tem unique: true, não precisa de index duplicado
 modalidadeSchema.index({ ativo: 1 });
 
 // Adiciona transform para produzir JSON limpo (útil para enviar ao cliente e evitar diferenças que parecem "cache")

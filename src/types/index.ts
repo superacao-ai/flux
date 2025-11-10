@@ -16,6 +16,11 @@ export interface Aluno {
   telefone: string;
   endereco?: string;
   observacoes?: string;
+  periodoTreino?: string | null;
+  parceria?: string | null;
+  congelado?: boolean;
+  ausente?: boolean;
+  emEspera?: boolean;
   ativo: boolean;
   criadoEm: Date;
   atualizadoEm: Date;

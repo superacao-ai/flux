@@ -15,6 +15,7 @@ interface Professor {
   email?: string;
   telefone?: string;
   especialidades: Especialidade[];
+  cor?: string;
   ativo: boolean;
   criadoEm?: string;
   atualizadoEm?: string;
@@ -25,6 +26,7 @@ interface ProfessorForm {
   email: string;
   telefone: string;
   especialidades: string[];
+  cor: string;
   ativo: boolean;
   senha?: string;
 }
@@ -41,8 +43,9 @@ export default function ProfessoresPage() {
     email: '',
     telefone: '',
     especialidades: [],
-    ativo: true
-  , senha: ''
+    cor: '#3B82F6',
+    ativo: true,
+    senha: ''
   });
 
   // Carregar professores
@@ -169,6 +172,7 @@ export default function ProfessoresPage() {
       email: '',
       telefone: '',
       especialidades: [],
+      cor: '#3B82F6',
       ativo: true
     });
     setShowModal(true);
@@ -195,6 +199,7 @@ export default function ProfessoresPage() {
       email: professor.email || '',
       telefone: professor.telefone || '',
       especialidades: professor.especialidades?.map(esp => esp._id) || [],
+      cor: professor.cor || '#3B82F6',
       ativo: professor.ativo
     });
     setShowModal(true);
@@ -277,19 +282,22 @@ export default function ProfessoresPage() {
     return (
       <Layout title="Professores - Superação Flux">
         <div className="flex justify-center items-center h-64">
-          <div className="text-gray-500">Carregando professores...</div>
+          {/* Loading state removed */}
         </div>
       </Layout>
     );
   }
 
   return (
-    <Layout title="Professores - Superação Flux">
+    <Layout title="Professores - Superação Flux" fullWidth>
       <div className="px-4 py-6 sm:px-0">
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center justify-between gap-4 fade-in-1">
           <div>
-            <h1 className="text-2xl font-semibold text-gray-900">Professores</h1>
-            <p className="mt-1 text-sm text-gray-600 max-w-xl">Gerencie a equipe de professores do studio — adicione, edite e organize especialidades.</p>
+            <h1 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+              <i className="fas fa-chalkboard-teacher text-primary-600"></i>
+              Professores
+            </h1>
+            <p className="mt-2 text-sm text-gray-600 max-w-xl">Gerencie a equipe de professores do studio — adicione, edite e organize especialidades.</p>
           </div>
 
           <div className="flex items-center gap-3">
@@ -299,7 +307,7 @@ export default function ProfessoresPage() {
                 onClick={abrirModalNovo}
                 className="h-10 inline-flex items-center gap-2 rounded-md bg-primary-600 text-white px-4 text-sm font-medium hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
               >
-                <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
+                <i className="fas fa-user-plus w-4 text-white" aria-hidden="true" />
                 Novo Professor
               </button>
             </div>
@@ -307,10 +315,10 @@ export default function ProfessoresPage() {
         </div>
 
         {/* Search row above table */}
-        <div className="mt-4 sm:mt-6">
+        <div className="mt-4 sm:mt-6 fade-in-2">
           <div className="flex items-center justify-between gap-4">
             <div className="relative w-full sm:w-1/2">
-              <svg className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z" /></svg>
+              <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 w-4 text-gray-400" aria-hidden="true" />
               <input
                 type="text"
                 value={query}
@@ -328,8 +336,8 @@ export default function ProfessoresPage() {
         {filteredProfessores.length === 0 ? (
           <div className="text-center py-12">
               <div className="mb-4">
-                <div className="inline-flex items-center justify-center h-12 w-12 rounded-full bg-primary-50 text-primary-600">
-                  <svg className="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"/></svg>
+                  <div className="inline-flex items-center justify-center h-12 w-12 rounded-full bg-primary-50 text-primary-600">
+                  <i className="fas fa-chalkboard-teacher text-primary-600 text-lg" aria-hidden="true" />
                 </div>
               </div>
               <h3 className="text-lg font-medium text-gray-900 mb-2">Nenhum professor encontrado</h3>
@@ -340,66 +348,73 @@ export default function ProfessoresPage() {
               onClick={abrirModalNovo}
               className="h-10 inline-flex items-center gap-2 rounded-md bg-primary-600 text-white px-4 text-sm font-medium hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
             >
-              👨‍🏫 Cadastrar Professor
+              <i className="fas fa-chalkboard-teacher" aria-hidden="true" /> Cadastrar Professor
             </button>
           </div>
         ) : (
-          <div className="mt-8 flex flex-col">
+          <div className="mt-8 flex flex-col fade-in-3">
             <div className="-my-2 -mx-4 overflow-x-auto sm:-mx-6 lg:-mx-8">
               <div className="inline-block min-w-full py-2 align-middle md:px-6 lg:px-8">
-                <div className="overflow-hidden shadow ring-1 ring-black ring-opacity-5 md:rounded-lg">
-                  <table className="min-w-full divide-y divide-gray-300">
-                    <thead className="bg-gray-50">
+              <div className="overflow-hidden rounded-md border border-gray-200">
+                  <table className="w-full table-fixed text-sm border-collapse">
+                    <thead className="bg-white border-b border-gray-200">
                       <tr>
-                        <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 sm:pl-6">
+                        <th scope="col" className="px-3 py-2 text-left text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
                           Nome
                         </th>
-                        <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                        <th scope="col" className="px-3 py-2 text-left text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
                           Email
                         </th>
-                        <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                        <th scope="col" className="px-3 py-2 text-left text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
                           Telefone
                         </th>
-                        <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                        <th scope="col" className="px-3 py-2 text-left text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
                           Especialidades
                         </th>
-                        <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                        <th scope="col" className="px-3 py-2 text-left text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
                           Status
                         </th>
-                        <th scope="col" className="relative py-3.5 pl-3 pr-4 sm:pr-6">
+                        <th scope="col" className="px-3 py-2 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
                           <span className="sr-only">Ações</span>
                         </th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-200 bg-white">
-                      {filteredProfessores.map((professor) => (
-                        <tr key={professor._id}>
-                          <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900 sm:pl-6">
-                            {professor.nome}
+                    <tbody className="bg-white">
+                      {filteredProfessores.map((professor, idx) => (
+                        <tr key={professor._id} className={`fade-in-${Math.min((idx % 8) + 1, 8)}`}>
+                          <td className="px-3 py-3 text-sm border-r border-b border-gray-200">
+                            <div className="flex items-center gap-2">
+                              <div 
+                                className="h-4 w-4 rounded-full border border-gray-300 flex-shrink-0"
+                                style={{ backgroundColor: professor.cor || '#3B82F6' }}
+                                title={`Cor: ${professor.cor || '#3B82F6'}`}
+                              />
+                              <span className="font-medium text-gray-900">{professor.nome}</span>
+                            </div>
                           </td>
-                          <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+                          <td className="px-3 py-3 text-sm text-gray-500 border-r border-b border-gray-200">
                             {professor.email || <span className="text-gray-400 italic">Não informado</span>}
                           </td>
-                          <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+                          <td className="px-3 py-3 text-sm text-gray-500 border-r border-b border-gray-200">
                             {professor.telefone || <span className="text-gray-400 italic">Não informado</span>}
                           </td>
-                          <td className="px-3 py-4 text-sm text-gray-500">
+                          <td className="px-3 py-3 text-sm text-gray-500 border-r border-b border-gray-200">
                             <div className="flex flex-wrap gap-1">
                               {professor.especialidades?.map((esp) => (
                                 <span 
                                   key={esp._id}
-                                  className="inline-flex rounded-full bg-blue-100 px-2 text-xs font-semibold leading-5 text-blue-800"
+                                  className="inline-flex rounded-full bg-blue-100 px-2 text-xs font-semibold text-blue-800"
                                 >
                                   {esp.nome}
                                 </span>
                               ))}
                               {(!professor.especialidades || professor.especialidades.length === 0) && (
-                                <span className="text-gray-400 italic">Nenhuma</span>
+                                <span className="text-gray-400 italic text-xs">Nenhuma</span>
                               )}
                             </div>
                           </td>
-                          <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-                            <span className={`inline-flex rounded-full px-2 text-xs font-semibold leading-5 ${
+                          <td className="px-3 py-3 text-sm border-r border-b border-gray-200">
+                            <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${
                               professor.ativo 
                                 ? 'bg-green-100 text-green-800' 
                                 : 'bg-red-100 text-red-800'
@@ -407,15 +422,13 @@ export default function ProfessoresPage() {
                               {professor.ativo ? 'Ativo' : 'Inativo'}
                             </span>
                           </td>
-                          <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
-                            <div className="flex items-center justify-end gap-3">
-                              <button onClick={() => abrirModalEditar(professor)} className="inline-flex items-center gap-2 h-8 px-3 rounded-md bg-white border border-gray-100 hover:bg-gray-50 text-primary-600 text-sm">
-                                <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536M9 11l6-6 3 3-6 6H9v-3z"/></svg>
-                                <span>Editar</span>
+                          <td className="px-3 py-3 text-sm border-b border-gray-200">
+                            <div className="flex items-center justify-center gap-2">
+                              <button onClick={() => abrirModalEditar(professor)} className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md bg-white border border-gray-100 hover:bg-gray-50 text-primary-600">
+                                <i className="fas fa-edit w-3" aria-hidden="true" />
                               </button>
-                              <button onClick={() => excluirProfessor(professor._id)} className="inline-flex items-center gap-2 h-8 px-3 rounded-md bg-red-50 border border-red-100 text-red-700 hover:bg-red-100 text-sm">
-                                <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M10 3h4l1 4H9l1-4z"/></svg>
-                                <span>Excluir</span>
+                              <button onClick={() => excluirProfessor(professor._id)} className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md bg-red-50 border border-red-100 text-red-700 hover:bg-red-100">
+                                <i className="fas fa-trash w-3" aria-hidden="true" />
                               </button>
                             </div>
                           </td>
@@ -432,10 +445,10 @@ export default function ProfessoresPage() {
         {/* Modal de Cadastro/Edição */}
         {showModal && (
           <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-            <div className="relative top-20 mx-auto p-5 border w-[600px] shadow-lg rounded-md bg-white">
+            <div className="relative top-20 mx-auto p-5 border w-[600px] shadow-lg rounded-md bg-white fade-in-4">
               <div className="mt-3">
                 <h3 className="text-lg font-medium text-gray-900 mb-4">
-                  {editingId ? '✏️ Editar Professor' : '👨‍🏫 Novo Professor'}
+                  {editingId ? <><i className="fas fa-edit mr-2" aria-hidden="true" />Editar Professor</> : <><i className="fas fa-chalkboard-teacher mr-2" aria-hidden="true" />Novo Professor</>}
                 </h3>
                 
                 <form 
@@ -489,6 +502,67 @@ export default function ProfessoresPage() {
                   </div>
 
                   <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Cor do Professor
+                    </label>
+                    
+                    {/* Cores pastéis predefinidas */}
+                    <div className="mb-3">
+                      <p className="text-xs text-gray-600 mb-2">Cores sugeridas:</p>
+                      <div className="flex flex-wrap gap-2">
+                        {[
+                          '#16a34a', // Verde Superação
+                          '#3B82F6', // Azul padrão
+                          '#F97316', // Laranja
+                          '#F59E42', // Laranja claro
+                          '#EAB308', // Amarelo
+                          '#A21CAF', // Roxo
+                          '#F43F5E', // Rosa
+                          '#10B981', // Verde água
+                          '#6366F1', // Azul escuro
+                          '#FACC15', // Amarelo claro
+                          '#0EA5E9', // Azul claro
+                          '#F87171', // Vermelho
+                        ].map((cor) => (
+                          <button
+                            key={cor}
+                            type="button"
+                            onClick={() => setFormData(prev => ({...prev, cor: cor}))}
+                            className={`h-8 w-8 rounded-full border-2 transition-all hover:scale-110 ${
+                              formData.cor === cor ? 'border-gray-800 ring-2 ring-gray-400' : 'border-gray-300'
+                            }`}
+                            style={{ backgroundColor: cor }}
+                            title={cor}
+                          />
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Seletor de cor customizado */}
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="color"
+                        value={formData.cor}
+                        onChange={(e) => setFormData(prev => ({...prev, cor: e.target.value}))}
+                        className="h-10 w-20 border border-gray-300 rounded cursor-pointer"
+                      />
+                      <input
+                        type="text"
+                        value={formData.cor}
+                        onChange={(e) => setFormData(prev => ({...prev, cor: e.target.value.toUpperCase()}))}
+                        className="block flex-1 border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500 font-mono text-sm"
+                        placeholder="#3B82F6"
+                        pattern="^#[0-9A-F]{6}$"
+                      />
+                      <div 
+                        className="h-10 w-20 rounded border-2 border-gray-300"
+                        style={{ backgroundColor: formData.cor }}
+                      />
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">Cor usada nos badges e identificação visual do professor</p>
+                  </div>
+
+                  <div>
                     <div className="flex items-center justify-between mb-2">
                       <label className="block text-sm font-medium text-gray-700">
                         Especialidades
@@ -538,7 +612,7 @@ export default function ProfessoresPage() {
                               className="text-red-500 hover:text-red-700 text-xs ml-2"
                               title="Excluir especialidade"
                             >
-                              🗑️
+                              <i className="fas fa-trash-alt" aria-hidden="true" />
                             </button>
                           </div>
                         ))
@@ -566,7 +640,7 @@ export default function ProfessoresPage() {
                     </div>
                   )}
 
-                  <div className="flex justify-end space-x-3 pt-4 border-t">
+                    <div className="flex justify-end space-x-3 pt-4 border-t">
                     <button
                       type="button"
                       onClick={() => setShowModal(false)}
@@ -578,7 +652,7 @@ export default function ProfessoresPage() {
                       type="submit"
                       className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
                     >
-                      {editingId ? '💾 Atualizar' : '👨‍🏫 Cadastrar'}
+                      {editingId ? <><i className="fas fa-save mr-2" aria-hidden="true" />Atualizar</> : <><i className="fas fa-chalkboard-teacher mr-2" aria-hidden="true" />Cadastrar</>}
                     </button>
                   </div>
                 </form>

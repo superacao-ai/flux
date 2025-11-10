@@ -9,7 +9,13 @@ export async function GET() {
     
     const modalidades = await Modalidade.find({ ativo: true })
       .sort({ nome: 1 })
-      .select('-__v');
+      .select('-__v')
+      .lean();
+    
+    console.log('[API Modalidades] Total encontradas:', modalidades.length);
+    if (modalidades.length > 0) {
+      console.log('[API Modalidades] Primeira modalidade:', JSON.stringify(modalidades[0]));
+    }
     
     return NextResponse.json({
       success: true,

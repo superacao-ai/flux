@@ -94,6 +94,8 @@ export async function PUT(
       }
     }
 
+    console.log(`[PUT /api/alunos/${id}] Body recebido:`, body);
+
     const alunoAtualizado = await Aluno.findByIdAndUpdate(
       id,
       { ...body, atualizadoEm: new Date() },
@@ -113,6 +115,12 @@ export async function PUT(
         { status: 404 }
       );
     }
+
+    console.log(`[PUT /api/alunos/${id}] Aluno atualizado:`, {
+      congelado: alunoAtualizado.congelado,
+      ausente: alunoAtualizado.ausente,
+      emEspera: alunoAtualizado.emEspera
+    });
 
     return NextResponse.json({
       success: true,

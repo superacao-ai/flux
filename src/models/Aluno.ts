@@ -10,6 +10,11 @@ export interface IAluno {
   modalidadeId?: mongoose.Types.ObjectId; // Referência à modalidade (opcional)
   plano?: string; // Para modalidades que têm planos diferentes (ex: treino)
   observacoes?: string;
+  periodoTreino?: string | null; // Ex: '12/36' para 12 semanas de 36 horas
+  parceria?: string | null; // Ex: 'TOTALPASS' para parcerias
+  congelado?: boolean; // Aluno com matrícula pausada
+  ausente?: boolean; // Aluno parou de vir
+  emEspera?: boolean; // Aluno em lista de espera
   ativo: boolean;
   criadoEm?: Date;
   atualizadoEm?: Date;
@@ -75,6 +80,30 @@ const AlunoSchema = new Schema<IAluno>({
     trim: true,
     maxlength: [500, 'Observações devem ter no máximo 500 caracteres']
   },
+  periodoTreino: {
+    type: String,
+    default: null,
+    trim: true,
+    maxlength: [50, 'Período de treino deve ter no máximo 50 caracteres']
+  },
+  parceria: {
+    type: String,
+    default: null,
+    trim: true,
+    maxlength: [50, 'Parceria deve ter no máximo 50 caracteres']
+  },
+  congelado: {
+    type: Boolean,
+    default: false
+  },
+  ausente: {
+    type: Boolean,
+    default: false
+  },
+  emEspera: {
+    type: Boolean,
+    default: false
+  },
   ativo: {
     type: Boolean,
     default: true
@@ -87,5 +116,10 @@ const AlunoSchema = new Schema<IAluno>({
 // `email` already declares `unique: true` on the field; avoid duplicate schema.index declaration
 AlunoSchema.index({ nome: 1 });
 AlunoSchema.index({ ativo: 1 });
+AlunoSchema.index({ periodoTreino: 1 });
+AlunoSchema.index({ parceria: 1 });
+AlunoSchema.index({ congelado: 1 });
+AlunoSchema.index({ ausente: 1 });
+AlunoSchema.index({ emEspera: 1 });
 
 export const Aluno = models.Aluno || model<IAluno>('Aluno', AlunoSchema);

@@ -7,6 +7,7 @@ export interface IProfessor {
   email?: string;
   telefone?: string;
   especialidades: mongoose.Types.ObjectId[]; // Array de especialidades
+  cor?: string; // Cor do professor em hexadecimal
   ativo: boolean;
   criadoEm?: Date;
   atualizadoEm?: Date;
@@ -55,6 +56,20 @@ const ProfessorSchema = new Schema<IProfessor>({
     type: Schema.Types.ObjectId,
     ref: 'Especialidade'
   }],
+  cor: {
+    type: String,
+    required: false,
+    default: '#3B82F6', // Azul padrão
+    validate: {
+      validator: function(v: string) {
+        // Se a cor estiver vazia ou null, é válida (usa o default)
+        if (!v || v.trim() === '') return true;
+        // Se tiver valor, deve ser um código hexadecimal válido
+        return /^#[0-9A-F]{6}$/i.test(v);
+      },
+      message: 'Cor deve estar no formato hexadecimal (#RRGGBB)'
+    }
+  },
   ativo: {
     type: Boolean,
     default: true

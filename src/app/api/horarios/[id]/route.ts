@@ -4,6 +4,53 @@ import { HorarioFixo } from '@/models/HorarioFixo';
 import { Aluno } from '@/models/Aluno';
 import mongoose from 'mongoose';
 
+// GET - Buscar um horário por ID
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    await connectDB();
+    const { id } = await params;
+    
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return NextResponse.json(
+        { success: false, error: 'ID inválido' },
+        { status: 400 }
+      );
+    }
+
+    const horario = await HorarioFixo.findById(id)
+      .populate('alunoId', 'nome email periodoTreino parceria observacoes congelado ausente emEspera')
+      .populate('professorId', 'nome especialidade');
+
+    if (!horario) {
+      return NextResponse.json(
+        { success: false, error: 'Horário não encontrado' },
+        { status: 404 }
+      );
+    }
+
+    // Garantir que os campos booleanos sempre existem - LENDO DO ALUNO
+    const horarioData = horario.toObject ? horario.toObject() : horario;
+    const alunoData = horarioData.alunoId || {};
+    const enrichedHorario = {
+      ...horarioData,
+      congelado: alunoData.congelado === true,
+      ausente: alunoData.ausente === true,
+      emEspera: alunoData.emEspera === true
+    };
+
+    return NextResponse.json({ success: true, data: enrichedHorario });
+  } catch (error) {
+    console.error('Erro ao buscar horário:', error);
+    return NextResponse.json(
+      { success: false, error: 'Erro interno do servidor' },
+      { status: 500 }
+    );
+  }
+}
+
 // DELETE - Excluir horário
 export async function DELETE(
   request: NextRequest,
@@ -71,13 +118,20 @@ export async function PATCH(
   try {
     await connectDB();
     const { id } = await params;
+    console.log('PATCH /api/horarios/[id] - ID recebido:', id);
+    console.log('PATCH /api/horarios/[id] - ID é ObjectId válido?', mongoose.Types.ObjectId.isValid(id));
+    
     const body = await request.json();
+    console.log('PATCH /api/horarios/[id] - Body recebido:', body);
 
     const updates: any = {};
-  const allowed = ['professorId', 'diaSemana', 'horarioInicio', 'horarioFim', 'observacoes', 'congelado', 'ausente', 'emEspera'];
+    // Removido congelado, ausente, emEspera - esses campos agora são do ALUNO
+    const allowed = ['professorId', 'diaSemana', 'horarioInicio', 'horarioFim', 'observacoes'];
     for (const key of allowed) {
       if (body[key] !== undefined) updates[key] = body[key];
     }
+    
+    console.log('PATCH /api/horarios/[id] - Updates:', updates);
 
     // Validate and coerce professorId if provided
     if (updates.professorId) {
@@ -90,11 +144,30 @@ export async function PATCH(
 
   const horario = await HorarioFixo.findByIdAndUpdate(id, { $set: updates }, { new: true, runValidators: true });
 
+    console.log('PATCH /api/horarios/[id] - Horário encontrado:', horario ? 'SIM' : 'NÃO');
+    if (horario) {
+      console.log('PATCH /api/horarios/[id] - Valores salvos:', {
+        _id: horario._id,
+        congelado: horario.congelado,
+        ausente: horario.ausente,
+        emEspera: horario.emEspera
+      });
+    }
+    
     if (!horario) {
+      console.error('PATCH /api/horarios/[id] - Horário não encontrado com ID:', id);
       return NextResponse.json({ success: false, error: 'Horário não encontrado' }, { status: 404 });
     }
 
-  const horarioPop = await HorarioFixo.findById(horario._id).populate('alunoId', 'nome email').populate('professorId', 'nome especialidade');
+  const horarioPop = await HorarioFixo.findById(horario._id).populate('alunoId', 'nome email periodoTreino parceria observacoes congelado ausente emEspera').populate('professorId', 'nome especialidade');
+
+  // Debug: verificar se os valores estão no banco
+  console.log('PATCH /api/horarios/[id] - Após populate:', {
+    _id: horarioPop?._id,
+    congelado: horarioPop?.congelado,
+    ausente: horarioPop?.ausente,
+    emEspera: horarioPop?.emEspera
+  });
 
   // Also fetch a plain JS object (lean) and the raw collection document to verify persistence
   try {
@@ -104,7 +177,17 @@ export async function PATCH(
   const raw = await HorarioFixo.collection.findOne({ _id: horario._id });
   } catch (e) {}
 
-  return NextResponse.json({ success: true, data: horarioPop });
+  // Garantir que os campos booleanos sempre existem - LENDO DO ALUNO
+  const horarioData = horarioPop?.toObject ? horarioPop.toObject() : horarioPop;
+  const alunoData = horarioData?.alunoId || {};
+  const enrichedHorario = {
+    ...horarioData,
+    congelado: alunoData.congelado === true,
+    ausente: alunoData.ausente === true,
+    emEspera: alunoData.emEspera === true
+  };
+
+  return NextResponse.json({ success: true, data: enrichedHorario });
   } catch (error) {
     console.error('Erro ao atualizar horário:', error);
     return NextResponse.json({ success: false, error: 'Erro interno do servidor' }, { status: 500 });

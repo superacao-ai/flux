@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import connectDB from '@/lib/mongodb';
 import { HorarioFixo } from '@/models/HorarioFixo';
 import { Professor } from '@/models/Professor';
+import { Matricula } from '@/models/Matricula';
 import mongoose from 'mongoose';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'sua_chave_secreta_super_forte';
@@ -46,7 +47,7 @@ export async function GET(request: NextRequest) {
     let horarios = await HorarioFixo.find(query)
       .populate({
         path: 'alunoId',
-        select: 'nome email modalidadeId',
+        select: 'nome email modalidadeId periodoTreino parceria observacoes',
         populate: {
           path: 'modalidadeId',
           select: 'nome cor',
@@ -55,6 +56,7 @@ export async function GET(request: NextRequest) {
         options: { strictPopulate: false }
       })
       .populate('professorId', 'nome especialidade')
+      .populate('modalidadeId', 'nome cor') // Adicionar populate da modalidade do horário
       .sort({ diaSemana: 1, horarioInicio: 1 })
       .select('-__v')
       .lean();
@@ -68,7 +70,7 @@ export async function GET(request: NextRequest) {
           horarios = await HorarioFixo.find({ ativo: true, professorId: prof._id })
             .populate({
               path: 'alunoId',
-              select: 'nome email modalidadeId',
+              select: 'nome email modalidadeId periodoTreino parceria observacoes',
               populate: {
                 path: 'modalidadeId',
                 select: 'nome cor',
@@ -77,6 +79,7 @@ export async function GET(request: NextRequest) {
               options: { strictPopulate: false }
             })
             .populate('professorId', 'nome especialidade')
+            .populate('modalidadeId', 'nome cor') // Adicionar populate da modalidade do horário
             .sort({ diaSemana: 1, horarioInicio: 1 })
             .select('-__v')
             .lean();
@@ -89,6 +92,48 @@ export async function GET(request: NextRequest) {
     }
 
     console.log('[/api/me/horarios] documentos encontrados:', Array.isArray(horarios) ? horarios.length : 0);
+    
+    // Buscar matrículas para adicionar os alunos aos horários
+    if (horarios && horarios.length > 0) {
+      const horarioIds = horarios.map(h => h._id);
+      const matriculas = await Matricula.find({ 
+        horarioFixoId: { $in: horarioIds },
+        ativo: true 
+      })
+        .populate({
+          path: 'alunoId',
+          select: 'nome email telefone modalidadeId congelado ausente emEspera observacoes periodoTreino parceria',
+          populate: {
+            path: 'modalidadeId',
+            select: 'nome cor'
+          }
+        })
+        .lean();
+      
+      console.log('[/api/me/horarios] matrículas encontradas:', matriculas.length);
+      
+      // Agrupar matrículas por horarioFixoId
+      const matriculasPorHorario = new Map();
+      matriculas.forEach(m => {
+        const horarioId = String(m.horarioFixoId);
+        if (!matriculasPorHorario.has(horarioId)) {
+          matriculasPorHorario.set(horarioId, []);
+        }
+        matriculasPorHorario.get(horarioId).push(m.alunoId);
+      });
+      
+      // Adicionar alunos aos horários
+      horarios = horarios.map(h => {
+        const horarioId = String(h._id);
+        const alunosMatriculados = matriculasPorHorario.get(horarioId) || [];
+        
+        return {
+          ...h,
+          alunos: alunosMatriculados
+        };
+      });
+    }
+    
     return NextResponse.json({ success: true, data: horarios });
   } catch (error) {
     console.error('Erro em /api/me/horarios:', error);
