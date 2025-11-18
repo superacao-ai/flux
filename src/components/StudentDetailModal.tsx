@@ -21,6 +21,9 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
   const [alunoAusente, setAlunoAusente] = useState<boolean>(false);
   const [alunoEmEspera, setAlunoEmEspera] = useState<boolean>(false);
   const [showMergeModal, setShowMergeModal] = useState(false);
+  const [showConflictModal, setShowConflictModal] = useState(false);
+  const [conflictSubstitutes, setConflictSubstitutes] = useState<any[] | null>(null);
+  const [conflictLoading, setConflictLoading] = useState(false);
   const [alunos, setAlunos] = useState<any[]>([]);
   const [selectedAlunoToMerge, setSelectedAlunoToMerge] = useState<string | null>(null);
   const [loadingAlunos, setLoadingAlunos] = useState(false);
@@ -104,13 +107,24 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
         updateBody.emEspera = false;
       }
       
-      const resp = await fetch(`/api/alunos/${alunoId}`, { 
-        method: 'PUT', 
-        headers: { 'Content-Type': 'application/json' }, 
-        body: JSON.stringify(updateBody) 
+      const resp = await fetch(`/api/alunos/${alunoId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updateBody)
       });
+
+      // If backend reports substitutes (conflict 409), surface a decision modal
+      if (resp.status === 409) {
+        const data = await resp.json().catch(() => null);
+        if (data && data.error === 'substitute_exists' && Array.isArray(data.substitutes)) {
+          setConflictSubstitutes(data.substitutes);
+          setShowConflictModal(true);
+          return; // do not proceed further
+        }
+        throw new Error((data && data.error) ? data.error : 'Conflito ao atualizar aluno');
+      }
+
       const data = await resp.json();
-      
       if (!data || !data.success) {
         throw new Error(data?.error || 'Erro ao atualizar aluno');
       }
@@ -140,25 +154,35 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
       if (!aluno || !aluno._id) { alert('Aluno não encontrado'); return; }
       const alunoId = String(aluno._id);
       const newValue = !alunoAusente;
-      
+
       // Se ativando ausente, desativa congelado e emEspera
       const updateBody: any = { ausente: newValue };
       if (newValue) {
         updateBody.congelado = false;
         updateBody.emEspera = false;
       }
-      
-      const resp = await fetch(`/api/alunos/${alunoId}`, { 
-        method: 'PUT', 
-        headers: { 'Content-Type': 'application/json' }, 
-        body: JSON.stringify(updateBody) 
+
+      const resp = await fetch(`/api/alunos/${alunoId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updateBody)
       });
+
+      if (resp.status === 409) {
+        const data = await resp.json().catch(() => null);
+        if (data && data.error === 'substitute_exists' && Array.isArray(data.substitutes)) {
+          setConflictSubstitutes(data.substitutes);
+          setShowConflictModal(true);
+          return;
+        }
+        throw new Error((data && data.error) ? data.error : 'Conflito ao atualizar aluno');
+      }
+
       const data = await resp.json();
-      
       if (!data || !data.success) {
         throw new Error(data?.error || 'Erro ao atualizar aluno');
       }
-      
+
       // Sync UI
       const ausente = data.data?.ausente === true;
       setAlunoAusente(ausente);
@@ -186,18 +210,28 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
         updateBody.congelado = false;
         updateBody.ausente = false;
       }
-      
-      const resp = await fetch(`/api/alunos/${alunoId}`, { 
-        method: 'PUT', 
-        headers: { 'Content-Type': 'application/json' }, 
-        body: JSON.stringify(updateBody) 
+
+      const resp = await fetch(`/api/alunos/${alunoId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updateBody)
       });
+
+      if (resp.status === 409) {
+        const data = await resp.json().catch(() => null);
+        if (data && data.error === 'substitute_exists' && Array.isArray(data.substitutes)) {
+          setConflictSubstitutes(data.substitutes);
+          setShowConflictModal(true);
+          return;
+        }
+        throw new Error((data && data.error) ? data.error : 'Conflito ao atualizar aluno');
+      }
+
       const data = await resp.json();
-      
       if (!data || !data.success) {
         throw new Error(data?.error || 'Erro ao atualizar aluno');
       }
-      
+
       // Sync UI
       const emEspera = data.data?.emEspera === true;
       setAlunoEmEspera(emEspera);
@@ -208,6 +242,55 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
     } catch (err: any) {
       console.error('Erro ao atualizar emEspera:', err);
       alert('Erro ao atualizar informação do aluno: ' + (err?.message || 'erro'));
+    }
+  };
+
+  // Handle force-unfreeze (admin override)
+  const handleForceUnfreeze = async () => {
+    try {
+      const aluno = horario.alunoId || horario.aluno;
+      if (!aluno || !aluno._id) { alert('Aluno não encontrado'); return; }
+      setConflictLoading(true);
+      const resp = await fetch(`/api/alunos/${aluno._id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ congelado: false, forceUnfreeze: true }) });
+      const data = await resp.json();
+      if (!resp.ok || !data || !data.success) throw new Error(data?.error || 'Erro ao forçar descongelar');
+      setAlunoCongelado(false);
+      setAlunoAusente(data.data?.ausente === true);
+      setAlunoEmEspera(data.data?.emEspera === true);
+      if (horario.alunoId) Object.assign(horario.alunoId, data.data);
+      setShowConflictModal(false);
+      setConflictSubstitutes(null);
+      await fetchAndRefresh();
+    } catch (err: any) {
+      console.error('Erro ao forçar descongelar:', err);
+      alert('Erro ao forçar descongelar: ' + (err?.message || 'erro'));
+    } finally {
+      setConflictLoading(false);
+    }
+  };
+
+  // Handle reclaiming a vacancy by removing the substitute matricula and unfreezing original (server does both)
+  const handleReclaim = async (sub: any) => {
+    try {
+      if (!sub || !sub._id || !sub.replacesMatriculaId) { alert('Dados inválidos da substituição'); return; }
+      if (!confirm('Reaver esta vaga removerá o substituto e reativará o aluno original. Continuar?')) return;
+      setConflictLoading(true);
+      const resp = await fetch('/api/matriculas/reclaim', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ originalMatriculaId: sub.replacesMatriculaId, substituteMatriculaId: sub._id })
+      });
+      const data = await resp.json();
+      if (!resp.ok || !data || !data.success) throw new Error(data?.error || 'Erro ao reaver vaga');
+      alert('Vaga reavida com sucesso. Aluno original reativado.');
+      setShowConflictModal(false);
+      setConflictSubstitutes(null);
+      await fetchAndRefresh();
+    } catch (err: any) {
+      console.error('Erro ao reaver vaga:', err);
+      alert('Erro ao reaver vaga: ' + (err?.message || 'erro'));
+    } finally {
+      setConflictLoading(false);
     }
   };
 
@@ -241,7 +324,10 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
   const deleteHorario = async (id: string) => {
     if (!confirm('Tem certeza que deseja excluir este horário?')) return;
     try {
-      const response = await fetch(`/api/horarios/${id}`, { method: 'DELETE' });
+      const response = await fetch(`/api/horarios/${id}`, {
+        method: 'DELETE',
+      });
+
       const data = await response.json();
       if (data.success) {
         await fetchAndRefresh();
@@ -288,7 +374,6 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
       const resp = await fetch('/api/alunos');
       const data = await resp.json();
       if (data && data.success) {
-        // Filtrar alunos excluindo o atual
         const currentAlunoId = horario.alunoId?._id || horario.alunoId;
         const filtered = (data.data || []).filter((a: any) => String(a._id) !== String(currentAlunoId));
         setAlunos(filtered);
@@ -404,50 +489,64 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
   const modalidadeObj = modalidades.find(m => getMid(m) === String(modalidadeId));
 
   return (
-    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center" style={{ zIndex: 9999 }}>
-      <div className="relative mx-auto w-full max-w-lg bg-white rounded-md shadow-xl" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center" style={{ zIndex: 9999 }} onClick={() => onClose()}>
+      <div className="relative mx-auto w-full max-w-2xl bg-white rounded-lg shadow-lg border p-6" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="studentDetailTitle">
         {/* Header */}
-        <div className="border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-gray-900">Detalhes do Aluno</h3>
-          <div className="flex items-center gap-2">
-            <button 
-              onClick={handleOpenMergeModal} 
-              title="Mesclar este aluno com outro existente"
-              className="px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm font-medium flex items-center gap-1"
+        <div className="flex items-start justify-between pb-4 border-b border-gray-200">
+          <div className="flex flex-col">
+              <div className="flex items-center gap-2">
+                <i className="fas fa-user text-lg text-primary-600" aria-hidden="true" />
+                <h3 id="studentDetailTitle" className="text-base font-semibold text-gray-900">Detalhes do Aluno</h3>
+              </div>
+              <div>
+                <p className="text-sm text-gray-500 mt-1"><i className="fas fa-info-circle text-primary-600 mr-2" aria-hidden="true" />Informações e status deste aluno</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+            <span
+              role="button"
+              tabIndex={0}
+              onClick={(e) => { e.stopPropagation(); handleOpenMergeModal(); }}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); handleOpenMergeModal(); } }}
+              className="text-sm font-medium text-primary-600 cursor-pointer hover:underline"
             >
-              <i className="fas fa-link text-sm" />
               Mesclar
-            </button>
-            <button onClick={() => onClose()} className="text-gray-400 hover:text-gray-600 transition-colors" aria-label="Fechar">
-              <i className="fas fa-times text-lg" />
+            </span>
+            <button onClick={() => onClose()} aria-label="Fechar" title="Fechar" className="w-9 h-9 rounded-full bg-white text-gray-600 flex items-center justify-center">
+              <i className="fas fa-times" />
             </button>
           </div>
         </div>
 
         {/* Content */}
-        <div className="px-6 py-4 space-y-6">
+        <div className="pt-4 pb-4 space-y-6">
           {modalEditing ? (
             // MODO EDIÇÃO
             <>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Nome do Aluno</label>
-                <input 
-                  value={modalEditName} 
-                  onChange={e => setModalEditName(e.target.value)} 
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" 
-                  placeholder="Nome do aluno"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Observações</label>
-                <textarea 
-                  value={modalEditObservacoes} 
-                  onChange={e => setModalEditObservacoes(e.target.value)} 
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm" 
-                  rows={4}
-                  placeholder="Adicione observações sobre o aluno..."
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 items-end">
+                <div className="sm:col-span-3">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Nome do Aluno</label>
+                  <input 
+                    value={modalEditName} 
+                    onChange={e => setModalEditName(e.target.value)} 
+                    className="w-full h-10 px-3 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent" 
+                    placeholder="Nome do aluno"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
+                  <div className="text-sm text-gray-500">Editar</div>
+                </div>
+                <div className="sm:col-span-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Observações</label>
+                  <textarea 
+                    value={modalEditObservacoes} 
+                    onChange={e => setModalEditObservacoes(e.target.value)} 
+                    className="w-full px-3 py-2 h-28 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent" 
+                    rows={4}
+                    placeholder="Adicione observações sobre o aluno..."
+                  />
+                </div>
               </div>
             </>
           ) : (
@@ -455,7 +554,7 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
             <>
               {/* Informações Básicas */}
               <div className="flex items-start gap-4">
-                <div className="w-12 h-12 bg-blue-500 text-white rounded-full flex items-center justify-center font-bold text-lg flex-shrink-0">
+                <div className="w-12 h-12 bg-primary-600 text-white rounded-full flex items-center justify-center font-bold text-lg flex-shrink-0">
                   {(horario.alunoId?.nome || horario.aluno?.nome || horario.nome || '?').charAt(0).toUpperCase()}
                 </div>
                 <div className="flex-1">
@@ -480,7 +579,7 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
                   <button
                     onClick={toggleAlunoCongelado}
                     title={alunoCongelado ? 'Remover congelado' : 'Marcar congelado'}
-                    className={`px-3 py-2 rounded-md border transition-all text-sm font-medium flex items-center gap-2 ${alunoCongelado ? 'bg-sky-50 border-sky-300 text-sky-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'}`}
+                    className={`px-3 h-10 py-2 rounded-md border transition-all text-sm font-medium flex items-center gap-2 ${alunoCongelado ? 'bg-sky-50 border-sky-300 text-sky-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'}`}
                   >
                     <i className="fas fa-snowflake"></i>
                     Congelado
@@ -495,14 +594,7 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
                     Parou de Vir
                   </button>
 
-                  <button
-                    onClick={toggleAlunoEmEspera}
-                    title={alunoEmEspera ? 'Remover em espera' : 'Marcar em espera'}
-                    className={`px-3 py-2 rounded-md border transition-all text-sm font-medium flex items-center gap-2 ${alunoEmEspera ? 'bg-amber-50 border-amber-300 text-amber-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'}`}
-                  >
-                    <i className="fas fa-hourglass-half"></i>
-                    Em Espera
-                  </button>
+                  {/* 'Em Espera' button removed as requested */}
 
                   <button
                     onClick={toggleAlunoPeriodo}
@@ -528,14 +620,15 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
         </div>
 
         {/* Footer */}
-        <div className="border-t border-gray-200 px-6 py-4 flex items-center justify-end gap-3">
+        <div className="border-t border-gray-200 pt-4 mt-4 flex items-center justify-end gap-3">
           {modalEditing ? (
             <>
               <button 
                 onClick={() => { setModalEditObservacoes(String(horario.observacoes || '')); setModalEditName(horario.alunoId?.nome || horario.aluno?.nome || ''); setModalEditing(false); }} 
-                className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 transition-colors text-sm font-medium"
+                className="px-4 h-10 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 flex items-center gap-2"
               >
-                Cancelar
+                <i className="fas fa-times text-gray-600" />
+                <span>Cancelar</span>
               </button>
               <button 
                 onClick={async () => {
@@ -548,29 +641,83 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
                     setModalEditing(false);
                   } catch (e) { console.error(e); alert('Erro ao salvar edições'); }
                 }} 
-                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm font-medium"
+                className="px-4 h-10 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 transition-colors text-sm font-medium flex items-center gap-2"
               >
-                Salvar
+                <i className="fas fa-save" />
+                <span>Salvar</span>
               </button>
             </>
           ) : (
             <>
+              <button
+                onClick={() => { onClose(); }}
+                className="px-4 h-10 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+              >
+                <i className="fas fa-times text-gray-600" />
+                <span>Cancelar</span>
+              </button>
+
               <button 
                 onClick={() => { setModalEditing(true); }} 
-                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm font-medium"
+                className="px-4 h-10 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 transition-colors text-sm font-medium flex items-center gap-2"
               >
-                Editar
+                <i className="fas fa-edit" />
+                <span>Editar</span>
               </button>
               <button 
                 onClick={() => { if (confirm('Tem certeza que deseja remover este aluno da turma?')) { deleteHorario(horario._id); } }} 
-                className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors text-sm font-medium"
+                className="px-4 h-10 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors text-sm font-medium flex items-center gap-2"
               >
-                Remover
+                <i className="fas fa-trash" />
+                <span>Remover</span>
               </button>
             </>
           )}
         </div>
       </div>
+
+      {/* Conflict Modal: substitutes found when attempting to unfreeze original */}
+      {showConflictModal && conflictSubstitutes && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center" style={{ zIndex: 10000 }}>
+          <div className="relative mx-auto w-full max-w-lg bg-white rounded-md shadow-xl" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+            <div className="border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900">Conflito ao Descongelar Aluno</h3>
+              <button onClick={() => { setShowConflictModal(false); setConflictSubstitutes(null); }} className="text-gray-400 hover:text-gray-600 transition-colors" aria-label="Fechar">
+                <i className="fas fa-times text-lg" />
+              </button>
+            </div>
+
+            <div className="px-6 py-4 space-y-4">
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-md">
+                <p className="text-sm text-amber-900 font-medium mb-1">Existem substitutos ativos para este aluno.</p>
+                <p className="text-xs text-amber-800">Para evitar ultrapassar o limite da turma, escolha como deseja proceder:</p>
+              </div>
+
+              <div className="space-y-3 max-h-60 overflow-y-auto">
+                {conflictSubstitutes.map((sub:any) => (
+                  <div key={sub._id} className="p-3 border border-gray-200 rounded-md flex items-center justify-between">
+                    <div>
+                      <div className="text-sm font-medium">{(sub.alunoId && (sub.alunoId.nome || sub.alunoId)) || sub.alunoNome || 'Substituto'}</div>
+                      <div className="text-xs text-gray-500">Horário: {sub.horarioFixoId || sub.horario || '—'}</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => handleReclaim(sub)} disabled={conflictLoading} className="px-3 py-1 bg-primary-600 text-white rounded-md text-sm hover:bg-primary-700 disabled:opacity-50">Reaver vaga</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="pt-2">
+                <p className="text-xs text-gray-600">Ou:</p>
+                <div className="mt-2 flex gap-2">
+                  <button onClick={handleForceUnfreeze} disabled={conflictLoading} className="px-3 py-2 bg-yellow-600 text-white rounded-md text-sm hover:bg-yellow-700 disabled:opacity-50">Forçar descongelar</button>
+                  <button onClick={() => { setShowConflictModal(false); setConflictSubstitutes(null); }} disabled={conflictLoading} className="px-3 py-2 border border-gray-300 rounded-md text-sm">Cancelar</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Merge Modal */}
       {showMergeModal && (

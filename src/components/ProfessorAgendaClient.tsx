@@ -190,7 +190,7 @@ export default function ProfessorAgendaClient() {
 
   return (
     <div className="p-4 max-w-3xl mx-auto">
-      <h1 className="text-xl font-semibold mb-4">Minha Agenda</h1>
+      <h1 className="text-2xl font-semibold text-gray-900 mb-4">Minha Agenda</h1>
       <div className="space-y-4">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">

@@ -11,60 +11,68 @@ export async function PUT(
     await connectDB();
     const { id } = await params;
     const body = await request.json();
-  const { nome, descricao, cor, duracao, preco, diasSemana, limiteAlunos, horarioFuncionamento } = body;
+  const { nome, descricao, cor, duracao, preco, diasSemana, limiteAlunos, horarioFuncionamento, horariosDisponiveis } = body;
 
-    // Validações básicas
-    if (!nome) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Nome é obrigatório'
-        },
-        { status: 400 }
-      );
+    // Build update object conditionally so PUT can be used to toggle `ativo` without requiring other fields
+    const updateObj: any = {};
+
+    // If caller provided a nome, validate and check duplicates
+    if (typeof nome !== 'undefined') {
+      const nomeTrim = String(nome || '').trim();
+      if (!nomeTrim) {
+        return NextResponse.json({ success: false, error: 'Nome é obrigatório' }, { status: 400 });
+      }
+      // Verificar se já existe outra modalidade com esse nome
+      const modalidadeExistente = await Modalidade.findOne({
+        nome: { $regex: new RegExp(`^${nomeTrim}$`, 'i') },
+        ativo: true,
+        _id: { $ne: id }
+      });
+      if (modalidadeExistente) {
+        return NextResponse.json({ success: false, error: 'Já existe uma modalidade com este nome' }, { status: 400 });
+      }
+      updateObj.nome = nomeTrim;
     }
 
-    // Verificar se já existe outra modalidade com esse nome
-    const modalidadeExistente = await Modalidade.findOne({ 
-      nome: { $regex: new RegExp(`^${nome}$`, 'i') }, 
-      ativo: true,
-      _id: { $ne: id }
-    });
-    
-    if (modalidadeExistente) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Já existe uma modalidade com este nome'
+    if (typeof descricao !== 'undefined') updateObj.descricao = descricao?.trim() || '';
+    if (typeof cor !== 'undefined') updateObj.cor = cor || '#3B82F6';
+    if (typeof duracao !== 'undefined') updateObj.duracao = duracao || 60;
+    if (typeof limiteAlunos !== 'undefined') updateObj.limiteAlunos = limiteAlunos || 5;
+    if (typeof diasSemana !== 'undefined') updateObj.diasSemana = diasSemana || [];
+    if (typeof preco !== 'undefined') updateObj.preco = preco || 0;
+    if (typeof horarioFuncionamento !== 'undefined') {
+      updateObj.horarioFuncionamento = {
+        manha: {
+          inicio: horarioFuncionamento?.manha?.inicio || null,
+          fim: horarioFuncionamento?.manha?.fim || null
         },
-        { status: 400 }
-      );
+        tarde: {
+          inicio: horarioFuncionamento?.tarde?.inicio || null,
+          fim: horarioFuncionamento?.tarde?.fim || null
+        }
+      };
+    }
+
+    // If caller provided horariosDisponiveis, normalize and include in update
+    if (Array.isArray(horariosDisponiveis)) {
+      try {
+        updateObj.horariosDisponiveis = horariosDisponiveis.map((h: any) => ({
+          diasSemana: Array.isArray(h.diasSemana) ? h.diasSemana : (h.dias || []),
+          horaInicio: h.horaInicio || h.hora_inicio || h.inicio || h.hora || '',
+          horaFim: h.horaFim || h.hora_fim || h.fim || h.horaFim || ''
+        }));
+      } catch (e) {
+        // ignore normalization errors and don't set the field
+      }
+    }
+
+    // Allow caller to set ativo flag when provided (reactivate/activate)
+    if (typeof body.ativo === 'boolean') {
+      updateObj.ativo = body.ativo;
     }
 
     // Atualizar modalidade
-    const modalidade = await Modalidade.findByIdAndUpdate(
-      id,
-      {
-        nome: nome.trim(),
-        descricao: descricao?.trim() || '',
-        cor: cor || '#3B82F6',
-        duracao: duracao || 60,
-        limiteAlunos: limiteAlunos || 5,
-        diasSemana: diasSemana || [],
-        preco: preco || 0,
-        horarioFuncionamento: {
-          manha: {
-            inicio: horarioFuncionamento?.manha?.inicio || null,
-            fim: horarioFuncionamento?.manha?.fim || null
-          },
-          tarde: {
-            inicio: horarioFuncionamento?.tarde?.inicio || null,
-            fim: horarioFuncionamento?.tarde?.fim || null
-          }
-        }
-      },
-      { new: true }
-    );
+    const modalidade = await Modalidade.findByIdAndUpdate(id, updateObj, { new: true });
 
     if (!modalidade) {
       return NextResponse.json(

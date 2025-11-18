@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 
 // Tipos
 interface Aluno {
@@ -26,7 +27,7 @@ interface Presenca {
   alunoId: string;
   horarioFixoId: string;
   data: string;
-  presente: boolean;
+  presente: boolean | null;
   observacoes?: string;
 }
 
@@ -112,6 +113,7 @@ export default function MinhaAgendaClient() {
   const [aulaStatus, setAulaStatus] = useState<Map<string, AulaStatus>>(new Map());
   const [enviandoAula, setEnviandoAula] = useState(false);
   const [horariosExpandidos, setHorariosExpandidos] = useState<Set<string>>(new Set());
+  const searchParams = useSearchParams();
 
   // Encontrar próximo dia com horários
   const encontrarProximoDiaComHorarios = (listaHorarios: HorarioFixo[], dataInicial: Date): Date => {
@@ -153,11 +155,43 @@ export default function MinhaAgendaClient() {
         const list = Array.isArray(data) ? data : (data.data || []);
         
         setHorarios(list);
-        
-        // Ajustar data para o próximo dia com horários
-        if (list.length > 0) {
+
+        // If a date was provided in the query params, use it; otherwise choose next available day
+        const queryDate = searchParams?.get('date');
+        const queryHorario = searchParams?.get('horarioFixoId');
+
+        if (queryDate) {
+          // Parse YYYY-MM-DD safely to avoid timezone shifts
+          try {
+            const raw = String(queryDate || '');
+            const dateOnly = raw.slice(0, 10);
+            const parts = dateOnly.split('-');
+            if (parts.length === 3) {
+              const y = Number(parts[0]);
+              const m = Number(parts[1]) - 1;
+              const day = Number(parts[2]);
+              if (!isNaN(y) && !isNaN(m) && !isNaN(day)) {
+                setDataSelecionada(new Date(y, m, day));
+              } else {
+                const parsed = new Date(raw);
+                if (!isNaN(parsed.getTime())) setDataSelecionada(parsed);
+              }
+            } else {
+              const parsed = new Date(raw);
+              if (!isNaN(parsed.getTime())) setDataSelecionada(parsed);
+            }
+          } catch (e) {
+            const parsed = new Date(queryDate);
+            if (!isNaN(parsed.getTime())) setDataSelecionada(parsed);
+          }
+        } else if (list.length > 0) {
           const proximoDia = encontrarProximoDiaComHorarios(list, new Date());
           setDataSelecionada(proximoDia);
+        }
+
+        // If a horarioFixoId was requested, expand it when available
+        if (queryHorario) {
+          setHorariosExpandidos(new Set([queryHorario]));
         }
       } catch (err: any) {
         console.error('[MinhaAgenda] Erro ao buscar horários:', err);
@@ -202,7 +236,25 @@ export default function MinhaAgendaClient() {
         
         if (res.ok) {
           const data = await res.json();
-          setPresencas(Array.isArray(data) ? data : []);
+          // Merge server presencas with local draft presencas saved in localStorage
+          const serverPresencas: Presenca[] = Array.isArray(data) ? data : [];
+          const draftKey = `minhaagenda:presencas:${dataFormatada}`;
+          try {
+            const raw = localStorage.getItem(draftKey);
+            if (raw) {
+              const drafts: Presenca[] = JSON.parse(raw) || [];
+              // Build map by alunoId+horario to let drafts override server values
+              const map = new Map<string, Presenca>();
+              serverPresencas.forEach(p => map.set(`${p.alunoId}::${p.horarioFixoId}`, p));
+              drafts.forEach(p => map.set(`${p.alunoId}::${p.horarioFixoId}`, p));
+              setPresencas(Array.from(map.values()));
+            } else {
+              setPresencas(serverPresencas);
+            }
+          } catch (e) {
+            console.warn('[MinhaAgenda] Falha ao parsear drafts de presencas:', e);
+            setPresencas(serverPresencas);
+          }
         }
       } catch (err) {
         console.error('[MinhaAgenda] Erro ao buscar presenças:', err);
@@ -299,6 +351,8 @@ export default function MinhaAgendaClient() {
 
   // Filtrar reagendamentos para a data selecionada
   const dataFormatada = dataSelecionada.toISOString().split('T')[0];
+  const hojeFormatado = new Date().toISOString().split('T')[0];
+  const isHoje = dataFormatada === hojeFormatado;
   
   // Reagendamentos que TÊM DESTINO nesta data (alunos vindo de outros dias)
   const reagendamentosParaDentro = reagendamentos.filter(r => {
@@ -484,6 +538,21 @@ export default function MinhaAgendaClient() {
           return newMap;
         });
 
+        // Remover rascunhos locais para este horário na data enviada
+        try {
+          const dataFormatada = dataSelecionada.toISOString().split('T')[0];
+          const draftKey = `minhaagenda:presencas:${dataFormatada}`;
+          const raw = localStorage.getItem(draftKey);
+          if (raw) {
+            const drafts: Presenca[] = JSON.parse(raw) || [];
+            const filtered = drafts.filter(p => String(p.horarioFixoId) !== String(horarioFixoId));
+            if (filtered.length === 0) localStorage.removeItem(draftKey);
+            else localStorage.setItem(draftKey, JSON.stringify(filtered));
+          }
+        } catch (e) {
+          console.warn('[MinhaAgenda] Falha ao limpar drafts após envio:', e);
+        }
+
         alert('Aula enviada com sucesso!');
       } else {
         console.error('Erro na API:', data);
@@ -500,6 +569,8 @@ export default function MinhaAgendaClient() {
   };
 
   // Marcar presença/falta (apenas local, sem salvar ainda)
+  // NOTE: default behavior: when no explicit marking exists, we consider the aluno as 'falta' (presente = false).
+  // The switch now toggles between true (presente) and false (falta) — we no longer use `null` as uninitialized state.
   const marcarPresenca = (alunoId: string, horarioFixoId: string, presente: boolean) => {
     setPresencas(prev => {
       const index = prev.findIndex(
@@ -510,29 +581,46 @@ export default function MinhaAgendaClient() {
         // Já existe, atualizar
         const updated = [...prev];
         updated[index].presente = presente;
+        // salvar rascunho no localStorage
+        try {
+          const dataFormatada = dataSelecionada.toISOString().split('T')[0];
+          const draftKey = `minhaagenda:presencas:${dataFormatada}`;
+          const raw = localStorage.getItem(draftKey);
+          const drafts: Presenca[] = raw ? (JSON.parse(raw) || []) : [];
+          const idx = drafts.findIndex(d => String(d.alunoId) === String(alunoId) && String(d.horarioFixoId) === String(horarioFixoId));
+          const novo = { alunoId, horarioFixoId, data: dataFormatada, presente } as Presenca;
+          if (idx >= 0) { drafts[idx] = novo; } else { drafts.push(novo); }
+          localStorage.setItem(draftKey, JSON.stringify(drafts));
+        } catch (e) { console.warn('[MinhaAgenda] Falha ao salvar draft de presenca:', e); }
         return updated;
       } else {
         // Novo registro
         const dataFormatada = dataSelecionada.toISOString().split('T')[0];
-        return [...prev, {
-          alunoId,
-          horarioFixoId,
-          data: dataFormatada,
-          presente,
-        }];
+        const novo = { alunoId, horarioFixoId, data: dataFormatada, presente } as Presenca;
+        // persistir rascunho
+        try {
+          const draftKey = `minhaagenda:presencas:${dataFormatada}`;
+          const raw = localStorage.getItem(draftKey);
+          const drafts: Presenca[] = raw ? (JSON.parse(raw) || []) : [];
+          drafts.push(novo);
+          localStorage.setItem(draftKey, JSON.stringify(drafts));
+        } catch (e) { console.warn('[MinhaAgenda] Falha ao salvar draft de presenca:', e); }
+
+        return [...prev, novo];
       }
     });
   };
 
   // Verificar status de presença de um aluno
-  const getPresencaStatus = (alunoId: string, horarioFixoId: string): boolean | null => {
-    if (!alunoId || !horarioFixoId) return null;
-    
+  // Default: if no explicit marking exists, return false (falta)
+  const getPresencaStatus = (alunoId: string, horarioFixoId: string): boolean => {
+    if (!alunoId || !horarioFixoId) return false;
+
     const presenca = presencas.find(
       p => String(p.alunoId) === String(alunoId) && String(p.horarioFixoId) === String(horarioFixoId)
     );
-    
-    return presenca ? presenca.presente : null;
+
+    return presenca ? (presenca.presente === true) : false;
   };
 
   // Calcular estatísticas de presença por horário
@@ -607,16 +695,8 @@ export default function MinhaAgendaClient() {
     });
   };
 
-  if (loading) {
-    return (
-      <div className="p-6">
-        <div className="text-center">
-          <i className="fas fa-spinner fa-spin text-3xl text-primary-600 mb-3"></i>
-          <p className="text-gray-600">Carregando sua agenda...</p>
-        </div>
-      </div>
-    );
-  }
+  // NOTE: removed loading spinner to always render the agenda UI immediately.
+  // Loading is still tracked internally but we avoid blocking the initial render.
 
   if (error) {
     return (
@@ -659,7 +739,14 @@ export default function MinhaAgendaClient() {
           {/* Data atual */}
           <div className="text-center flex-1">
             <div className="text-xs text-blue-600 uppercase font-bold tracking-wide mb-1">Aula selecionada</div>
-            <div className="text-2xl font-bold text-gray-900">{formatarData(dataSelecionada)}</div>
+            <div className="flex items-center justify-center gap-2">
+              <div className="text-2xl font-bold text-gray-900">{formatarData(dataSelecionada)}</div>
+              {isHoje && (
+                <div className="inline-flex items-center px-2 py-0.5 rounded-full bg-green-100 text-green-800 text-xs font-semibold">
+                  Hoje
+                </div>
+              )}
+            </div>
             <div className="text-sm text-blue-700 font-semibold mt-1">{diasSemana[diaSemana]}</div>
           </div>
 
@@ -704,7 +791,7 @@ export default function MinhaAgendaClient() {
               key={`${horario.horarioInicio}-${index}`}
               className={`rounded-xl shadow-sm border p-0 overflow-hidden transition-all fade-in-${Math.min((index % 8) + 1, 8)} ${
                 aulaStatus.get(horario.horarioFixoId || '')?.enviada 
-                  ? 'bg-gradient-to-r from-green-50 to-green-100 border-green-300' 
+                  ? 'bg-gray-50 border-gray-300' 
                   : 'bg-white border-gray-200'
               }`}
             >
@@ -713,25 +800,25 @@ export default function MinhaAgendaClient() {
                 onClick={() => toggleHorario(horario.horarioFixoId || '')}
                 className="w-full text-left transition-all hover:shadow-lg"
                 style={{
-                  backgroundColor: aulaStatus.get(horario.horarioFixoId || '')?.enviada ? '#dcfce7' : horario.modalidade.cor,
+                  backgroundColor: aulaStatus.get(horario.horarioFixoId || '')?.enviada ? '#E5E7EB' : horario.modalidade.cor,
                 }}
               >
                 <div className="p-4 flex items-center justify-between">
-                  <div className="flex items-center gap-3 flex-1">
+                    <div className="flex items-center gap-3 flex-1">
                     {/* Ícone de dropdown */}
                     <div className="flex-shrink-0">
-                      <i className={`fas fa-chevron-${horariosExpandidos.has(horario.horarioFixoId || '') ? 'down' : 'right'} text-lg transition-transform ${aulaStatus.get(horario.horarioFixoId || '')?.enviada ? 'text-green-700' : 'text-white'}`}></i>
+                      <i className={`fas fa-chevron-${horariosExpandidos.has(horario.horarioFixoId || '') ? 'down' : 'right'} text-lg transition-transform ${aulaStatus.get(horario.horarioFixoId || '')?.enviada ? 'text-gray-600' : 'text-white'}`}></i>
                     </div>
 
                     {/* Tempo e Modalidade */}
                     <div className="flex-1">
-                      <div className={`font-bold text-lg flex items-baseline gap-2 ${aulaStatus.get(horario.horarioFixoId || '')?.enviada ? 'text-green-700' : 'text-white'}`}>
-                        <i className={`fas ${aulaStatus.get(horario.horarioFixoId || '')?.enviada ? 'fa-check-circle text-green-400' : 'fa-clock opacity-80'} text-sm`}></i>
+                      <div className={`font-bold text-lg flex items-baseline gap-2 ${aulaStatus.get(horario.horarioFixoId || '')?.enviada ? 'text-gray-700' : 'text-white'}`}>
+                        <i className={`fas ${aulaStatus.get(horario.horarioFixoId || '')?.enviada ? 'fa-check-circle text-gray-400' : 'fa-clock opacity-80'} text-sm`}></i>
                         <span>{horario.horarioInicio}</span>
                         <span className="text-xs opacity-70 font-normal">às</span>
                         <span>{horario.horarioFim}</span>
                       </div>
-                      <div className={`text-xs opacity-90 mt-0.5 font-medium ${aulaStatus.get(horario.horarioFixoId || '')?.enviada ? 'text-green-600' : 'text-white'}`}>
+                      <div className={`text-xs opacity-90 mt-0.5 font-medium ${aulaStatus.get(horario.horarioFixoId || '')?.enviada ? 'text-gray-600' : 'text-white'}`}>
                         {horario.modalidade.nome}
                       </div>
                     </div>
@@ -741,7 +828,7 @@ export default function MinhaAgendaClient() {
                   <div className="flex flex-col gap-2">
                     {/* Contador de alunos FIXOS */}
                     <div className="text-center bg-white rounded-md px-2.5 py-1.5 shadow-sm">
-                      <div className="text-sm font-bold text-gray-900">
+                      <div className={`text-sm font-bold ${aulaStatus.get(horario.horarioFixoId || '')?.enviada ? 'text-gray-600' : 'text-gray-900'}`}>
                         {(() => {
                           // Contar apenas alunos fixos (não reagendados para fora)
                           let count = 0;
@@ -753,7 +840,7 @@ export default function MinhaAgendaClient() {
                           return count;
                         })()}
                       </div>
-                      <div className="text-xs text-gray-600 font-medium">Fixos</div>
+                      <div className={`text-xs ${aulaStatus.get(horario.horarioFixoId || '')?.enviada ? 'text-gray-500' : 'text-gray-600'} font-medium`}>Fixos</div>
                     </div>
 
                     {/* Presentes EFETIVOS da aula */}
@@ -780,11 +867,11 @@ export default function MinhaAgendaClient() {
                       
                       return (
                         <div className="text-center bg-white rounded-md px-2.5 py-1.5 shadow-sm">
-                          <div className="text-sm font-bold text-green-600">
+                          <div className={`text-sm font-bold ${aulaStatus.get(horario.horarioFixoId || '')?.enviada ? 'text-gray-400' : 'text-green-600'}`}>
                             {presentes}
                             <span className="text-xs font-normal text-gray-400">/{total}</span>
                           </div>
-                          <div className="text-xs text-gray-600 font-medium">Presentes</div>
+                            <div className={`text-xs ${aulaStatus.get(horario.horarioFixoId || '')?.enviada ? 'text-gray-500' : 'text-gray-600'} font-medium`}>Presentes</div>
                         </div>
                       );
                     })()}
@@ -794,7 +881,7 @@ export default function MinhaAgendaClient() {
 
               {/* Conteúdo expandido */}
               {horariosExpandidos.has(horario.horarioFixoId || '') && (
-                <div className="border-t border-gray-200 bg-white">
+                <div className={`border-t ${aulaStatus.get(horario.horarioFixoId || '')?.enviada ? 'border-gray-300 bg-gray-50' : 'border-gray-200 bg-white'}`}>
                   <div className="p-4">{horario.alunos.length === 0 && alunosReagendadosParaDentro(horario.horarioFixoId).length === 0 ? (
                     <div className="p-6 text-center">
                       <i className="fas fa-inbox text-gray-300 text-4xl mb-3 block"></i>
@@ -811,6 +898,7 @@ export default function MinhaAgendaClient() {
                         let bgColor = 'bg-white';
                         let badgeClass = '';
                         let badgeIcon = '';
+                        const inactive = aluno.congelado || aluno.ausente;
 
                         if (foiReagendado) {
                           bgColor = 'bg-gray-100';
@@ -833,89 +921,98 @@ export default function MinhaAgendaClient() {
                         return (
                           <div
                             key={aluno._id}
-                            className={`p-3 rounded-md border shadow-sm ${bgColor} border-gray-200 transition-all flex items-center justify-between gap-3`}
+                            className={`p-3 rounded-md border shadow-sm ${inactive ? 'bg-gray-100 text-gray-500 filter grayscale' : bgColor} border-gray-200 transition-all flex items-center justify-between gap-3`}
                           >
                             <div className="flex items-center gap-3 flex-1 min-w-0">
-                              {/* Avatar */}
+                              {/* Avatar (rounded) */}
                               <div
-                                className="w-10 h-10 rounded-md flex items-center justify-center text-white font-bold text-sm flex-shrink-0"
-                                style={{ backgroundColor: foiReagendado ? '#9CA3AF' : horario.modalidade.cor }}
+                                className={`w-10 h-10 rounded-full overflow-hidden flex items-center justify-center font-bold text-sm flex-shrink-0 ${aulaStatus.get(horario.horarioFixoId || '')?.enviada ? 'bg-gray-100 text-gray-600' : (inactive ? 'bg-gray-400 text-gray-700' : 'text-white')}`}
+                                style={{ backgroundColor: aulaStatus.get(horario.horarioFixoId || '')?.enviada ? undefined : (inactive ? undefined : (foiReagendado ? '#9CA3AF' : horario.modalidade.cor)) }}
                               >
-                                {aluno.nome.charAt(0).toUpperCase()}
+                                {((aluno as any).foto) ? (
+                                  <img src={(aluno as any).foto} alt={aluno.nome} className={`${aulaStatus.get(horario.horarioFixoId || '')?.enviada ? 'filter grayscale opacity-70 bg-gray-100' : 'bg-transparent'} w-full h-full object-cover`} />
+                                ) : (
+                                  <span className={`${aulaStatus.get(horario.horarioFixoId || '')?.enviada ? 'text-gray-600' : 'text-white'} text-sm`}>{aluno.nome?.charAt(0).toUpperCase() || '?'}</span>
+                                )}
                               </div>
 
                               {/* Informações do aluno */}
                               <div className="flex-1 min-w-0">
-                                <div className="font-semibold text-gray-900 text-sm">{aluno.nome}</div>
-                                {(foiReagendado || aluno.ausente || aluno.congelado || aluno.emEspera) && (
-                                  <div className="mt-1">
-                                    {foiReagendado && reagendamento && (
-                                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${badgeClass} border`}>
-                                        <i className={`fas ${badgeIcon}`}></i>
-                                        {new Date(reagendamento.novaData).toLocaleDateString('pt-BR')} às {reagendamento.novoHorarioInicio}
-                                      </span>
-                                    )}
-                                    {!foiReagendado && (aluno.ausente || aluno.congelado || aluno.emEspera) && (
-                                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${badgeClass} border`}>
-                                        <i className={`fas ${badgeIcon}`}></i>
-                                        {aluno.ausente ? 'Parou de vir' : aluno.congelado ? 'Congelado' : 'Em espera'}
-                                      </span>
-                                    )}
-                                  </div>
+                                <div className={`${inactive ? 'line-through text-gray-500' : 'font-semibold text-gray-900'} text-sm truncate`}>{aluno.nome}</div>
+
+                                {/* Observação abaixo do nome */}
+                                {aluno.observacoes && (
+                                  <div className="text-xs text-gray-500 mt-1 truncate">{aluno.observacoes}</div>
                                 )}
+
+                                {/* Badges adicionais (congelado, ausente, periodoTreino, parceria) */}
+                                <div className="mt-2 flex items-center gap-2 flex-wrap">
+                                  {aluno.congelado && (
+                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] rounded-md font-medium border ${aulaStatus.get(horario.horarioFixoId || '')?.enviada ? 'bg-gray-100 text-gray-600 border-gray-200' : 'bg-sky-100 text-sky-700 border-sky-200'}`}>
+                                      <i className={`fas fa-snowflake ${aulaStatus.get(horario.horarioFixoId || '')?.enviada ? 'text-gray-600' : ''}`}></i>
+                                      <span>Congelado</span>
+                                    </span>
+                                  )}
+
+                                  {aluno.ausente && (
+                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] rounded-md font-medium border ${aulaStatus.get(horario.horarioFixoId || '')?.enviada ? 'bg-gray-100 text-gray-600 border-gray-200' : 'bg-rose-100 text-rose-700 border-rose-200'}`}>
+                                      <i className={`fas fa-user-clock ${aulaStatus.get(horario.horarioFixoId || '')?.enviada ? 'text-gray-600' : ''}`}></i>
+                                      <span>Parou de Vir</span>
+                                    </span>
+                                  )}
+
+                                  {aluno.periodoTreino === '12/36' && (
+                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${aulaStatus.get(horario.horarioFixoId || '')?.enviada ? 'bg-gray-100 text-gray-600 border-gray-200' : 'bg-green-50 text-green-700 border-green-100'}`}>
+                                      <i className={`fas fa-clock text-xs ${aulaStatus.get(horario.horarioFixoId || '')?.enviada ? 'text-gray-600' : ''}`}></i>
+                                      <span>12/36</span>
+                                    </span>
+                                  )}
+
+                                  {String(aluno.parceria || '').toLowerCase() === 'totalpass' && (
+                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${aulaStatus.get(horario.horarioFixoId || '')?.enviada ? 'bg-gray-100 text-gray-600 border-gray-200' : 'bg-purple-50 text-purple-700 border-purple-100'}`}>
+                                      <img
+                                        src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAC1UlEQVR4AbyWg5LlQBiFY3uSu7Zt27Zt27Zt27Zt60G2tC8w/3aWk/qvkkGqzuU53V+7qSwPQ6S5rttM07Sptm3PJZqXQ5pLypwci8UakjoUIpoo8HDE1EgQhC/kcyYR5IZoms6UJOmtaZo1/zT418OSypuwLPsDh3JHpK7vlmXV+NsTBmn5N2zMXZGeeEneZcpxnLYpA7k0HGS+1aZUVZ336wdZAGNNHzDX9wupvmCs6gVsASs0hKIooykyO5f6X4RaxcH7sCya3i4BRpdDAxiGMeUfgDqyWWQA+9Q4VHhoAHP74MgA2uyO2QfQF3cDi0D8077hcStzzk0M+nYMBnNtX1CHN/0lZWhjUAY1DEjuXgv4qkWA5piEAHitFs2IC8CVzR/0kcnnvU+vpzKuTgOhXqn0AKTO1VEB7qN5QLNM0Neharghe70Y+IoFUwPoS7qhsLllIPbN7xx6zpgb+qUAoClwLk1BQWVwIwTgnJ8UGiDj1ozkAIyrxx1XvnLhoM9WwXu3NDzAvdnJAcRWlVDIfbYAaJ4N+pqVj7ZvHB6VHECb1QGFrF1DAPmmtY0EoI5qlhyA7Gw4NLIpIN/R0aErdx/P84cuMQCjS+C9WYKCfM3iwdNMFcF7HfClFpkvYpvKyfcBoWEZTP1yEdASDwFfnZLhWv5wLogtK6beCdUJrVDY2j8Cdb86tgWu6D2R33u+Xi8G98l8sMiEU4Y1AcZU/FxqAOvACFSwOr4lClt7h+FDaU4nv6d+S+CAommUSwkgtqgIcrdaWYUuG37h7vOFCIAs3+inYRjxVYrE7X7G0/MGgGzJ+Ji+MtXfwvMGwNw8AAHoy7pHu5Coqjo3bNDfKX8OvXHKZqlCVqN0wJvlA98xAQImYNfMBthd+kDnrpkBcieVBRgVVsCQOEPrzinQjqPQfiETAzKACnCLioragbrSwFAppSYGmpkF7J5bQoId4XMA6lRclYDTIrUAAAAASUVORK5CYII="
+                                        alt="TOTALPASS"
+                                        className="w-3 h-3 bg-gray-100 rounded-sm"
+                                        style={{ width: '12px', height: '12px' }}
+                                      />
+                                      <span>TOTALPASS</span>
+                                    </span>
+                                  )}
+                                </div>
                               </div>
                             </div>
 
                             <div className="flex items-center gap-3 flex-shrink-0">
                               {/* Presença/Falta Selector */}
                               {!foiReagendado && !aluno.emEspera && !aluno.ausente && !aluno.congelado && (
-                                <div className="flex gap-1">
-                                  {(() => {
-                                    const status = getPresencaStatus(aluno._id, horario.horarioFixoId || '');
-                                    const aulaEnviada = aulaStatus.get(horario.horarioFixoId || '')?.enviada ?? false;
-                                    
-                                    return (
-                                      <>
-                                        <button
-                                          onClick={() => !aulaEnviada && marcarPresenca(aluno._id, horario.horarioFixoId || '', true)}
-                                          disabled={aulaEnviada}
-                                          className={`px-2 py-1 rounded-md transition-all font-semibold text-xs flex items-center gap-1 ${
-                                            status === true 
-                                              ? 'bg-green-500 text-white shadow-md' 
-                                              : 'bg-white text-gray-600 hover:bg-green-50'
-                                          } ${aulaEnviada ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
-                                          title={aulaEnviada ? "Aula já foi enviada" : "Marcar como PRESENTE"}
-                                        >
-                                          <i className="fas fa-check"></i>
-                                          <span className="hidden sm:inline">Presente</span>
-                                        </button>
-                                        <button
-                                          onClick={() => !aulaEnviada && marcarPresenca(aluno._id, horario.horarioFixoId || '', false)}
-                                          disabled={aulaEnviada}
-                                          className={`px-2 py-1 rounded-md transition-all font-semibold text-xs flex items-center gap-1 ${
-                                            status === false 
-                                              ? 'bg-red-500 text-white shadow-md' 
-                                              : 'bg-white text-gray-600 hover:bg-red-50'
-                                          } ${aulaEnviada ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
-                                          title={aulaEnviada ? "Aula já foi enviada" : "Marcar como FALTA"}
-                                        >
-                                          <i className="fas fa-times"></i>
-                                          <span className="hidden sm:inline">Falta</span>
-                                        </button>
-                                      </>
-                                    );
-                                  })()}
-                                </div>
-                              )}
+                                (() => {
+                                  const status = getPresencaStatus(aluno._id, horario.horarioFixoId || '');
+                                  const aulaEnviada = aulaStatus.get(horario.horarioFixoId || '')?.enviada ?? false;
+                                  const checked = status === true;
 
-                              {/* Observações */}
-                              {aluno.observacoes && (
-                                <span 
-                                  className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-amber-100 text-amber-700 text-xs font-bold flex-shrink-0"
-                                  title={aluno.observacoes}
-                                >
-                                  !
-                                </span>
+                                  return (
+                                    <div className="flex items-center gap-3">
+                                      <span className={`${aulaEnviada ? 'text-gray-400' : 'text-gray-700'} text-xs font-semibold`}>FALTOU</span>
+
+                                      <label className={`relative inline-flex items-center ${aulaEnviada ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
+                                        <input
+                                          type="checkbox"
+                                          className="sr-only"
+                                          checked={checked}
+                                          disabled={aulaEnviada}
+                                          onChange={(e) => marcarPresenca(aluno._id, horario.horarioFixoId || '', e.target.checked)}
+                                          aria-label={`Marcar presença de ${aluno.nome}`}
+                                        />
+
+                                        <div className={`w-12 h-6 rounded-full transition-colors ${checked ? 'bg-green-500' : 'bg-gray-300'}`}></div>
+                                        <div className={`absolute left-1 top-1 w-4 h-4 bg-white rounded-full shadow transform transition-transform ${checked ? 'translate-x-6' : ''}`}></div>
+                                      </label>
+
+                                      <span className={`${aulaEnviada ? 'text-gray-400' : (checked ? 'text-green-600' : 'text-gray-700')} text-xs font-semibold`}>PRESENTE</span>
+                                    </div>
+                                  );
+                                })()
                               )}
                             </div>
                           </div>
@@ -950,9 +1047,9 @@ export default function MinhaAgendaClient() {
 
                   {/* Card de Aula Enviada */}
                   {aulaStatus.get(horario.horarioFixoId || '')?.enviada && (
-                    <div className="p-4 border-t bg-green-50">
-                      <div className="flex items-center justify-center gap-2 text-green-700">
-                        <i className="fas fa-check-circle text-green-600 text-lg"></i>
+                    <div className="p-4 border-t bg-gray-50">
+                      <div className="flex items-center justify-center gap-2 text-gray-700">
+                        <i className="fas fa-check-circle text-gray-600 text-lg"></i>
                         <span className="font-semibold text-sm">Aula Enviada com Sucesso</span>
                       </div>
                     </div>
@@ -964,11 +1061,8 @@ export default function MinhaAgendaClient() {
                       <button
                         onClick={() => enviarAula(horario.horarioFixoId || '')}
                         disabled={enviandoAula}
-                        className={`w-full py-3 px-4 rounded-md font-bold transition-all flex items-center justify-center gap-2 ${
-                          enviandoAula
-                            ? 'bg-gray-300 text-gray-600 cursor-not-allowed'
-                            : 'bg-blue-600 text-white hover:bg-blue-700 active:scale-95 shadow-sm'
-                        }`}
+                        className={`w-full py-3 px-4 rounded-md font-bold transition-all flex items-center justify-center gap-2 ${enviandoAula ? 'cursor-not-allowed' : 'shadow-sm hover:opacity-95 active:scale-95'}`}
+                        style={enviandoAula ? { backgroundColor: '#D1D5DB', color: '#6B7280' } : { backgroundColor: horario.modalidade?.cor || '#2563EB', color: '#FFFFFF' }}
                       >
                         {enviandoAula ? (
                           <>

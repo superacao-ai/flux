@@ -25,6 +25,8 @@ export default function Layout({ children, title = 'Superação Flux', fullWidth
     try {
       localStorage.removeItem('user');
       localStorage.removeItem('token');
+      // call server to clear auth cookie as well
+      try { fetch('/api/auth/logout', { method: 'POST' }); } catch(e) {}
     } catch (e) {
       // ignore
     }
@@ -65,7 +67,7 @@ export default function Layout({ children, title = 'Superação Flux', fullWidth
     } catch (e) {
       // ignore
     }
-    if (typeof window === 'undefined') return;
+  if (typeof window === 'undefined') return;
     const onStorage = (e: StorageEvent) => {
       if (e.key === 'user') {
           try {
@@ -90,7 +92,7 @@ export default function Layout({ children, title = 'Superação Flux', fullWidth
   }, []);
 
   const sidebar = (
-    <div className="flex flex-col h-full bg-white text-gray-700 border-r border-gray-200">
+    <div className=" flex flex-col h-full bg-white text-gray-700 border-r border-gray-200">
       <div className="px-4 py-3 border-b border-gray-200">
         <div className="flex items-center justify-center">
           <Logo size="sm" />
@@ -101,10 +103,11 @@ export default function Layout({ children, title = 'Superação Flux', fullWidth
         {isProfessor === true ? (
           <div>
             <div className="mb-4">
-              <div className="px-2 text-xs font-semibold uppercase text-gray-500">Professor</div>
+              <div className="px-2 text-xs font-semibold uppercase text-gray-500 ">Professor</div>
               <div className="mt-2 space-y-1">
-                <a href="/professor/minhaagenda" className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium ${pathname?.startsWith('/professor/minhaagenda') ? 'bg-primary-50 text-primary-700' : 'text-gray-600 hover:bg-gray-100'} `}><i className="fas fa-calendar-alt w-4 text-gray-500" aria-hidden="true" /> <span>Minha Agenda</span></a>
-                <a href="/professor/alunos" className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium ${pathname?.startsWith('/professor/alunos') ? 'bg-primary-50 text-primary-700' : 'text-gray-600 hover:bg-gray-100'} `}><i className="fas fa-user-graduate w-4 text-gray-500" aria-hidden="true" /> <span>Meus Alunos</span></a>
+                <a href="/professor/minhaagenda" className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium ${pathname?.startsWith('/professor/minhaagenda') ? 'bg-primary-50 text-primary-700 transition-colors duration-200' : 'text-gray-600 hover:bg-gray-100 transition-colors duration-200'} `}><i className="fas fa-calendar-alt w-4 text-gray-500" aria-hidden="true" /> <span>Minha Agenda</span></a>
+                <a href="/professor/alunos" className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium ${pathname?.startsWith('/professor/alunos') ? 'bg-primary-50 text-primary-700 transition-colors duration-200' : 'text-gray-600 hover:bg-gray-100 transition-colors duration-200'} `}><i className="fas fa-user-graduate w-4 text-gray-500" aria-hidden="true" /> <span>Meus Alunos</span></a>
+                <a href="/professor/aulas" className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium ${pathname?.startsWith('/professor/aulas') ? 'bg-primary-50 text-primary-700 transition-colors duration-200' : 'text-gray-600 hover:bg-gray-100 transition-colors duration-200'} `}><i className="fas fa-clipboard-list w-4 text-gray-500" aria-hidden="true" /> <span>Minhas Aulas</span></a>
               </div>
             </div>
           </div>
@@ -113,27 +116,27 @@ export default function Layout({ children, title = 'Superação Flux', fullWidth
             <div className="mb-4">
               <div className="px-2 text-xs font-semibold uppercase text-gray-500">Principal</div>
               <div className="mt-2 space-y-1">
-                <a href="/calendario" className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium ${pathname?.startsWith('/calendario') ? 'bg-primary-50 text-primary-700' : 'text-gray-600 hover:bg-gray-100'} `}><i className="fas fa-calendar-alt w-4 text-gray-500" aria-hidden="true" /> <span>Calendário</span></a>
-                <a href="/horarios" className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium ${pathname?.startsWith('/horarios') ? 'bg-primary-50 text-primary-700' : 'text-gray-600 hover:bg-gray-100'} `}><i className="fas fa-clock w-4 text-gray-500" aria-hidden="true" /> <span>Horários</span></a>
+                <a href="/calendario" className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium ${pathname?.startsWith('/calendario') ? 'bg-primary-50 text-primary-700 transition-colors duration-200' : 'text-gray-600 hover:bg-gray-100 transition-colors duration-200'} `}><i className="fas fa-calendar-alt w-4 text-gray-500" aria-hidden="true" /> <span>Calendário</span></a>
+                <a href="/horarios" className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium ${pathname?.startsWith('/horarios') ? 'bg-primary-50 text-primary-700 transition-colors duration-200' : 'text-gray-600 hover:bg-gray-100 transition-colors duration-200'} `}><i className="fas fa-clock w-4 text-gray-500" aria-hidden="true" /> <span>Horários</span></a>
               </div>
             </div>
 
             <div className="mb-4">
               <div className="px-2 text-xs font-semibold uppercase text-gray-500">Gestão</div>
               <div className="mt-2 space-y-1">
-                <a href="/alunos" className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium ${pathname?.startsWith('/alunos') ? 'bg-primary-50 text-primary-700' : 'text-gray-600 hover:bg-gray-100'} `}><i className="fas fa-user-graduate w-4 text-gray-500" aria-hidden="true" /> <span>Alunos</span></a>
-                <a href="/professores" className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium ${pathname?.startsWith('/professores') ? 'bg-primary-50 text-primary-700' : 'text-gray-600 hover:bg-gray-100'} `}><i className="fas fa-chalkboard-teacher w-4 text-gray-500" aria-hidden="true" /> <span>Professores</span></a>
-                <a href="/modalidades" className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium ${pathname?.startsWith('/modalidades') ? 'bg-primary-50 text-primary-700' : 'text-gray-600 hover:bg-gray-100'} `}><i className="fas fa-layer-group w-4 text-gray-500" aria-hidden="true" /> <span>Modalidades</span></a>
-                <a href="/aulas-realizadas" className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium ${pathname?.startsWith('/aulas-realizadas') ? 'bg-primary-50 text-primary-700' : 'text-gray-600 hover:bg-gray-100'} `}><i className="fas fa-clipboard-check w-4 text-gray-500" aria-hidden="true" /> <span>Aulas</span></a>
+                <a href="/alunos" className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium ${pathname?.startsWith('/alunos') ? 'bg-primary-50 text-primary-700 transition-colors duration-200' : 'text-gray-600 hover:bg-gray-100 transition-colors duration-200'} `}><i className="fas fa-user-graduate w-4 text-gray-500" aria-hidden="true" /> <span>Alunos</span></a>
+                <a href="/professores" className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium ${pathname?.startsWith('/professores') ? 'bg-primary-50 text-primary-700 transition-colors duration-200' : 'text-gray-600 hover:bg-gray-100 transition-colors duration-200'} `}><i className="fas fa-chalkboard-teacher w-4 text-gray-500" aria-hidden="true" /> <span>Professores</span></a>
+                <a href="/modalidades" className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium ${pathname?.startsWith('/modalidades') ? 'bg-primary-50 text-primary-700 transition-colors duration-200' : 'text-gray-600 hover:bg-gray-100 transition-colors duration-200'} `}><i className="fas fa-layer-group w-4 text-gray-500" aria-hidden="true" /> <span>Modalidades</span></a>
+                <a href="/aulas-realizadas" className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium ${pathname?.startsWith('/aulas-realizadas') ? 'bg-primary-50 text-primary-700 transition-colors duration-200' : 'text-gray-600 hover:bg-gray-100 transition-colors duration-200'} `}><i className="fas fa-clipboard-check w-4 text-gray-500" aria-hidden="true" /> <span>Aulas</span></a>
               </div>
             </div>
 
             <div className="mb-4">
               <div className="px-2 text-xs font-semibold uppercase text-gray-500">Ferramentas</div>
               <div className="mt-2 space-y-1">
-                <a href="/reagendamentos" className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium ${pathname?.startsWith('/reagendamentos') ? 'bg-primary-50 text-primary-700' : 'text-gray-600 hover:bg-gray-100'} `}><i className="fas fa-exchange-alt w-4 text-gray-500" aria-hidden="true" /> <span>Reagendamentos</span></a>
-                <a href="/relatorios" className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium ${pathname?.startsWith('/relatorios') ? 'bg-primary-50 text-primary-700' : 'text-gray-600 hover:bg-gray-100'} `}><i className="fas fa-chart-line w-4 text-gray-500" aria-hidden="true" /> <span>Relatórios</span></a>
-                <a href="/backup" className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium ${pathname?.startsWith('/backup') ? 'bg-primary-50 text-primary-700' : 'text-gray-600 hover:bg-gray-100'} `}><i className="fas fa-database w-4 text-gray-500" aria-hidden="true" /> <span>Backups</span></a>
+                <a href="/reagendamentos" className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium ${pathname?.startsWith('/reagendamentos') ? 'bg-primary-50 text-primary-700 transition-colors duration-200' : 'text-gray-600 hover:bg-gray-100 transition-colors duration-200'} `}><i className="fas fa-exchange-alt w-4 text-gray-500" aria-hidden="true" /> <span>Reagendamentos</span></a>
+                <a href="/relatorios" className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium ${pathname?.startsWith('/relatorios') ? 'bg-primary-50 text-primary-700 transition-colors duration-200' : 'text-gray-600 hover:bg-gray-100 transition-colors duration-200'} `}><i className="fas fa-chart-line w-4 text-gray-500" aria-hidden="true" /> <span>Relatórios</span></a>
+                <a href="/backup" className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium ${pathname?.startsWith('/backup') ? 'bg-primary-50 text-primary-700 transition-colors duration-200' : 'text-gray-600 hover:bg-gray-100 transition-colors duration-200'} `}><i className="fas fa-database w-4 text-gray-500" aria-hidden="true" /> <span>Backups</span></a>
               </div>
             </div>
           </>

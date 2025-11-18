@@ -3,11 +3,14 @@ import connectDB from '@/lib/mongodb';
 import { Modalidade } from '@/models/Modalidade';
 
 // GET - Listar todas as modalidades
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     await connectDB();
-    
-    const modalidades = await Modalidade.find({ ativo: true })
+    const url = new URL(request.url);
+    const includeInactive = url.searchParams.get('includeInactive') === 'true';
+
+    const query = includeInactive ? {} : { ativo: true };
+    const modalidades = await Modalidade.find(query)
       .sort({ nome: 1 })
       .select('-__v')
       .lean();
@@ -17,10 +20,7 @@ export async function GET() {
       console.log('[API Modalidades] Primeira modalidade:', JSON.stringify(modalidades[0]));
     }
     
-    return NextResponse.json({
-      success: true,
-      data: modalidades
-    });
+    return NextResponse.json({ success: true, data: modalidades });
   } catch (error) {
     console.error('Erro ao buscar modalidades:', error);
     return NextResponse.json(

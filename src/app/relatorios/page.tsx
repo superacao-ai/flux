@@ -1,6 +1,7 @@
-'use client';
+ 'use client';
 
 import Layout from '@/components/Layout';
+import RequireAuth from '@/components/RequireAuth';
 import { useEffect, useState, useMemo } from 'react';
 import { Line, Bar } from 'react-chartjs-2';
 import {
@@ -130,6 +131,38 @@ export default function RelatoriosPage() {
     modalidade: string;
     professor: string;
   }>>([]);
+  // IDs de aulas em processo de devolução (exclusão)
+  const [deletingAulas, setDeletingAulas] = useState<string[]>([]);
+
+  const devolverAula = async (aulaId: string) => {
+    const confirmado = confirm('Confirma devolver/excluir esta aula para que o professor possa reenviar?');
+    if (!confirmado) return;
+
+    try {
+      setDeletingAulas(prev => [...prev, aulaId]);
+      const token = localStorage.getItem('token');
+      const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+
+      const res = await fetch(`/api/aulas-realizadas/${aulaId}`, {
+        method: 'DELETE',
+        headers,
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || 'Erro ao devolver aula');
+      }
+
+      // Remover da lista local para atualizar a UI
+      setAulasEnviadas(prev => prev.filter(a => String(a._id) !== String(aulaId)));
+      alert('Aula devolvida com sucesso. O professor poderá enviar novamente.');
+    } catch (err) {
+      console.error('Erro ao devolver aula:', err);
+      alert('Erro ao devolver aula. Verifique o console para mais detalhes.');
+    } finally {
+      setDeletingAulas(prev => prev.filter(id => id !== aulaId));
+    }
+  };
 
   const ITENS_POR_PAGINA = 10;
 
@@ -468,7 +501,8 @@ export default function RelatoriosPage() {
 
   if (error) {
     return (
-      <Layout title="Relatórios - Superação Flux">
+      <RequireAuth showLoginRedirect={false}>
+        <Layout title="Relatórios - Superação Flux">
         <div className="px-4 py-6 sm:px-0">
           <div className="bg-red-50 border border-red-200 rounded-md p-4">
             <p className="text-red-600">{error}</p>
@@ -573,12 +607,14 @@ export default function RelatoriosPage() {
             </div>
           </div>
         </div>
-      </Layout>
+        </Layout>
+      </RequireAuth>
     );
   }
 
   return (
-    <Layout title="Relatórios - Superação Flux" fullWidth>
+    <RequireAuth showLoginRedirect={false}>
+      <Layout title="Relatórios - Superação Flux" fullWidth>
       <div className="px-4 py-6 sm:px-0">
         <div className="mb-8 fade-in-1">
           <h1 className="text-base font-semibold text-gray-900 flex items-center gap-2">
@@ -666,40 +702,7 @@ export default function RelatoriosPage() {
           </div>
         </div>
 
-        {/* Resumo do Período */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 fade-in-4">
-          <div
-            onClick={() => setShowModalAulasEnviadas(true)}
-            className="bg-white rounded-md shadow-sm border border-gray-200 p-4 cursor-pointer hover:shadow-md transition-shadow"
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-gray-600 mb-1">Aulas Realizadas</p>
-                <p className="text-xl font-bold text-green-600">{dados?.aulasEnviadas ?? 0}</p>
-                <p className="text-xs text-green-600 mt-1">Clique para ver detalhes</p>
-              </div>
-              <div className="w-10 h-10 bg-green-100 rounded-md flex items-center justify-center">
-                <i className="fas fa-check text-green-600 text-base"></i>
-              </div>
-            </div>
-          </div>
-
-          <div
-            onClick={() => setShowModalAulasPendentes(true)}
-            className="bg-white rounded-md shadow-sm border border-gray-200 p-4 cursor-pointer hover:shadow-md transition-shadow"
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-gray-600 mb-1">Aulas Pendentes</p>
-                <p className="text-xl font-bold text-yellow-600">{dados?.aulasPendentes ?? 0}</p>
-                <p className="text-xs text-yellow-600 mt-1">Clique para ver detalhes</p>
-              </div>
-              <div className="w-10 h-10 bg-yellow-100 rounded-md flex items-center justify-center">
-                <i className="fas fa-clock text-yellow-600 text-base"></i>
-              </div>
-            </div>
-          </div>
-        </div>
+        {/* Resumo do Período (cards de Aulas Realizadas/Pendentes removidos por solicitação) */}
 
   {/* Gráficos de Análise - Todos lado a lado */}
   <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8 fade-in-3">
@@ -1006,46 +1009,58 @@ export default function RelatoriosPage() {
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Professor</th>
                         <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Presentes</th>
                         <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Faltas</th>
-                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Ações</th>
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                      {aulasEnviadas.map((aula, index) => (
-                        <tr key={aula._id} className={`hover:bg-gray-50 fade-in-${Math.min((index % 8) + 1, 8)}`}>
-                          <td className="px-4 py-3 text-sm text-gray-900">
-                            {new Date(aula.data).toLocaleDateString('pt-BR')}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-gray-900">
-                            {aula.modalidade || 'Não informada'}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-gray-900">
-                            {typeof (aula.professorId as any)?.nome === 'string' 
-                              ? (aula.professorId as any).nome 
-                              : aula.professorNome || 'Não informado'}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-center">
-                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-green-50 text-green-700 font-medium">
-                              <i className="fas fa-check text-xs"></i>
-                              {aula.total_presentes || 0}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-sm text-center">
-                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-red-50 text-red-700 font-medium">
-                              <i className="fas fa-times text-xs"></i>
-                              {aula.total_faltas || 0}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-sm text-center">
-                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                              aula.status === 'enviada' ? 'bg-green-50 text-green-700' :
-                              aula.status === 'corrigida' ? 'bg-blue-50 text-blue-700' :
-                              'bg-gray-50 text-gray-700'
-                            }`}>
-                              {aula.status || 'enviada'}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
+                        {aulasEnviadas.map((aula, index) => (
+                          <tr key={aula._id} className={`hover:bg-gray-50 fade-in-${Math.min((index % 8) + 1, 8)}`}>
+                            <td className="px-4 py-3 text-sm text-gray-900">
+                              {new Date(aula.data).toLocaleDateString('pt-BR')}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-900">
+                              {aula.modalidade || 'Não informada'}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-900">
+                              {typeof (aula.professorId as any)?.nome === 'string' 
+                                ? (aula.professorId as any).nome 
+                                : aula.professorNome || 'Não informado'}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-center">
+                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-green-50 text-green-700 font-medium">
+                                <i className="fas fa-check text-xs"></i>
+                                {aula.total_presentes || 0}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-sm text-center">
+                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-red-50 text-red-700 font-medium">
+                                <i className="fas fa-times text-xs"></i>
+                                {aula.total_faltas || 0}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-sm text-center">
+                              <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                                aula.status === 'enviada' ? 'bg-green-50 text-green-700' :
+                                aula.status === 'corrigida' ? 'bg-blue-50 text-blue-700' :
+                                'bg-gray-50 text-gray-700'
+                              }`}>
+                                {aula.status || 'enviada'}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-sm text-center">
+                              <button
+                                onClick={() => devolverAula(String(aula._id))}
+                                disabled={deletingAulas.includes(String(aula._id))}
+                                className={`inline-flex items-center gap-2 px-3 py-1 rounded-lg text-xs font-medium transition-colors border ${deletingAulas.includes(String(aula._id)) ? 'opacity-50 cursor-not-allowed bg-gray-100 border-gray-200 text-gray-500' : 'bg-white hover:bg-red-50 border-red-200 text-red-700'}`}
+                                title="Devolver aula ao professor"
+                              >
+                                <i className="fas fa-undo-alt text-sm"></i>
+                                <span>Devolver</span>
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
                     </tbody>
                   </table>
                 </div>
@@ -1114,6 +1129,7 @@ export default function RelatoriosPage() {
           </div>
         </div>
       )}
-    </Layout>
+      </Layout>
+    </RequireAuth>
   );
 }

@@ -38,34 +38,38 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
-      <div className="hidden lg:flex w-1/2 bg-gradient-to-b from-primary-700 to-primary-900 text-white items-center justify-center p-12">
-        <div className="max-w-md">
-          <div className="flex items-center justify-center mb-4">
-            <Logo size="xl" noLink useLogo2 />
+    <div className="min-h-screen bg-gradient-to-br from-primary-700 via-primary-900 to-gray-900 flex items-center justify-center p-0">
+      {/* Esquerda: Informativo profissional, sem logo */}
+      <div className="hidden lg:flex w-1/2 flex-col justify-center items-center px-12 py-16 from-primary-800 to-primary-950 text-white fade-in-1">
+        <div className="max-w-md w-full text-left">
+          <div className="mb-6 fade-in-2">
+            <Logo size="lg" noLink useLogo2 className="mb-2" />
           </div>
-          {/* Removed the 'FLUX' title as requested; logo remains */}
-          <p className="text-lg text-primary-100">Sistema de gestão do Studio Superação. Acesse os horários, gerencie alunos e professores com rapidez e segurança.</p>
-          <div className="mt-8 bg-white bg-opacity-5 p-4 rounded-lg border border-white/10">
-            <p className="text-sm">Se estiver usando um dispositivo público, não marque 'Lembrar-me'.</p>
+          <h2 className="text-3xl font-bold mb-4 tracking-tight fade-in-3">Bem-vindo ao Superação Flux</h2>
+          <p className="text-lg text-primary-100 mb-6 fade-in-4">Sistema de gestão do Studio Superação. Gerencie horários, alunos e professores com agilidade e segurança.</p>
+          <ul className="space-y-3 text-base fade-in-5">
+            <li className="flex items-center gap-2"><i className="fas fa-calendar-check text-primary-300" /> Horários flexíveis e reagendamentos</li>
+            <li className="flex items-center gap-2"><i className="fas fa-user-graduate text-primary-300" /> Cadastro de alunos e professores</li>
+            <li className="flex items-center gap-2"><i className="fas fa-chart-line text-primary-300" /> Relatórios gerenciais</li>
+          </ul>
+          <div className="mt-8 bg-white bg-opacity-10 p-4 rounded-lg border border-white/10 shadow-lg fade-in-6">
+            <p className="text-sm text-primary-100">Dica: Não marque &apos;Lembrar-me&apos; em dispositivos públicos.</p>
           </div>
         </div>
       </div>
 
-      <div className="flex-1 flex items-center justify-center p-6">
-        <div className="max-w-md w-full">
-          <div className="mb-6 text-center">
-            <div className="flex justify-center mb-4">
-              <Logo size="lg" noLink useLogo2 />
-            </div>
-            <h1 className="text-2xl font-semibold">Entrar na sua conta</h1>
-            <p className="text-sm text-gray-500 mt-1">Informe seu email e senha para acessar o painel.</p>
+      {/* Direita: Login form */}
+      <div className="flex-1 flex items-center justify-center p-6 backdrop-blur-md">
+        <div className="max-w-md w-full rounded-xl shadow-2xl bg-white p-8 border border-gray-100 fade-in-1">
+          <div className="mb-6 text-center fade-in-2">
+            <h1 className=" text-2xl font-bold text-gray-900 mb-2">Entrar na sua conta</h1>
+            <p className="text-sm text-gray-500">Informe seu email e senha para acessar o painel.</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {erro && <div className="text-sm text-red-600 bg-red-50 border border-red-100 px-3 py-2 rounded">{erro}</div>}
+            {erro && <div className="text-sm text-red-600 bg-red-50 border border-red-100 px-3 py-2 rounded fade-in-5">{erro}</div>}
 
-            <div>
+            <div className="fade-in-6">
               <label htmlFor="email" className="block text-sm font-medium text-gray-700">Email</label>
               <input
                 id="email"
@@ -80,7 +84,7 @@ export default function LoginPage() {
               />
             </div>
 
-            <div>
+            <div className="fade-in-7">
               <label htmlFor="senha" className="block text-sm font-medium text-gray-700">Senha</label>
               <input
                 id="senha"
@@ -95,7 +99,7 @@ export default function LoginPage() {
               />
             </div>
 
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between fade-in-8">
               <label className="flex items-center text-sm">
                 <input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} className="h-4 w-4 text-primary-600 border-gray-300 rounded" />
                 <span className="ml-2 text-gray-700">Lembrar-me</span>
@@ -103,15 +107,17 @@ export default function LoginPage() {
               <a href="#" className="text-sm text-primary-600 hover:underline">Esqueceu a senha?</a>
             </div>
 
-            <div>
-              <button type="submit" disabled={carregando} className="w-full inline-flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50">
+            <div className="fade-in-8">
+              <button type="submit" disabled={carregando} className=" w-full inline-flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50 fade-in-10">
                 {carregando ? 'Entrando...' : 'Entrar'}
               </button>
             </div>
           </form>
 
           <div className="mt-6 text-center text-sm text-gray-500">
-            <span>Não tem uma conta? </span><a href="#" className="text-primary-600 hover:underline">Peça acesso ao administrador</a>
+            <div className="fade-in-8">
+              <span>Não tem uma conta? </span><a href="#" className="text-primary-600 hover:underline">Peça acesso ao administrador</a>
+            </div>
           </div>
         </div>
       </div>

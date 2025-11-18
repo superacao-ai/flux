@@ -1,6 +1,6 @@
-'use client';
+ 'use client';
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import AccessDenied from '@/components/AccessDenied';
 import Layout from '@/components/Layout';
 import { useCountAnimation } from '@/hooks/useCountAnimation';
 
@@ -42,7 +42,7 @@ export default function Dashboard() {
     modalidades: 0
   });
   const [hydrated, setHydrated] = useState(false);
-  const router = useRouter();
+  
 
   // Admin-specific state
   const [pendingReags, setPendingReags] = useState<number>(0);
@@ -71,10 +71,11 @@ export default function Dashboard() {
   const animatedMinhasAulasHoje = useCountAnimation(minhasAulasHoje, 800);
 
   useEffect(() => {
-    // Verificar se está logado
-    const userData = localStorage.getItem('user');
+    // Verificar se está logado (RequireAuth will show AccessDenied when missing)
+    const userData = typeof window !== 'undefined' ? localStorage.getItem('user') : null;
     if (!userData) {
-      router.push('/login');
+      // mark hydrated so we can render AccessDenied client-side when not logged
+      setHydrated(true);
       return;
     }
 
@@ -95,7 +96,7 @@ export default function Dashboard() {
     }
     
     setHydrated(true);
-  }, [router]);
+  }, []);
 
   const loadStats = async () => {
     try {
@@ -260,19 +261,29 @@ export default function Dashboard() {
         });
       }
 
-      // Unique students
+      // Unique students: support multiple possible shapes returned by /api/me/horarios
       const alunoMap = new Map<string, any>();
       horarios.forEach(h => {
-        const a = h.alunoId;
-        if (!a) return;
-        if (Array.isArray(a)) {
-          a.forEach((it: any) => {
-            const id = typeof it === 'string' ? it : (it._id || it.id || '')
+        try {
+          // Prefer explicit `alunos` array (added by /api/me/horarios), then `matriculas`, then `alunoId` (legacy)
+          let entries: any[] = [];
+          if (Array.isArray(h.alunos) && h.alunos.length > 0) {
+            entries = h.alunos;
+          } else if (Array.isArray(h.matriculas) && h.matriculas.length > 0) {
+            // matriculas may be objects with alunoId inside
+            entries = h.matriculas.map((m: any) => (m && (m.alunoId || m)) ).filter(Boolean);
+          } else if (Array.isArray(h.alunoId) && h.alunoId.length > 0) {
+            entries = h.alunoId;
+          } else if (h.alunoId) {
+            entries = [h.alunoId];
+          }
+
+          entries.forEach((it: any) => {
+            const id = typeof it === 'string' ? it : (it._id || it.id || '');
             if (id) alunoMap.set(String(id), it);
-          })
-        } else {
-          const id = typeof a === 'string' ? a : (a._id || a.id || '');
-          if (id) alunoMap.set(String(id), a);
+          });
+        } catch (err) {
+          // ignore malformed horario entries
         }
       });
 
@@ -346,6 +357,11 @@ export default function Dashboard() {
     );
   }
 
+  // If hydrated and there's no user, show AccessDenied (client-side guard)
+  if (hydrated && !user) {
+    return <AccessDenied />;
+  }
+
   return (
     <Layout title="Dashboard - Superação Flux" fullWidth>
       <div className="p-6 bg-gray-50 min-h-screen">
@@ -400,8 +416,18 @@ export default function Dashboard() {
               <div className="bg-gradient-to-br from-green-700 to-green-800 rounded-lg border border-green-700 p-6 text-white fade-in-5">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm opacity-90 mb-1">Próximas</p>
-                    <p className="text-3xl font-bold">{proximasAulas.length}</p>
+                    <p className="text-sm opacity-90 mb-1">Próxima Aula (hoje)</p>
+                    {proximasAulas && proximasAulas.length > 0 ? (
+                      <>
+                        <p className="text-3xl font-bold">{proximasAulas[0].horarioInicio}</p>
+                        <p className="text-xs opacity-75 mt-1 truncate max-w-[8rem]">{proximasAulas[0].alunoId?.nome || proximasAulas[0].modalidadeId?.nome || ''}</p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-3xl font-bold">—</p>
+                        <p className="text-xs opacity-75 mt-1">Nenhuma</p>
+                      </>
+                    )}
                   </div>
                   <div className="w-12 h-12 bg-white bg-opacity-20 rounded-lg flex items-center justify-center">
                     <i className="fas fa-hourglass-half text-2xl"></i>
@@ -413,15 +439,12 @@ export default function Dashboard() {
             {/* Próximas Aulas */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 fade-in-3">
               <div className="bg-white rounded-md border border-gray-200">
-                <div className="p-4 border-b border-gray-200">
-                  <h2 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                    <img src="/logoverde.png" alt="Studio Superação" className="h-16 w-auto mx-auto" />
-                  </h2>
-                </div>
                 <div className="p-4">
                   {proximasAulas.length === 0 ? (
                     <div className="text-center py-8 text-gray-500 text-sm">
-                      <i className="fas fa-calendar-times text-3xl mb-2 block text-gray-300"></i>
+                      <div className="flex justify-center mb-3">
+                        <i className="fas fa-calendar-times text-3xl text-gray-300"></i>
+                      </div>
                       <p>Nenhuma aula agendada para hoje</p>
                     </div>
                   ) : (
@@ -533,41 +556,22 @@ export default function Dashboard() {
             </div>
 
             {/* Alertas e Pendências */}
-            {(pendingReags > 0 || incompleteAlunos > 0) && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 fade-in-3">
-                {pendingReags > 0 && (
-                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-yellow-500 rounded-lg flex items-center justify-center text-white flex-shrink-0">
-                        <i className="fas fa-exclamation-triangle"></i>
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-semibold text-yellow-900">Reagendamentos Pendentes</p>
-                        <p className="text-xs text-yellow-700 mt-1">{animatedPendingReags} solicitações aguardando aprovação</p>
-                      </div>
-                      <a href="/reagendamentos" className="text-sm font-medium text-yellow-700 hover:text-yellow-900">
-                        Ver <i className="fas fa-chevron-right ml-1"></i>
-                      </a>
+            {pendingReags > 0 && (
+              <div className="grid grid-cols-1 md:grid-cols-1 gap-4 mb-6 fade-in-3">
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-yellow-500 rounded-lg flex items-center justify-center text-white flex-shrink-0">
+                      <i className="fas fa-exclamation-triangle"></i>
                     </div>
-                  </div>
-                )}
-
-                {incompleteAlunos > 0 && (
-                  <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-red-500 rounded-lg flex items-center justify-center text-white flex-shrink-0">
-                        <i className="fas fa-user-times"></i>
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-semibold text-red-900">Cadastros Incompletos</p>
-                        <p className="text-xs text-red-700 mt-1">{animatedIncompleteAlunos} alunos com dados faltando</p>
-                      </div>
-                      <a href="/alunos" className="text-sm font-medium text-red-700 hover:text-red-900">
-                        Ver <i className="fas fa-chevron-right ml-1"></i>
-                      </a>
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-yellow-900">Reagendamentos Pendentes</p>
+                      <p className="text-xs text-yellow-700 mt-1">{animatedPendingReags} solicitações aguardando aprovação</p>
                     </div>
+                    <a href="/reagendamentos" className="text-sm font-medium text-yellow-700 hover:text-yellow-900">
+                      Ver <i className="fas fa-chevron-right ml-1"></i>
+                    </a>
                   </div>
-                )}
+                </div>
               </div>
             )}
 
@@ -789,6 +793,6 @@ export default function Dashboard() {
           </>
         )}
       </div>
-    </Layout>
+      </Layout>
   );
 }

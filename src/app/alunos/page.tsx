@@ -1,7 +1,9 @@
-'use client';
+ 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
+// Link removed; modal will be used for creating new alunos
 import Layout from '@/components/Layout';
+import RequireAuth from '@/components/RequireAuth';
 
 interface Modalidade {
   _id: string;
@@ -29,6 +31,12 @@ interface Aluno {
   ativo: boolean;
   modalidades?: { _id: string; nome: string; cor?: string }[];
   horarios?: AlunoHorario[];
+  congelado?: boolean;
+  ausente?: boolean;
+  // emEspera removed
+  periodoTreino?: string | null;
+  parceria?: string | null;
+  caracteristicas?: string[];
 }
 
 interface AlunoHorario {
@@ -44,6 +52,7 @@ export default function AlunosPage() {
   const [modalidades, setModalidades] = useState<Modalidade[]>([]);
   const [professores, setProfessores] = useState<Professor[]>([]);
   const [loading, setLoading] = useState(true);
+  const [reposicoesMap, setReposicoesMap] = useState<Record<string, number>>({});
   
 
   useEffect(() => {
@@ -134,7 +143,56 @@ export default function AlunosPage() {
           }
         });
 
-        return {
+        // Derive characteristic flags from the aluno object first; if missing, try to infer from horarios (matriculas or h.alunoId)
+        let congelado = a.congelado === true;
+        let ausente = a.ausente === true;
+        // emEspera flag removed from summary derivation
+        let periodoTreino = a.periodoTreino || null;
+        let parceria = a.parceria || a.parceriaNome || null;
+
+        if (!congelado || !ausente || !periodoTreino || !parceria) {
+          for (let i = 0; i < horarios.length; i++) {
+            const h = horarios[i];
+            try {
+              // check matriculas shape
+              const ms = (h as any).matriculas;
+              if (Array.isArray(ms)) {
+                for (let j = 0; j < ms.length; j++) {
+                  const m = ms[j] || {};
+                  const alunoRef = m.alunoId || null;
+                  const alunoId = alunoRef && (typeof alunoRef === 'string' ? alunoRef : (alunoRef._id || alunoRef)) || null;
+                  if (!alunoId) continue;
+                  if (String(alunoId) === String(a._id)) {
+                    if (!congelado && m.congelado === true) congelado = true;
+                    if (!ausente && m.ausente === true) ausente = true;
+                    // emEspera field ignored
+                    if (!periodoTreino && m.periodoTreino) periodoTreino = m.periodoTreino;
+                    if (!parceria && (m.parceria || m.parceriaNome)) parceria = m.parceria || m.parceriaNome || parceria;
+                  }
+                }
+              } else {
+                // legacy horario.alunoId shape
+                const hhAluno = h.alunoId;
+                if (hhAluno && (hhAluno._id || hhAluno)) {
+                  const hhId = hhAluno._id || hhAluno;
+                  if (String(hhId) === String(a._id)) {
+                    if (!congelado && hhAluno.congelado === true) congelado = true;
+                    if (!ausente && hhAluno.ausente === true) ausente = true;
+                    // emEspera field ignored
+                    if (!periodoTreino && hhAluno.periodoTreino) periodoTreino = hhAluno.periodoTreino;
+                    if (!parceria && (hhAluno.parceria || hhAluno.parceriaNome)) parceria = hhAluno.parceria || hhAluno.parceriaNome || parceria;
+                  }
+                }
+              }
+            } catch (e) {
+              // ignore per-entry errors
+            }
+            // if we already have everything truthy, break early
+            if (congelado && ausente && periodoTreino && parceria) break;
+          }
+        }
+
+        const alunoObj = {
           _id: a._id,
           nome: a.nome,
           email: a.email || '',
@@ -145,15 +203,63 @@ export default function AlunosPage() {
           observacoes: a.observacoes,
           ativo: a.ativo !== undefined ? a.ativo : true,
           modalidades: Array.from(modalidadesSet.values()),
-          horarios: alunoHorarios
+          horarios: alunoHorarios,
+          congelado,
+          ausente,
+          periodoTreino,
+          parceria,
+          caracteristicas: Array.isArray(a.caracteristicas) ? a.caracteristicas : [],
         } as Aluno;
+
+        return alunoObj;
       });
 
       setAlunos(finalAlunos);
+      // after loading alunos, fetch reposições saldo per aluno (if endpoint exists)
+      try {
+        const ids = finalAlunos.map(a => a._id).join(',');
+        const resp = await fetch(`/api/alunos/reposicoes?ids=${encodeURIComponent(ids)}`);
+        if (resp.ok) {
+          const json = await resp.json();
+          // expected shape: { success: true, data: { [alunoId]: { saldo: number } } }
+          if (json && json.data) {
+            const map: Record<string, number> = {};
+            Object.keys(json.data).forEach(k => {
+              const v = json.data[k];
+              map[k] = (v && (typeof v.saldo === 'number' ? v.saldo : v)) || 0;
+            });
+            setReposicoesMap(map);
+          }
+        }
+      } catch (e) {
+        // ignore if endpoint missing
+        // console.warn('reposicoes fetch failed', e);
+      }
     } catch (error) {
       console.error('Erro ao buscar alunos:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // helper to refresh reposicoes for current alunos in state
+  const refreshReposicoes = async (alunosList: Aluno[]) => {
+    try {
+      const ids = alunosList.map(a => a._id).join(',');
+      const resp = await fetch(`/api/alunos/reposicoes?ids=${encodeURIComponent(ids)}`);
+      if (resp.ok) {
+        const json = await resp.json();
+        if (json && json.data) {
+          const map: Record<string, number> = {};
+          Object.keys(json.data).forEach(k => {
+            const v = json.data[k];
+            map[k] = (v && (typeof v.saldo === 'number' ? v.saldo : v)) || 0;
+          });
+          setReposicoesMap(map);
+        }
+      }
+    } catch (e) {
+      // ignore
     }
   };
 
@@ -209,10 +315,50 @@ export default function AlunosPage() {
     observacoes: ''
   });
 
+  const [editFlags, setEditFlags] = useState<{
+    congelado: boolean;
+    ausente: boolean;
+    periodoTreino: string | null;
+    parceria: string | null;
+    ativo: boolean;
+  }>({ congelado: false, ausente: false, periodoTreino: null, parceria: null, ativo: true });
+  const [editCaracteristicas, setEditCaracteristicas] = useState<string[]>([]);
+  const [newCaracteristica, setNewCaracteristica] = useState('');
+
   // Estados para seleção múltipla
   const [selectedAlunos, setSelectedAlunos] = useState<string[]>([]);
   const [selectAll, setSelectAll] = useState(false);
   const [query, setQuery] = useState('');
+  // Filtros da página (staged / applied below)
+
+  // Staged UI filter values (user edits these, then clicks Aplicar filtros)
+  const [uiFilterModalidade, setUiFilterModalidade] = useState('');
+  const [uiFilterStatus, setUiFilterStatus] = useState<'all' | 'ativo' | 'inativo'>('all');
+  const [uiFilterCaracteristica, setUiFilterCaracteristica] = useState('');
+
+  // Applied filters used for actual filtering
+  const [appliedFilterModalidade, setAppliedFilterModalidade] = useState('');
+  const [appliedFilterStatus, setAppliedFilterStatus] = useState<'all' | 'ativo' | 'inativo'>('all');
+  const [appliedFilterCaracteristica, setAppliedFilterCaracteristica] = useState('');
+
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 8;
+
+  // Counts for quick stats
+  const caracteristicasCounts = useMemo(() => {
+    let congelado = 0;
+    let ausente = 0;
+    let totalpass = 0;
+    let periodo1236 = 0;
+    alunos.forEach(a => {
+      if (a.congelado) congelado++;
+      if (a.ausente) ausente++;
+      if (String(a.parceria || '').toLowerCase() === 'totalpass') totalpass++;
+      if (String(a.periodoTreino || '').toLowerCase() === '12/36') periodo1236++;
+    });
+    return { congelado, ausente, totalpass, periodo1236 };
+  }, [alunos]);
 
   // Função para abrir modal de edição
   const abrirEdicao = (aluno: Aluno) => {
@@ -224,43 +370,101 @@ export default function AlunosPage() {
       endereco: aluno.endereco || '',
       observacoes: aluno.observacoes || ''
     });
+    // set flags for edit modal
+    setEditFlags({
+      congelado: aluno.congelado === true,
+      ausente: aluno.ausente === true,
+      periodoTreino: aluno.periodoTreino || null,
+      parceria: aluno.parceria || null,
+      ativo: aluno.ativo !== undefined ? aluno.ativo : true,
+    });
+    // custom características
+    setEditCaracteristicas(Array.isArray((aluno as any).caracteristicas) ? (aluno as any).caracteristicas.slice() : []);
+    setShowEditModal(true);
+  };
+
+  const abrirNovoAluno = () => {
+    setEditingAluno(null);
+    setEditFormData({ nome: '', email: '', telefone: '', endereco: '', observacoes: '' });
+    setEditFlags({ congelado: false, ausente: false, periodoTreino: null, parceria: null, ativo: true });
+    setEditCaracteristicas([]);
     setShowEditModal(true);
   };
 
   // Função para salvar edição
   const salvarEdicao = async () => {
-    if (!editingAluno) return;
-
     try {
-      // Only send editable fields — modalidade is derived from horarios and should not be manually changed here
-      const payload = {
+      if (!editFormData.nome || String(editFormData.nome).trim() === '') { alert('Nome é obrigatório'); return; }
+
+      const payload: any = {
         nome: editFormData.nome,
-        email: editFormData.email,
-        telefone: editFormData.telefone,
-        endereco: editFormData.endereco,
-        observacoes: editFormData.observacoes
+        email: (typeof editFormData.email === 'string' ? String(editFormData.email).trim() : editFormData.email),
+        telefone: (typeof editFormData.telefone === 'string' ? String(editFormData.telefone).trim() : editFormData.telefone),
+        endereco: (typeof editFormData.endereco === 'string' ? String(editFormData.endereco).trim() : editFormData.endereco),
+        observacoes: (typeof editFormData.observacoes === 'string' ? String(editFormData.observacoes).trim() : editFormData.observacoes),
+        congelado: !!editFlags.congelado,
+        ausente: !!editFlags.ausente,
+        periodoTreino: editFlags.periodoTreino,
+        parceria: editFlags.parceria,
+        ativo: !!editFlags.ativo,
+        caracteristicas: Array.isArray(editCaracteristicas) && editCaracteristicas.length > 0 ? editCaracteristicas : undefined,
       };
 
-      const response = await fetch(`/api/alunos/${editingAluno._id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
+      // Do not send an empty email (''), it can violate unique sparse index — omit the field instead
+      if (!payload.email) delete payload.email;
+      // Also omit other empty string fields to keep documents clean
+      if (!payload.telefone) delete payload.telefone;
+      if (!payload.endereco) delete payload.endereco;
+      if (!payload.observacoes) delete payload.observacoes;
+
+      let response;
+      if (editingAluno && editingAluno._id) {
+        response = await fetch(`/api/alunos/${editingAluno._id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      } else {
+        response = await fetch(`/api/alunos`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      }
 
       const data = await response.json();
+      console.log('salvarEdicao response:', data);
+      if (data && data.success) {
+        // If we just created a student, some backends ignore custom flags on POST.
+        // As a fallback, if we created a new aluno, call PUT to ensure flags are persisted.
+              if (!editingAluno) {
+          const createdId = data.data?._id || data.data?.id || data.id || null;
+          if (createdId) {
+            try {
+              const flagsPayload = {
+                congelado: !!payload.congelado,
+                ausente: !!payload.ausente,
+                periodoTreino: payload.periodoTreino,
+                parceria: payload.parceria,
+                ativo: !!payload.ativo,
+              };
+              const respFlags = await fetch(`/api/alunos/${createdId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(flagsPayload) });
+              const dataFlags = await respFlags.json();
+              console.log('flags PUT response:', dataFlags);
+            } catch (err) {
+              console.warn('Falha ao atualizar flags via PUT após criação:', err);
+            }
+          }
+        }
 
-      if (data.success) {
         await fetchAlunos();
         setShowEditModal(false);
-        // sucesso silencioso: modal fechado e lista atualizada
       } else {
-        alert(`Erro: ${data.error}`);
+        alert('Erro: ' + (data && data.error ? data.error : 'erro'));
       }
     } catch (error) {
-      console.error('Erro ao atualizar aluno:', error);
-      alert('Erro ao atualizar aluno');
+      console.error('Erro ao salvar aluno:', error);
+      alert('Erro ao salvar aluno');
     }
   };
 
@@ -290,9 +494,17 @@ export default function AlunosPage() {
   };
 
   // Filter alunos by query (name, email, phone, modalidades, modalidadeId.nome, plano)
+  // Also support searching by status keywords typed into the main search input: e.g. "congelado", "ausente", "12/36", "totalpass", "ativo", "inativo".
   const filteredAlunos = useMemo(() => {
-    if (!query) return alunos;
-    const q = String(query).trim().toLowerCase();
+    const q = String(query || '').trim().toLowerCase();
+    const wantsCongelado = q.includes('congelado');
+    const wantsAusente = q.includes('ausente') || q.includes('parou') || q.includes('paroude') || q.includes('paroudevir');
+    const wants12_36 = q.includes('12/36') || q.includes('1236');
+    const wantsTotalpass = q.includes('totalpass');
+    const wantsAtivo = q.includes('ativo') && !q.includes('inativo');
+    const wantsInativo = q.includes('inativo');
+    const wantsAnyKeyword = wantsCongelado || wantsAusente || wants12_36 || wantsTotalpass || wantsAtivo || wantsInativo;
+
     return alunos.filter(aluno => {
       const nome = String(aluno.nome || '').toLowerCase();
       const email = String(aluno.email || '').toLowerCase();
@@ -300,16 +512,69 @@ export default function AlunosPage() {
       const plano = String(aluno.plano || '').toLowerCase();
       const modIdNome = String(aluno.modalidadeId?.nome || '').toLowerCase();
       const modalidadesStr = (aluno.modalidades || []).map(m => String(m.nome || '').toLowerCase()).join(' ');
-      return nome.includes(q) || email.includes(q) || telefone.includes(q) || plano.includes(q) || modIdNome.includes(q) || modalidadesStr.includes(q);
+
+      // base query match (name, email, phone, plano, modalidade)
+      const baseMatch = q === '' || nome.includes(q) || email.includes(q) || telefone.includes(q) || plano.includes(q) || modIdNome.includes(q) || modalidadesStr.includes(q);
+
+      // If the user typed any of the special status keywords, require those to match.
+      if (wantsAnyKeyword) {
+        if (wantsCongelado && !aluno.congelado) return false;
+        if (wantsAusente && !aluno.ausente) return false;
+        if (wants12_36 && String(aluno.periodoTreino || '').toLowerCase() !== '12/36') return false;
+        if (wantsTotalpass && String(aluno.parceria || '').toLowerCase() !== 'totalpass') return false;
+        if (wantsAtivo && !aluno.ativo) return false;
+        if (wantsInativo && aluno.ativo) return false;
+        // Also allow combination queries such as "joão congelado": in that case the baseMatch must also be satisfied
+        if (!baseMatch && q.split(' ').filter(Boolean).length > 1) return false;
+      } else {
+        if (!baseMatch) return false;
+      }
+
+      // apply applied filters (UI filters remain authoritative)
+      if (appliedFilterStatus === 'ativo' && !aluno.ativo) return false;
+      if (appliedFilterStatus === 'inativo' && aluno.ativo) return false;
+
+      if (appliedFilterModalidade) {
+        const has = (aluno.modalidades || []).some(m => String(m.nome || '').toLowerCase() === String(appliedFilterModalidade).toLowerCase()) || String(aluno.modalidadeId?.nome || '').toLowerCase() === String(appliedFilterModalidade).toLowerCase();
+        if (!has) return false;
+      }
+
+      if (appliedFilterCaracteristica) {
+        const c = String(appliedFilterCaracteristica).toLowerCase();
+        if (c === 'congelado' && !aluno.congelado) return false;
+        if (c === 'ausente' && !aluno.ausente) return false;
+        if (c === '12/36' && String(aluno.periodoTreino || '').toLowerCase() !== '12/36') return false;
+        if (c === 'totalpass' && String(aluno.parceria || '').toLowerCase() !== 'totalpass') return false;
+        // custom caracteristicas
+        if (c !== 'congelado' && c !== 'ausente' && c !== '12/36' && c !== 'totalpass') {
+          const hasCustom = Array.isArray(aluno.caracteristicas) && aluno.caracteristicas.some(x => String(x || '').toLowerCase() === c);
+          if (!hasCustom) return false;
+        }
+      }
+
+      return true;
     });
-  }, [alunos, query]);
+  }, [alunos, query, appliedFilterModalidade, appliedFilterStatus, appliedFilterCaracteristica]);
+
+  // available custom caracteristicas
+  const availableCaracteristicas = useMemo(() => {
+    const s = new Set<string>();
+    alunos.forEach(a => {
+      if (Array.isArray(a.caracteristicas)) a.caracteristicas.forEach(c => { if (c) s.add(String(c)); });
+    });
+    return Array.from(s).sort();
+  }, [alunos]);
+
+  // Pagination: slice the filtered list
+  const totalPages = Math.max(1, Math.ceil(filteredAlunos.length / pageSize));
+  const pagedAlunos = filteredAlunos.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   // Função para selecionar/deselecionar todos os alunos
   const toggleSelectAll = () => {
     if (selectAll) {
       setSelectedAlunos([]);
     } else {
-      setSelectedAlunos(filteredAlunos.map(aluno => aluno._id));
+      setSelectedAlunos(pagedAlunos.map(aluno => aluno._id));
     }
   };
 
@@ -325,8 +590,13 @@ export default function AlunosPage() {
 
   // Keep selectAll in sync with current selection and filtered list
   useEffect(() => {
-    setSelectAll(selectedAlunos.length > 0 && filteredAlunos.length > 0 && selectedAlunos.length === filteredAlunos.length);
-  }, [selectedAlunos, filteredAlunos]);
+    setSelectAll(selectedAlunos.length > 0 && pagedAlunos.length > 0 && selectedAlunos.length === pagedAlunos.length);
+  }, [selectedAlunos, pagedAlunos]);
+
+  // Clamp currentPage when the number of pages changes
+  useEffect(() => {
+    if (currentPage > totalPages) setCurrentPage(totalPages);
+  }, [totalPages]);
 
   
 
@@ -365,10 +635,11 @@ export default function AlunosPage() {
   };
 
   return (
+  <RequireAuth showLoginRedirect={false}>
   <Layout title="Alunos - Superação Flux" fullWidth>
       <div className="px-4 py-6 sm:px-0">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 fade-in-1">
-          <div className="sm:flex sm:items-center sm:space-x-6">
+            <div className="sm:flex sm:items-center sm:space-x-6">
             <div>
                 <h1 className="text-base font-semibold text-gray-900 flex items-center gap-2">
                   <i className="fas fa-users text-primary-600"></i>
@@ -376,23 +647,13 @@ export default function AlunosPage() {
                 </h1>
                 <p className="mt-2 text-sm text-gray-600 max-w-xl">Gerencie o cadastro de alunos do studio — pesquise, edite e organize seus alunos.</p>
             </div>
-            <div className="mt-3 sm:mt-0 grid grid-cols-3 gap-3 sm:gap-4 ml-0 sm:ml-6">
-              <div className="bg-white border border-gray-100 rounded-md p-3 shadow-sm">
-                <div className="text-xs text-gray-500">Total</div>
-                <div className="text-lg font-semibold text-gray-900">{alunos.length}</div>
-              </div>
-              <div className="bg-white border border-gray-100 rounded-md p-3 shadow-sm">
-                <div className="text-xs text-gray-500">Ativos</div>
-                <div className="text-lg font-semibold text-green-700">{alunos.filter(a => a.ativo).length}</div>
-              </div>
-              <div className="bg-white border border-gray-100 rounded-md p-3 shadow-sm">
-                <div className="text-xs text-gray-500">Com horário</div>
-                <div className="text-lg font-semibold text-gray-900">{alunos.filter(a => a.horarios && a.horarios.length > 0).length}</div>
-              </div>
-            </div>
           </div>
 
           <div className="flex items-center gap-3">
+            <button type="button" onClick={abrirNovoAluno} className="h-10 inline-flex items-center justify-center rounded-full bg-primary-600 px-4 text-sm font-medium text-white hover:bg-primary-700">
+              <i className="fas fa-plus mr-2" aria-hidden="true"></i>
+              Novo Aluno
+            </button>
             {selectedAlunos.length > 0 && (
               <button
                 type="button"
@@ -420,8 +681,64 @@ export default function AlunosPage() {
               />
             </div>
             <div className="hidden sm:flex items-center text-sm text-gray-600">
-              {/* reserve space for potential stats/filters */}
               <div>Resultados: {filteredAlunos.length}</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Filters row: modalidade, características (single select), status, and apply button */}
+        <div className="mt-4 mb-4 bg-white rounded-md p-3 border border-gray-200 fade-in-2">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:gap-3">
+            <div className="flex flex-wrap items-center gap-3 flex-1">
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-gray-600 mr-2">Modalidade:</label>
+                <select value={uiFilterModalidade} onChange={(e) => { setUiFilterModalidade(e.target.value); setAppliedFilterModalidade(e.target.value); setCurrentPage(1); }} className="border border-gray-200 rounded-md px-2 py-1 text-sm">
+                  <option value="">Todas</option>
+                  {modalidades.map(m => (
+                    <option key={m._id} value={m.nome}>{m.nome}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-gray-600 mr-2">Status:</label>
+                <select value={uiFilterStatus} onChange={(e) => { setUiFilterStatus(e.target.value as any); setAppliedFilterStatus(e.target.value as any); setCurrentPage(1); }} className="border border-gray-200 rounded-md px-2 py-1 text-sm">
+                  <option value="all">Todos</option>
+                  <option value="ativo">Ativos</option>
+                  <option value="inativo">Inativos</option>
+                </select>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-gray-600 mr-2">Características:</label>
+                <select value={uiFilterCaracteristica} onChange={(e) => { setUiFilterCaracteristica(e.target.value); setAppliedFilterCaracteristica(e.target.value); setCurrentPage(1); }} className="border border-gray-200 rounded-md px-2 py-1 text-sm">
+                  <option value="">Todas</option>
+                  <option value="congelado">Congelado</option>
+                  <option value="ausente">Parou de Vir</option>
+                  <option value="12/36">12/36</option>
+                  <option value="TOTALPASS">TOTALPASS</option>
+                  {availableCaracteristicas.length > 0 && (
+                    <optgroup label="Personalizadas">
+                      {availableCaracteristicas.map(c => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                </select>
+              </div>
+            </div>
+
+            <div className="mt-3 sm:mt-0 sm:ml-auto flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => { setUiFilterModalidade(''); setUiFilterStatus('all'); setUiFilterCaracteristica(''); setSelectedAlunos([]); setCurrentPage(1); }}
+                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-full border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 shadow-sm focus:outline-none"
+                title="Limpar filtros">
+                <i className="fas fa-eraser text-xs" aria-hidden="true" />
+                <span>Limpar</span>
+              </button>
+
+              {/* Filters apply automatically on change */}
             </div>
           </div>
         </div>
@@ -430,10 +747,10 @@ export default function AlunosPage() {
           <div className="-my-2 -mx-4 overflow-x-auto sm:-mx-6 lg:-mx-8 fade-in-3">
             <div className="inline-block min-w-full py-2 align-middle md:px-6 lg:px-8">
               <div className="overflow-hidden rounded-md border border-gray-200">
-                <table className="w-full table-fixed text-sm border-collapse">
+                <table className="w-full table-fixed text-sm border-collapse text-center">
                   <thead className="bg-white border-b border-gray-200">
                     <tr className="text-center">
-                      <th scope="col" className="px-3 py-2 text-center text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
+                      <th scope="col" className="w-12 px-2 py-2 text-center text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
                         <input
                           type="checkbox"
                           className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
@@ -441,121 +758,201 @@ export default function AlunosPage() {
                           onChange={toggleSelectAll}
                         />
                       </th>
-                      <th scope="col" className="px-3 py-2 text-left text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
+                      <th scope="col" className="px-3 py-2 text-center text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
                         Nome
                       </th>
-                      <th scope="col" className="px-3 py-2 text-left text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
-                        Email
-                      </th>
-                      <th scope="col" className="px-3 py-2 text-left text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
+                      <th scope="col" className="px-3 py-2 text-center text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
                         Modalidades
                       </th>
-                      <th scope="col" className="px-3 py-2 text-left text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
-                        Horários
+                      <th scope="col" className="px-3 py-2 text-center text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
+                        Reposições
                       </th>
-                      <th scope="col" className="px-3 py-2 text-left text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
-                        Telefone
+                      <th scope="col" className="px-3 py-2 text-center text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
+                        Características
                       </th>
-                      <th scope="col" className="px-3 py-2 text-left text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
+                      <th scope="col" className="px-3 py-2 text-center text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
                         Status
                       </th>
-                      <th scope="col" className="px-3 py-2 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                        <span className="sr-only">Ações</span>
+                      <th scope="col" className="px-3 py-2 text-center text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
+                        Telefone
+                      </th>
+                      <th scope="col" className="px-3 py-2 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">
+                        Ações
                       </th>
                     </tr>
                   </thead>
                   <tbody className="bg-white">
-                    {loading ? (
+                    {loading && (
                       <tr>
                         <td colSpan={8} className="px-3 py-4 text-center text-sm text-gray-500 border-b border-gray-200">
                           Carregando alunos...
                         </td>
                       </tr>
-                    ) : filteredAlunos.length === 0 ? (
+                    )}
+
+                    {!loading && filteredAlunos.length === 0 && (
                       <tr>
                         <td colSpan={8} className="px-3 py-4 text-center text-sm text-gray-500 border-b border-gray-200">
                           Nenhum aluno encontrado.
                         </td>
                       </tr>
-                    ) : (
-                      filteredAlunos.map((aluno, idx) => (
-                        <tr key={aluno._id} className={`fade-in-${Math.min((idx % 8) + 1, 8)}`}>
-                          <td className="px-3 py-3 text-sm border-r border-b border-gray-200 text-center">
-                            <input
-                              type="checkbox"
-                              className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-                              checked={selectedAlunos.includes(aluno._id)}
-                              onChange={() => toggleSelectAluno(aluno._id)}
-                            />
-                          </td>
-                          <td className="px-3 py-3 text-sm font-medium text-gray-900 border-r border-b border-gray-200">
-                            <div className="flex items-center gap-3">
-                              <div className="h-8 w-8 rounded-full bg-gray-100 flex items-center justify-center text-xs font-semibold text-gray-700">{(aluno.nome || '').split(' ').slice(0,2).map(n=>n[0]).join('').toUpperCase()}</div>
-                              <div className="truncate" title={aluno.nome}>{aluno.nome}</div>
-                            </div>
-                          </td>
-                          <td className="px-3 py-3 text-sm text-gray-500 border-r border-b border-gray-200">
-                            {aluno.email}
-                          </td>
-                          <td className="px-3 py-3 text-sm text-gray-500 border-r border-b border-gray-200">
-                            <div className="flex items-center space-x-2">
-                              {(aluno.modalidades && aluno.modalidades.length > 0) ? (
-                                aluno.modalidades.map(m => (
-                                  <div key={(m._id || m.nome)} className="flex items-center space-x-2">
-                                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: getModalidadeColor(m) }}></div>
-                                    <span className="text-xs">{m.nome}</span>
-                                  </div>
-                                ))
-                              ) : (
-                                <div className="flex items-center">
-                                  <div className="w-3 h-3 rounded-full mr-2" style={{ backgroundColor: getModalidadeColor(aluno.modalidadeId) }}></div>
-                                  <span className="text-xs">{aluno.modalidadeId?.nome || 'N/A'}</span>
-                                </div>
-                              )}
-                            </div>
-                          </td>
+                    )}
 
-                          <td className="px-3 py-3 text-sm text-gray-500 border-r border-b border-gray-200">
-                            {aluno.horarios && aluno.horarios.length > 0 ? (
-                              <div className="space-y-0.5">
-                                <div className="text-xs font-semibold text-gray-700">Treinos: {aluno.horarios.length}</div>
-                                {aluno.horarios.slice(0,2).map((h,i) => (
-                                  <div key={`${h.diaSemana}-${h.horarioInicio}-${h.horarioFim}-${h.professorNome || ''}`} className="text-xs text-gray-600">
-                                    {['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'][h.diaSemana]} {h.horarioInicio}–{h.horarioFim}
-                                  </div>
-                                ))}
-                                {aluno.horarios.length > 2 && <div className="text-xs text-gray-400">+{aluno.horarios.length - 2} outros</div>}
+                    {!loading && filteredAlunos.length > 0 && (
+                      pagedAlunos.map((aluno, idx) => {
+                        const isMuted = !!(aluno.congelado || aluno.ausente);
+                        return (
+                          <tr key={aluno._id} className={`${isMuted ? 'bg-gray-50 text-gray-500' : ''} fade-in-${Math.min((idx % 8) + 1, 8)}`}>
+                            <td className="w-12 px-2 py-3 text-sm border-r border-b border-gray-200 text-center">
+                              <input
+                                type="checkbox"
+                                className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                                checked={selectedAlunos.includes(aluno._id)}
+                                onChange={() => toggleSelectAluno(aluno._id)}
+                              />
+                            </td>
+                            <td className="px-3 py-3 text-sm border-r border-b border-gray-200 text-center">
+                              <div className="flex flex-col items-center">
+                                <div className="flex items-center gap-2 justify-center w-full">
+                                  {typeof (aluno as any).frequencia !== 'undefined' ? (
+                                    <span className="inline-flex items-center justify-center px-2 py-0.5 text-[11px] font-semibold rounded-md bg-gray-100 text-gray-800">
+                                      {(aluno as any).frequencia}%
+                                    </span>
+                                  ) : null}
+
+                                  <div className={`truncate font-medium ${isMuted ? 'text-gray-500' : 'text-gray-900'}`} title={aluno.nome}>{aluno.nome}</div>
+                                </div>
+
+                                {aluno.observacoes && (
+                                  <span className={`inline-block mt-2 px-3 py-1.5 rounded-full text-xs font-semibold border max-w-[12rem] truncate ${isMuted ? 'bg-gray-50 text-gray-500 border-gray-200' : 'bg-yellow-100 text-yellow-800 border-yellow-200'}`} title={aluno.observacoes}>
+                                    <i className="fas fa-sticky-note mr-1" />
+                                    {aluno.observacoes}
+                                  </span>
+                                )}
                               </div>
-                            ) : (
-                              <div className="text-xs text-gray-400">—</div>
-                            )}
-                          </td>
-                          <td className="px-3 py-3 text-sm text-gray-500 border-r border-b border-gray-200">
-                            {aluno.telefone}
-                          </td>
-                          <td className="px-3 py-3 text-sm border-r border-b border-gray-200">
-                            <span
-                              className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${
-                                aluno.ativo
-                                  ? 'bg-green-100 text-green-800'
-                                  : 'bg-red-100 text-red-800'
-                              }`}
-                            >
-                              {aluno.ativo ? 'Ativo' : 'Inativo'}
-                            </span>
-                          </td>
-                          <td className="px-3 py-3 text-sm border-b border-gray-200">
-                            <div className="flex items-center justify-center gap-2">
-                              <button onClick={() => abrirEdicao(aluno)} className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md bg-white border border-gray-100 hover:bg-gray-50 text-primary-600">
-                                <svg className="h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536M9 11l6-6 3 3-6 6H9v-3z"/></svg>
-                              </button>
-                              <button onClick={() => excluirAluno(aluno._id, aluno.nome)} className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md bg-red-50 border border-red-100 text-red-700 hover:bg-red-100">
-                                <svg className="h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M10 3h4l1 4H9l1-4z"/></svg>
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))
+                            </td>
+                            <td className="px-3 py-3 text-sm text-gray-500 border-r border-b border-gray-200 text-center align-middle">
+                              <div className="flex flex-col items-center gap-3">
+                                {(aluno.modalidades && aluno.modalidades.length > 0) ? (
+                                  aluno.modalidades.map(m => {
+                                    const hs = (aluno.horarios || []).filter(h => String(h.modalidadeNome || '').toLowerCase() === String(m.nome || '').toLowerCase());
+                                    return (
+                                      <div key={(m._id || m.nome)} className="w-full">
+                                        <div className={`inline-flex items-center gap-2 px-2 py-0.5 rounded-full text-xs font-medium ${isMuted ? 'bg-gray-50 border-gray-200 text-gray-500' : 'bg-gray-100 border border-gray-200 text-gray-700'}`}>
+                                          <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: isMuted ? '#D1D5DB' : getModalidadeColor(m) }} />
+                                          <span className="truncate max-w-[12rem] text-sm">{m.nome}</span>
+                                        </div>
+                                        {hs && hs.length > 0 ? (
+                                          <div className="mt-1 text-[10px] text-gray-600 space-y-0.5">
+                                            {hs.map((h, i) => (
+                                              <div key={`${h.diaSemana}-${h.horarioInicio}-${h.horarioFim}-${i}`} className="text-[10px] text-gray-500">
+                                                {['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'][h.diaSemana]} {h.horarioInicio}–{h.horarioFim}{h.professorNome ? (<span className="text-[10px] text-gray-400"> — {h.professorNome}</span>) : null}
+                                              </div>
+                                            ))}
+                                          </div>
+                                        ) : (
+                                          <div className="mt-1 text-xs text-gray-400">—</div>
+                                        )}
+                                      </div>
+                                    );
+                                  })
+                                ) : (
+                                  <div>
+                                    <div className={`inline-flex items-center gap-2 px-2 py-1 rounded-full text-xs font-medium ${isMuted ? 'bg-gray-50 border-gray-200 text-gray-500' : 'bg-gray-100 border border-gray-200 text-gray-700'}`}>
+                                      <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: isMuted ? '#D1D5DB' : getModalidadeColor(aluno.modalidadeId) }} />
+                                      <span className="truncate max-w-[16rem]">{aluno.modalidadeId?.nome || 'N/A'}</span>
+                                    </div>
+                                    {aluno.horarios && aluno.horarios.length > 0 ? (
+                                      <div className="mt-1 text-[10px] text-gray-600 space-y-0.5">
+                                        {aluno.horarios.map((h, i) => (
+                                          <div key={i} className="text-[10px] text-gray-500">
+                                            {['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'][h.diaSemana]} {h.horarioInicio}–{h.horarioFim}{h.professorNome ? (<span className="text-[10px] text-gray-400"> — {h.professorNome}</span>) : null}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    ) : (
+                                      <div className="mt-1 text-xs text-gray-400">—</div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-3 py-3 text-sm text-gray-500 border-r border-b border-gray-200 text-center">
+                              {reposicoesMap[aluno._id] > 0 ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-1 bg-purple-50 border border-purple-200 text-purple-700 rounded-full text-xs font-semibold">
+                                  <i className="fas fa-ticket-alt text-purple-700 text-xs" />
+                                  <span>{reposicoesMap[aluno._id]}</span>
+                                </span>
+                              ) : (
+                                <div className="text-xs text-gray-400">—</div>
+                              )}
+                            </td>
+
+                            <td className="px-3 py-3 text-sm text-gray-500 border-r border-b border-gray-200 text-center">
+                              <div className="flex items-center justify-center gap-2 flex-wrap">
+                                {(aluno.congelado) && (
+                                  <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold ${isMuted ? 'bg-gray-50 border-gray-200 text-gray-400' : 'bg-sky-50 border-sky-200 text-sky-700'}`}>
+                                    <i className="fas fa-snowflake" />
+                                    <span>Congelado</span>
+                                  </span>
+                                )}
+
+                                {(aluno.ausente) && (
+                                  <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold ${isMuted ? 'bg-gray-50 border-gray-200 text-gray-400' : 'bg-rose-50 border-rose-200 text-rose-700'}`}>
+                                    <i className="fas fa-user-clock" />
+                                    <span>Parou de Vir</span>
+                                  </span>
+                                )}
+
+                                {(aluno.periodoTreino === '12/36') && (
+                                  <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold ${isMuted ? 'bg-gray-50 border-gray-200 text-gray-400' : 'bg-green-50 border-green-200 text-green-700'}`}>
+                                    <i className="fas fa-clock" />
+                                    <span>12/36</span>
+                                  </span>
+                                )}
+
+                                {(aluno.parceria === 'TOTALPASS') && (
+                                  <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold ${isMuted ? 'bg-gray-50 border-gray-200 text-gray-400' : 'bg-purple-50 border-purple-200 text-purple-700'}`}>
+                                    <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAC1UlEQVR4AbyWg5LlQBiFY3uSu7Zt27Zt27Zt27Zt60G2tC8w/3aWk/qvkkGqzuU53V+7qSwPQ6S5rttM07Sptm3PJZqXQ5pLypwci8UakjoUIpoo8HDE1EgQhC/kcyYR5IZoms6UJOmtaZo1/zT418OSypuwLPsDh3JHpK7vlmXV+NsTBmn5N2zMXZGeeEneZcpxnLYpA7k0HGS+1aZUVZ336wdZAGNNHzDX9wupvmCs6gVsASs0hKIooykyO5f6X4RaxcH7sCya3i4BRpdDAxiGMeUfgDqyWWQA+9Q4VHhoAHP74MgA2uyO2QfQF3cDi0D8077hcStzzk0M+nYMBnNtX1CHN/0lZWhjUAY1DEjuXgv4qkWA5piEAHitFs2IC8CVzR/0kcnnvU+vpzKuTgOhXqn0AKTO1VEB7qN5QLNM0Neharghe70Y+IoFUwPoS7qhsLllIPbN7xx6zpgb+qUAoClwLk1BQWVwIwTgnJ8UGiDj1ozkAIyrxx1XvnLhoM9WwXu3NDzAvdnJAcRWlVDIfbYAaJ4N+pqVj7ZvHB6VHECb1QGFrF1DAPmmtY0EoI5qlhyA7Gw4NLIpIN/R0aErdx/P84cuMQCjS+C9WYKCfM3iwdNMFcF7HfClFpkvYpvKyfcBoWEZTP1yEdASDwFfnZLhWv5wLogtK6beCdUJrVDY2j8Cdb86tgWu6D2R33u+Xi8G98l8sMiEU4Y1AcZU/FxqAOvACFSwOr4lClt7h+FDaU4nv6d+S+CAommUSwkgtqgIcrdaWYUuG37h7vOFCIAs3+inYRjxVYrE7X7G0/MGgGzJ+Ji+MtXfwvMGwNw8AAHoy7pHu5Coqjo3bNDfKX8OvXHKZqlCVqN0wJvlA98xAQImYNfMBthd+kDnrpkBcieVBRgVVsCQOEPrzinQjqPQfiETAzKACnCLioragbrSwFAppSYGmpkF7J5bQoId4XMA6lRclYDTIrUAAAAASUVORK5CYII=" alt="TOTALPASS" className={`w-3 h-3 ${isMuted ? 'opacity-50 filter grayscale' : ''}`} />
+                                    <span>TOTALPASS</span>
+                                  </span>
+                                )}
+
+                                {/* custom caracteristicas */}
+                                {Array.isArray(aluno.caracteristicas) && aluno.caracteristicas.length > 0 && (
+                                  aluno.caracteristicas.map((c, i) => (
+                                    <span key={String(c) + i} className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${isMuted ? 'bg-gray-50 border-gray-200 text-gray-500' : 'bg-gray-50 border-gray-200 text-gray-700'}`}>
+                                      {c}
+                                    </span>
+                                  ))
+                                )}
+
+                                {(!aluno.congelado && !aluno.ausente && aluno.periodoTreino !== '12/36' && !aluno.parceria && (!Array.isArray(aluno.caracteristicas) || aluno.caracteristicas.length === 0)) && (
+                                  <div className="text-xs text-gray-400">—</div>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-3 py-3 text-sm border-r border-b border-gray-200 text-center">
+                              <span className={'inline-flex rounded-full px-2 py-1 text-xs font-semibold ' + (aluno.ativo ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800')}>
+                                {aluno.ativo ? 'Ativo' : 'Inativo'}
+                              </span>
+                            </td>
+                            <td className="px-3 py-3 text-sm text-gray-500 border-r border-b border-gray-200 text-center">
+                              {aluno.telefone}
+                            </td>
+                            <td className="px-3 py-3 text-sm border-b border-gray-200">
+                              <div className="flex items-center justify-center gap-2">
+                                <button onClick={() => abrirEdicao(aluno)} className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md bg-white border border-gray-100 hover:bg-gray-50 text-primary-600">
+                                  <i className="fas fa-edit w-3" aria-hidden="true" />
+                                </button>
+                                <button onClick={() => excluirAluno(aluno._id, aluno.nome)} className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md bg-red-50 border border-red-100 text-red-700 hover:bg-red-100">
+                                  <i className="fas fa-trash w-3" aria-hidden="true" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
                     )}
                   </tbody>
                 </table>
@@ -566,123 +963,180 @@ export default function AlunosPage() {
       </div>
 
       
+          {/* Pagination controls */}
+          <div className="mt-4 px-4 sm:px-0 fade-in-4">
+            <div className="flex items-center justify-between">
+              <div className="text-sm text-gray-600">Mostrando {pagedAlunos.length} de {filteredAlunos.length} resultados</div>
+              <div className="flex items-center gap-2">
+                <button type="button" disabled={currentPage === 1} onClick={() => setCurrentPage(p => Math.max(1, p - 1))} className="px-3 py-1 border border-gray-200 rounded-md bg-white text-sm disabled:opacity-50">Anterior</button>
+                <div className="text-sm text-gray-700">Página {currentPage} de {totalPages}</div>
+                <button type="button" disabled={currentPage >= totalPages} onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} className="px-3 py-1 border border-gray-200 rounded-md bg-white text-sm disabled:opacity-50">Próxima</button>
+              </div>
+            </div>
+          </div>
+
+          {/* keep currentPage within bounds when filtered results change */}
+        
 
       {/* Modal de Edição */}
       {showEditModal && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-          <div className="relative top-20 mx-auto p-0 border w-11/12 max-w-md shadow-lg rounded-md bg-white fade-in-4">
-            <div className="px-6 py-4 border-b">
-              <h3 className="text-lg font-medium text-gray-900">Editar Aluno</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-600 bg-opacity-50">
+          <div className="relative w-full max-w-lg mx-auto bg-white rounded-lg shadow-lg border border-gray-200 p-6">
+            {/* Header + Info */}
+            <div className="mb-2 border-b pb-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <i className={`fas fa-edit text-primary-600 text-lg`} aria-hidden="true" />
+                  <h3 className="text-base font-semibold text-gray-900">{editingAluno ? 'Editar Aluno' : 'Novo Aluno'}</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowEditModal(false)}
+                  className="text-gray-400 hover:text-gray-600 focus:outline-none"
+                  title="Fechar"
+                >
+                  <i className="fas fa-times text-lg" aria-hidden="true" />
+                </button>
+              </div>
+              <div className="flex items-center gap-2 mt-2">
+                <i className="fas fa-info-circle text-primary-600 text-xs" aria-hidden="true" />
+                <span className="text-xs text-gray-500">Edite os dados do aluno abaixo.</span>
+              </div>
             </div>
-            <div className="p-6">
-              <form noValidate>
-                <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Nome *
-                  </label>
+            {/* Form */}
+            <form
+              className="space-y-3"
+              noValidate
+              onSubmit={(e) => {
+                e.preventDefault();
+                salvarEdicao();
+              }}
+            >
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 items-end">
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Nome *</label>
                   <input
                     type="text"
                     value={editFormData.nome}
                     onChange={(e) => setEditFormData({...editFormData, nome: e.target.value})}
-                    className="block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                    className="block w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-medium focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                    placeholder="Nome completo"
                     required
                   />
                 </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Email <span className="text-gray-400 text-xs">(opcional)</span>
-                  </label>
-                  <input
-                    type="email"
-                    value={editFormData.email}
-                    onChange={(e) => setEditFormData({...editFormData, email: e.target.value})}
-                    className="block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                    placeholder="email@exemplo.com"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Telefone <span className="text-gray-400 text-xs">(pode ser &quot;Não informado&quot;)</span>
-                  </label>
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Telefone <span className="text-gray-400 text-xs">(pode ser "Não informado")</span></label>
                   <input
                     type="tel"
                     value={editFormData.telefone}
                     onChange={(e) => setEditFormData({...editFormData, telefone: e.target.value})}
-                    className="block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                    className="block w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-medium focus:outline-none focus:ring-primary-500 focus:border-primary-500"
                     placeholder="(11) 99999-9999 ou Não informado"
                   />
                 </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Endereço
-                  </label>
-                  <input
-                    type="text"
-                    value={editFormData.endereco}
-                    onChange={(e) => setEditFormData({...editFormData, endereco: e.target.value})}
-                    className="block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                    placeholder="Endereço completo"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Modalidade
-                  </label>
-                  <div>
-                    {editingAluno && (editingAluno.modalidades && editingAluno.modalidades.length > 0) ? (
-                      <div className="flex flex-wrap gap-2">
-                        {editingAluno.modalidades.map(m => (
-                          <span key={(m._id || m.nome)} className="inline-flex items-center gap-2 px-3 py-0.5 bg-gray-50 border border-gray-100 rounded-full text-xs">
-                            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: getModalidadeColor(m) }} />
-                            <span className="text-xs text-gray-700">{m.nome}</span>
+              </div>
+              <div className="mb-3">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Observações</label>
+                <textarea
+                  value={editFormData.observacoes}
+                  onChange={(e) => setEditFormData({...editFormData, observacoes: e.target.value})}
+                  className="block w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-medium h-10 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                  rows={1}
+                  placeholder="Observações sobre o aluno"
+                />
+              </div>
+              <div className="relative border border-gray-200 rounded-md p-4 mb-3">
+                <div className="absolute -top-3 left-4 bg-white px-2 text-sm font-medium text-gray-700">Modalidade</div>
+                <div className="mt-1">
+                  {editingAluno && (editingAluno.modalidades && editingAluno.modalidades.length > 0) ? (
+                    <div className="flex flex-col gap-3">
+                      {editingAluno.modalidades.map((m) => (
+                        <div key={m._id || m.nome} className="flex flex-col items-start w-full">
+                          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-gray-100 border border-gray-200 text-xs font-medium text-gray-700">
+                            <span className="inline-block w-3 h-3 rounded-full mr-1" style={{ backgroundColor: getModalidadeColor(m) }}></span>
+                            {m.nome}
                           </span>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="inline-flex items-center gap-2 px-3 py-1 bg-gray-50 border border-gray-100 rounded-md text-sm text-gray-600">{editingAluno?.modalidadeId?.nome || '—'}</div>
-                    )}
-                  </div>
-                </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Observações
-                  </label>
-                  <textarea
-                    value={editFormData.observacoes}
-                    onChange={(e) => setEditFormData({...editFormData, observacoes: e.target.value})}
-                    className="block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                    rows={3}
-                    placeholder="Observações sobre o aluno"
-                  />
+                          {(() => {
+                            const hs = (editingAluno.horarios || []).filter(h => String(h.modalidadeNome || '').toLowerCase() === String(m.nome || '').toLowerCase());
+                            if (!hs || hs.length === 0) return null;
+                            return (
+                              <div className="mt-1 text-[10px] text-gray-500 space-y-0.5">
+                                {hs.map((h, i) => (
+                                  <div key={i} className="text-[10px] text-gray-500">
+                                    {['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'][h.diaSemana]} {h.horarioInicio}–{h.horarioFim}
+                                    {h.professorNome ? (
+                                      <span className="text-[10px] text-gray-400"> — {h.professorNome}</span>
+                                    ) : null}
+                                  </div>
+                                ))}
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <span className="text-gray-400 text-sm italic">Nenhuma modalidade</span>
+                  )}
                 </div>
               </div>
-
-                <div className="flex justify-end space-x-3 mt-6">
-                  <button
-                    onClick={() => setShowEditModal(false)}
-                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-500"
-                  >
-                    Cancelar
+              <div className="relative border border-gray-200 rounded-md p-4 mb-3 mt-0">
+                <div className="absolute -top-3 left-4 bg-white px-2 text-sm font-medium text-gray-700">Características do plano</div>
+                <div className="mt-1 flex flex-wrap gap-2 pb-1 items-center">
+                  <button type="button" onClick={() => setEditFlags({...editFlags, congelado: !editFlags.congelado})} className={`px-2 py-1 rounded-full border text-xs font-medium inline-flex items-center gap-1 ${editFlags.congelado ? 'bg-sky-50 border-sky-300 text-sky-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'}`}>
+                    <i className="fas fa-snowflake text-xs" />
+                    <span className="whitespace-nowrap">Congelado</span>
                   </button>
-                  <button
-                    onClick={salvarEdicao}
-                    className="px-4 py-2 text-sm font-medium text-white bg-primary-600 border border-transparent rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  >
-                    Salvar
+
+                  <button type="button" onClick={() => setEditFlags({...editFlags, ausente: !editFlags.ausente})} className={`px-2 py-1 rounded-full border text-xs font-medium inline-flex items-center gap-1 ${editFlags.ausente ? 'bg-rose-50 border-rose-300 text-rose-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'}`}>
+                    <i className="fas fa-user-clock text-xs" />
+                    <span className="whitespace-nowrap">Parou de Vir</span>
+                  </button>
+
+                  <button type="button" onClick={() => setEditFlags({...editFlags, periodoTreino: editFlags.periodoTreino === '12/36' ? null : '12/36'})} className={`px-2 py-1 rounded-full border text-xs font-medium inline-flex items-center gap-1 ${editFlags.periodoTreino === '12/36' ? 'bg-green-50 border-green-300 text-green-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'}`}>
+                    <i className="fas fa-clock text-xs" />
+                    <span className="whitespace-nowrap">12/36</span>
+                  </button>
+
+                  <button type="button" onClick={() => setEditFlags({...editFlags, parceria: editFlags.parceria === 'TOTALPASS' ? null : 'TOTALPASS'})} className={`px-2 py-1 rounded-full border text-xs font-medium inline-flex items-center gap-1 ${editFlags.parceria === 'TOTALPASS' ? 'bg-purple-50 border-purple-300 text-purple-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'}`}>
+                    <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAC1UlEQVR4AbyWg5LlQBiFY3uSu7Zt27Zt27Zt27Zt60G2tC8w/3aWk/qvkkGqzuU53V+7qSwPQ6S5rttM07Sptm3PJZqXQ5pLypwci8UakjoUIpoo8HDE1EgQhC/kcyYR5IZoms6UJOmtaZo1/zT418OSypuwLPsDh3JHpK7vlmXV+NsTBmn5N2zMXZGeeEneZcpxnLYpA7k0HGS+1aZUVZ336wdZAGNNHzDX9wupvmCs6gVsASs0hKIooykyO5f6X4RaxcH7sCya3i4BRpdDAxiGMeUfgDqyWWQA+9Q4VHhoAHP74MgA2uyO2QfQF3cDi0D8077hcStzzk0M+nYMBnNtX1CHN/0lZWhjUAY1DEjuXgv4qkWA5piEAHitFs2IC8CVzR/0kcnnvU+vpzKuTgOhXqn0AKTO1VEB7qN5QLNM0Neharghe70Y+IoFUwPoS7qhsLllIPbN7xx6zpgb+qUAoClwLk1BQWVwIwTgnJ8UGiDj1ozkAIyrxx1XvnLhoM9WwXu3NDzAvdnJAcRWlVDIfbYAaJ4N+pqVj7ZvHB6VHECb1QGFrF1DAPmmtY0EoI5qlhyA7Gw4NLIpIN/R0aErdx/P84cuMQCjS+C9WYKCfM3iwdNMFcF7HfClFpkvYpvKyfcBoWEZTP1yEdASDwFfnZLhWv5wLogtK6beCdUJrVDY2j8Cdb86tgWu6D2R33u+Xi8G98l8sMiEU4Y1AcZU/FxqAOvACFSwOr4lClt7h+FDaU4nv6d+S+CAommUSwkgtqgIcrdaWYUuG37h7vOFCIAs3+inYRjxVYrE7X7G0/MGgGzJ+Ji+MtXfwvMGwNw8AAHoy7pHu5Coqjo3bNDfKX8OvXHKZqlCVqN0wJvlA98xAQImYNfMBthd+kDnrpkBcieVBRgVVsCQOEPrzinQjqPQfiETAzKACnCLioragbrSwFAppSYGmpkF7J5bQoId4XMA6lRclYDTIrUAAAAASUVORK5CYII=" alt="TOTALPASS" className="w-3 h-3" />
+                    <span>TOTALPASS</span>
                   </button>
                 </div>
-              </form>
-            </div>
+
+                {Array.isArray(editCaracteristicas) && editCaracteristicas.length > 0 && (
+                  <div className="w-full flex gap-2 flex-wrap mt-2">
+                    {editCaracteristicas.map((c, i) => (
+                      <span key={i} className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gray-100 border border-gray-200 text-xs">
+                        <span className="truncate max-w-[10rem]">{c}</span>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {/* Action Buttons */}
+              <div className="flex justify-end gap-2 pt-3 border-t mt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowEditModal(false)}
+                  className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 flex items-center gap-2"
+                >
+                  <i className="fas fa-times text-black" aria-hidden="true" /> Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 flex items-center gap-2"
+                >
+                  <i className="fas fa-save text-white mr-2" aria-hidden="true" /> {editingAluno ? 'Atualizar' : 'Criar'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
 
     </Layout>
+    </RequireAuth>
   );
 }

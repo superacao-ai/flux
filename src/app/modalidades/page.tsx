@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import Layout from '@/components/Layout';
+import RequireAuth from '@/components/RequireAuth';
 
 export interface HorarioDisponivel {
   diasSemana: number[];
@@ -22,6 +23,19 @@ export interface Modalidade {
 }
 
 export default function ModalidadesPage() {
+    const coresSugeridas = [
+      '#ff887c',
+      '#dc2127',
+      '#ffb878',
+      '#fbd75b',
+      '#7ae7bf',
+      '#51b749',
+      '#46d6db',
+      '#5484ed',
+      '#a4bdfc',
+      '#dbadff',
+      '#e1e1e1'
+    ];
   const [modalidades, setModalidades] = useState<Modalidade[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [editingModalidade, setEditingModalidade] = useState<Modalidade | null>(null);
@@ -62,7 +76,8 @@ export default function ModalidadesPage() {
 
   const fetchModalidades = async () => {
     try {
-      const response = await fetch('/api/modalidades');
+      // request inactive modalities as well so recently desativadas remain visible on this page
+      const response = await fetch('/api/modalidades?includeInactive=true');
 
       // Se a resposta não for OK, mostre alerta ao usuário e logue o corpo
       if (!response.ok) {
@@ -203,6 +218,14 @@ export default function ModalidadesPage() {
           horarioFuncionamento: { manha: { inicio: '', fim: '' }, tarde: { inicio: '', fim: '' } }
         });
         fetchModalidades();
+        try {
+          if (typeof window !== 'undefined') {
+            // notify other tabs/pages that modalidades changed
+            localStorage.setItem('modalidadesUpdated', Date.now().toString());
+          }
+        } catch (e) {
+          // ignore
+        }
       } else {
         alert('Erro: ' + (data?.error || 'Resposta inesperada do servidor'));
       }
@@ -249,8 +272,18 @@ export default function ModalidadesPage() {
 
         const data = await response.json();
         if (data.success) {
-          // sucesso silencioso: recarregar lista
-          fetchModalidades();
+          // sucesso silencioso: marcar localmente como desativada para manter visível mas em estado inativo
+          setModalidades(prev => prev.map(m => {
+            const mid = (m as any).id || (m as any)._id || '';
+            if (String(mid) === String(id)) return { ...(m as any), ativo: false } as any;
+            return m;
+          }));
+          try {
+            if (typeof window !== 'undefined') {
+              // notify other tabs/pages that modalidades changed
+              localStorage.setItem('modalidadesUpdated', Date.now().toString());
+            }
+          } catch (e) {}
         } else {
           alert('Erro ao desativar modalidade');
         }
@@ -276,8 +309,13 @@ export default function ModalidadesPage() {
       let data: any = null;
       try { data = await response.json(); } catch (e) { data = null; }
       if (response.ok && data && data.success) {
-        // sucesso silencioso: recarregar lista
-        fetchModalidades();
+        // sucesso silencioso: remover localmente (hard delete)
+        setModalidades(prev => prev.filter(m => { const mid = (m as any).id || (m as any)._id || ''; return String(mid) !== String(id); }));
+        try {
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('modalidadesUpdated', Date.now().toString());
+          }
+        } catch (e) {}
       } else if (!response.ok) {
         const msg = data?.error || data?.message || `HTTP ${response.status}`;
         alert('Erro ao apagar modalidade: ' + msg);
@@ -287,6 +325,33 @@ export default function ModalidadesPage() {
     } catch (err) {
       console.error('Erro ao apagar modalidade:', err);
       alert('Erro ao apagar modalidade');
+    }
+  };
+
+  // Reactivate a previously deactivated modalidade
+  const activateModalidade = async (id: string) => {
+    if (!id) return;
+    try {
+      const response = await fetch(`/api/modalidades/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ativo: true })
+      });
+      const data = await response.json();
+      if (data && data.success) {
+        // update local state to mark active
+        setModalidades(prev => prev.map(m => {
+          const mid = (m as any).id || (m as any)._id || '';
+          if (String(mid) === String(id)) return { ...(m as any), ativo: true } as any;
+          return m;
+        }));
+        try { if (typeof window !== 'undefined') localStorage.setItem('modalidadesUpdated', Date.now().toString()); } catch (e) {}
+      } else {
+        alert('Erro ao ativar modalidade');
+      }
+    } catch (err) {
+      console.error('Erro ao ativar modalidade:', err);
+      alert('Erro ao ativar modalidade');
     }
   };
 
@@ -306,12 +371,13 @@ export default function ModalidadesPage() {
   }, [modalidades, query]);
 
   return (
+    <RequireAuth showLoginRedirect={false}>
     <Layout title="Modalidades - Superação Flux" fullWidth>
       <div className="px-4 py-6 sm:px-0">
         <div className="flex items-center justify-between gap-4 mb-4 fade-in-1">
           <div>
             <h1 className="text-base font-semibold text-gray-900 flex items-center gap-2">
-              <i className="fas fa-layer-group text-primary-600"></i>
+              <i className="fas fa-layer-group text-primary-600" />
               Modalidades
             </h1>
             <p className="mt-2 text-sm text-gray-600 max-w-xl">Gerencie as modalidades disponíveis no seu studio — nome, cor, duração e horários.</p>
@@ -321,7 +387,7 @@ export default function ModalidadesPage() {
             <button
               type="button"
               onClick={() => setShowModal(true)}
-              className="h-10 inline-flex items-center gap-2 rounded-md bg-primary-600 text-white px-4 text-sm font-medium hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="h-10 transition-colors duration-200 inline-flex items-center gap-2 rounded-full bg-primary-600 text-white px-4 text-sm font-medium hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
             >
               <i className="fas fa-plus w-4 text-white" aria-hidden="true" />
               Nova Modalidade
@@ -346,31 +412,36 @@ export default function ModalidadesPage() {
         {/* Grid de modalidades */}
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 fade-in-3">
           {filteredModalidades.map((modalidade, idx) => (
-            <div key={(modalidade as any).id || (modalidade as any)._id || idx} className={`bg-white rounded-lg border border-gray-200 p-6 fade-in-${Math.min((idx % 8) + 3, 8)}`}>
+            <div
+              key={(modalidade as any).id || (modalidade as any)._id || idx}
+              className={`relative rounded-lg border p-6 transition-colors transition-opacity duration-200 ease-in-out fade-in-${Math.min((idx % 8) + 3, 8)} ${((modalidade as any).ativo === false) ? 'bg-gray-50 opacity-60 border-gray-200' : 'bg-white border-gray-200'}`}
+            >
+              {(modalidade as any).ativo === false && (
+                <div className="absolute top-3 right-3 text-xs bg-gray-200 text-gray-700 px-2 py-0.5 rounded transition-opacity duration-200">Desativada</div>
+              )}
               <div className="flex items-center">
                 <div
-                  className="w-4 h-4 rounded-full mr-3"
+                  className={`w-4 h-4 rounded-full mr-3 transition-all duration-200 ease-in-out ${((modalidade as any).ativo === false) ? 'grayscale opacity-40' : ''}`}
                   style={{ backgroundColor: modalidade.cor }}
-                ></div>
-                <h3 className="text-lg font-medium text-gray-900">{modalidade.nome}</h3>
+                />
+                <h3 className={`text-lg font-medium transition-colors duration-200 ease-in-out ${((modalidade as any).ativo === false) ? 'text-gray-500' : 'text-gray-900'}`}>{modalidade.nome}</h3>
               </div>
-              
+
               {modalidade.descricao && (
                 <p className="mt-2 text-sm text-gray-600">{modalidade.descricao}</p>
               )}
-              
+
               <div className="mt-4 space-y-2">
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-500">Duração:</span>
                   <span className="font-medium">{modalidade.duracao} min</span>
                 </div>
-                
+
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-500">Limite de alunos:</span>
                   <span className="font-medium">{modalidade.limiteAlunos} alunos</span>
                 </div>
 
-                {/* Exibir dias da semana */}
                 {modalidade.diasSemana && modalidade.diasSemana.length > 0 && (
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-500">Dias de aula:</span>
@@ -382,7 +453,6 @@ export default function ModalidadesPage() {
                   </div>
                 )}
 
-                {/* Mostrar horário de funcionamento da modalidade, se definido */}
                 {((modalidade as any).horarioFuncionamento && (((modalidade as any).horarioFuncionamento.manha?.inicio) || ((modalidade as any).horarioFuncionamento.tarde?.inicio))) && (
                   <div className="mt-2 text-sm text-gray-600">
                     <div className="text-xs text-gray-500 mb-1">Horário de funcionamento:</div>
@@ -396,94 +466,100 @@ export default function ModalidadesPage() {
                     </div>
                   </div>
                 )}
-                
-                {/* Horários disponíveis removidos do card para simplificar a visualização */}
               </div>
-              
+
               <div className="mt-4 flex justify-end gap-3">
-                <button onClick={() => editModalidade(modalidade)} className="inline-flex items-center gap-2 h-8 px-3 rounded-md bg-white border border-gray-100 hover:bg-gray-50 text-primary-600 text-sm">
-                  <i className="fas fa-edit w-4 text-primary-600" aria-hidden="true" />
-                  <span>Editar</span>
-                </button>
-                <button onClick={() => deleteModalidade((modalidade as any).id || (modalidade as any)._id)} className="inline-flex items-center gap-2 h-8 px-3 rounded-md bg-red-50 border border-red-100 text-red-700 hover:bg-red-100 text-sm">
-                  <i className="fas fa-trash w-4 text-red-700" aria-hidden="true" />
-                  <span>Desativar</span>
-                </button>
-                <button onClick={() => deleteModalidadeHard((modalidade as any).id || (modalidade as any)._id)} className="inline-flex items-center gap-2 h-8 px-3 rounded-md bg-red-600 text-white hover:bg-red-700 text-sm">
-                  <i className="fas fa-trash-alt w-4 text-white" aria-hidden="true" />
-                  <span>Apagar</span>
-                </button>
+                {((modalidade as any).ativo === false) ? (
+                  <>
+                    <button disabled className="inline-flex items-center gap-2 h-8 px-3 rounded-md bg-white border border-gray-100 text-gray-300 text-sm cursor-not-allowed transition-colors duration-200">
+                      <i className="fas fa-edit w-4 text-gray-300" aria-hidden="true" />
+                      <span>Editar</span>
+                    </button>
+                    <button onClick={() => activateModalidade((modalidade as any).id || (modalidade as any)._id)} className="inline-flex items-center gap-2 h-8 px-3 rounded-md bg-primary-600 text-white text-sm transition-colors duration-200">
+                      <i className="fas fa-toggle-on w-4 text-white" aria-hidden="true" />
+                      <span>Ativar</span>
+                    </button>
+                    <button disabled className="inline-flex items-center gap-2 h-8 px-3 rounded-md bg-white border border-gray-100 text-gray-300 text-sm cursor-not-allowed transition-colors duration-200">
+                      <i className="fas fa-trash-alt w-4 text-gray-300" aria-hidden="true" />
+                      <span>Apagar</span>
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button onClick={() => editModalidade(modalidade)} className="inline-flex items-center gap-2 h-8 px-3 rounded-md bg-white border border-gray-100 hover:bg-gray-50 text-primary-600 text-sm transition-colors duration-200">
+                      <i className="fas fa-edit w-4 text-primary-600" aria-hidden="true" />
+                      <span>Editar</span>
+                    </button>
+                    <button onClick={() => deleteModalidade((modalidade as any).id || (modalidade as any)._id)} className="inline-flex items-center gap-2 h-8 px-3 rounded-md bg-red-50 border border-red-100 text-red-700 hover:bg-red-100 text-sm transition-colors duration-200">
+                      <i className="fas fa-toggle-off w-4 text-red-700" aria-hidden="true" />
+                      <span>Desativar</span>
+                    </button>
+                    <button onClick={() => deleteModalidadeHard((modalidade as any).id || (modalidade as any)._id)} className="inline-flex items-center gap-2 h-8 px-3 rounded-md bg-red-600 text-white hover:bg-red-700 text-sm transition-colors duration-200">
+                      <i className="fas fa-trash-alt w-4 text-white" aria-hidden="true" />
+                      <span>Apagar</span>
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           ))}
-          
-          {/* Empty state removed */}
         </div>
-      </div>
 
-      {/* Modal para nova modalidade */}
-      {showModal && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white fade-in-4">
-            <div className="mt-3">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">
-                {editingModalidade ? 'Editar Modalidade' : 'Nova Modalidade'}
-              </h3>
-              <form onSubmit={handleSubmit} className="space-y-4">
+        {/* Modal para nova modalidade */}
+        {showModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-600 bg-opacity-50 px-4">
+            <div className="relative w-full max-w-xl bg-white rounded-lg shadow-lg border p-6">
+              <div className="flex items-start justify-between mb-4 border-b pb-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Nome *</label>
-                  <input
-                    type="text"
-                    value={formData.nome}
-                    onChange={(e) => setFormData({...formData, nome: e.target.value})}
-                    className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                    placeholder="Ex: Natação, Treino, Hidroginástica..."
-                    required
-                  />
+                  <h3 className="text-base font-semibold text-gray-900">
+                    {editingModalidade ? (
+                      <span className="flex items-center gap-2">
+                        <i className="fas fa-edit text-primary-600" />
+                        Editar Modalidade
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-2">
+                        <i className="fas fa-plus text-primary-600" />
+                        Nova Modalidade
+                      </span>
+                    )}
+                  </h3>
+                  <p className="text-sm font-medium text-gray-500 mt-1 flex items-center gap-2">
+                    <i className="fas fa-info-circle text-primary-600" />
+                    Defina as informações principais e os horários de funcionamento.
+                  </p>
                 </div>
+                <button
+                  type="button"
+                  aria-label="Fechar"
+                  onClick={() => { setShowModal(false); setEditingModalidade(null); }}
+                  className="ml-4 text-gray-400 hover:text-gray-600 focus:outline-none"
+                >
+                  <i className="fas fa-times w-4" aria-hidden="true" />
+                </button>
+              </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Descrição</label>
-                  <textarea
-                    value={formData.descricao}
-                    onChange={(e) => setFormData({...formData, descricao: e.target.value})}
-                    className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                    rows={2}
-                    placeholder="Descrição da modalidade..."
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Cor</label>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {coresPredefinidas.map((cor) => (
-                      <button
-                        key={cor}
-                        type="button"
-                        onClick={() => setFormData({...formData, cor})}
-                        className={`w-8 h-8 rounded-full border-2 ${
-                          formData.cor === cor ? 'border-gray-800' : 'border-gray-300'
-                        }`}
-                        style={{ backgroundColor: cor }}
-                      />
-                    ))}
+              <form onSubmit={handleSubmit} className="space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 items-end">
+                  <div className="sm:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700">Nome *</label>
+                    <input
+                      type="text"
+                      value={formData.nome}
+                      onChange={(e) => setFormData({...formData, nome: e.target.value})}
+                      className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm font-medium focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                      placeholder="Ex: Natação, Treino, Hidroginástica..."
+                      required
+                    />
                   </div>
-                  <input
-                    type="color"
-                    value={formData.cor}
-                    onChange={(e) => setFormData({...formData, cor: e.target.value})}
-                    className="mt-2 h-10 w-20 border border-gray-300 rounded cursor-pointer"
-                  />
-                </div>
 
-                <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700">Duração (min)</label>
                     <input
                       type="number"
                       value={formData.duracao}
                       onChange={(e) => setFormData({...formData, duracao: parseInt(e.target.value) || 60})}
-                      className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                      className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm font-medium focus:outline-none focus:ring-primary-500 focus:border-primary-500"
                       min="15"
                       max="180"
                     />
@@ -495,23 +571,59 @@ export default function ModalidadesPage() {
                       type="number"
                       value={formData.limiteAlunos}
                       onChange={(e) => setFormData({...formData, limiteAlunos: parseInt(e.target.value) || 5})}
-                      className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                      className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm font-medium focus:outline-none focus:ring-primary-500 focus:border-primary-500"
                       min="1"
                       max="20"
                     />
                   </div>
                 </div>
 
-                {/* Blocos separados: Manhã e Tarde (cada um com dias + horários abaixo) */}
-                <div className="space-y-4">
-                  {/* Manhã block */}
-                  <div className="border rounded-md p-3 bg-gray-50">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Descrição</label>
+                  <textarea
+                    value={formData.descricao}
+                    onChange={(e) => setFormData({...formData, descricao: e.target.value})}
+                    className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm font-medium focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                    rows={2}
+                    placeholder="Descrição da modalidade..."
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Cor</label>
+                  <div className="flex items-center justify-center gap-3">
+                    <div className="flex flex-wrap gap-2 p-2 bg-gray-50 border border-gray-200 border-t rounded-md justify-center">
+                      {coresSugeridas.map((cor) => (
+                        <button
+                          key={cor}
+                          type="button"
+                          onClick={() => setFormData({...formData, cor})}
+                          className={`relative h-8 w-8 rounded-full border-2 flex items-center justify-center transition-all duration-150 hover:scale-110 hover:border-primary-400 focus:outline-none ${formData.cor === cor ? 'border-primary-600 ring-2 ring-primary-400' : 'border-gray-300'}`}
+                          style={{ backgroundColor: cor }}
+                          title={cor}
+                        >
+                          {formData.cor === cor && (
+                            <span className="absolute inset-0 flex items-center justify-center">
+                              <i className="fas fa-check text-white text-xs drop-shadow" />
+                            </span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="border rounded-md p-2 bg-gray-50">
                     <div className="mb-2 flex items-center justify-between">
-                      <label className="text-sm font-medium text-gray-700">Manhã</label>
+                      <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                        <i className="fas fa-sun text-yellow-400" aria-hidden="true" />
+                        Manhã
+                      </label>
                       <span className="text-xs text-gray-500">Selecione dias e horário</span>
                     </div>
-                    <div className="grid grid-cols-7 gap-2 mb-3">
-                      {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((dia, index) => (
+                    <div className="grid grid-cols-7 gap-2 mb-2">
+                      {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((dia, index) => (
                         <button
                           key={`manha-${index}`}
                           type="button"
@@ -523,7 +635,7 @@ export default function ModalidadesPage() {
                               setFormData({ ...formData, diasSemanaManha: [...[...dias, index].sort()] });
                             }
                           }}
-                          className={`px-2 py-2 text-xs font-medium rounded-md transition-colors ${
+                          className={`px-2 py-1 text-xs font-medium rounded-md transition-colors ${
                             ((formData as any).diasSemanaManha || []).includes(index)
                               ? 'bg-primary-600 text-white border-2 border-primary-600'
                               : 'bg-white text-gray-700 border-2 border-gray-300 hover:bg-gray-50'
@@ -534,7 +646,7 @@ export default function ModalidadesPage() {
                       ))}
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-2 gap-3">
                       <div>
                         <label className="block text-sm font-medium text-gray-700">Início</label>
                         <input
@@ -552,7 +664,7 @@ export default function ModalidadesPage() {
                               },
                             })
                           }
-                          className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                          className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
                         />
                       </div>
                       <div>
@@ -572,20 +684,22 @@ export default function ModalidadesPage() {
                               },
                             })
                           }
-                          className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                          className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
                         />
                       </div>
                     </div>
                   </div>
 
-                  {/* Tarde block */}
-                  <div className="border rounded-md p-3 bg-gray-50">
+                  <div className="border rounded-md p-2 bg-gray-50">
                     <div className="mb-2 flex items-center justify-between">
-                      <label className="text-sm font-medium text-gray-700">Tarde</label>
+                      <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                        <i className="fas fa-moon text-indigo-400" aria-hidden="true" />
+                        Tarde
+                      </label>
                       <span className="text-xs text-gray-500">Selecione dias e horário</span>
                     </div>
-                    <div className="grid grid-cols-7 gap-2 mb-3">
-                      {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((dia, index) => (
+                    <div className="grid grid-cols-7 gap-2 mb-2">
+                      {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((dia, index) => (
                         <button
                           key={`tarde-${index}`}
                           type="button"
@@ -597,7 +711,7 @@ export default function ModalidadesPage() {
                               setFormData({ ...formData, diasSemanaTarde: [...[...dias, index].sort()] });
                             }
                           }}
-                          className={`px-2 py-2 text-xs font-medium rounded-md transition-colors ${
+                          className={`px-2 py-1 text-xs font-medium rounded-md transition-colors ${
                             ((formData as any).diasSemanaTarde || []).includes(index)
                               ? 'bg-primary-600 text-white border-2 border-primary-600'
                               : 'bg-white text-gray-700 border-2 border-gray-300 hover:bg-gray-50'
@@ -608,14 +722,14 @@ export default function ModalidadesPage() {
                       ))}
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-2 gap-3">
                       <div>
                         <label className="block text-sm font-medium text-gray-700">Início</label>
                         <input
                           type="time"
                           value={(formData as any).horarioFuncionamento?.tarde?.inicio || ''}
                           onChange={(e) => setFormData({...formData, horarioFuncionamento: { ...(formData as any).horarioFuncionamento, tarde: { ...(formData as any).horarioFuncionamento?.tarde, inicio: e.target.value } } })}
-                          className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                          className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
                         />
                       </div>
                       <div>
@@ -624,16 +738,14 @@ export default function ModalidadesPage() {
                           type="time"
                           value={(formData as any).horarioFuncionamento?.tarde?.fim || ''}
                           onChange={(e) => setFormData({...formData, horarioFuncionamento: { ...(formData as any).horarioFuncionamento, tarde: { ...(formData as any).horarioFuncionamento?.tarde, fim: e.target.value } } })}
-                          className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                          className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
                         />
                       </div>
                     </div>
                   </div>
                 </div>
 
-                {/* (Horários já apresentados nos blocos Manhã e Tarde acima) */}
-
-                <div className="flex justify-end space-x-3 pt-4">
+                <div className="flex justify-end gap-3 pt-3 border-t">
                   <button
                     type="button"
                     onClick={() => {
@@ -651,23 +763,26 @@ export default function ModalidadesPage() {
                         horarioFuncionamento: { manha: { inicio: '', fim: '' }, tarde: { inicio: '', fim: '' } }
                       });
                     }}
-                    className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+                    className="px-3 py-2  border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none"
                   >
+                    <i className="fas fa-times mr-2" />
                     Cancelar
                   </button>
                   <button
                     type="submit"
                     disabled={loading}
-                    className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50"
+                    className="px-3 py-2 rounded-md text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none disabled:opacity-50"
                   >
+                    <i className={`fas ${editingModalidade ? 'fa-save' : 'fa-plus'} mr-2`} />
                     {loading ? (editingModalidade ? 'Atualizando...' : 'Criando...') : (editingModalidade ? 'Atualizar' : 'Criar')}
                   </button>
                 </div>
               </form>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </Layout>
+    </RequireAuth>
   );
 }

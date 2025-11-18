@@ -1,6 +1,7 @@
 'use client';
 
 import Layout from '@/components/Layout';
+import RequireAuth from '@/components/RequireAuth';
 import { useEffect, useState } from 'react';
 
 interface AulaRealizada {
@@ -44,6 +45,38 @@ export default function AulasRealizadasPage() {
     professor: string;
     horarioFixoId: string;
   }>>([]);
+
+  // Pagination state
+  const ITENS_POR_PAGINA = 8;
+  const [pendentesPage, setPendentesPage] = useState(1);
+  const [realizadasPage, setRealizadasPage] = useState(1);
+
+  // Helpers to resolve colors for modalidade and professor (fallbacks provided)
+  const getModalidadeColor = (nome: string) => {
+    if (!nome) return '#3B82F6';
+    const mod = modalidades.find(m => String(m.nome || '').toLowerCase() === String(nome || '').toLowerCase());
+    return (mod && (mod.cor || mod.color)) || '#3B82F6';
+  };
+
+  const getProfessorColor = (idOrName: string) => {
+    if (!idOrName) return '#9CA3AF';
+    const prof = professores.find(p => String(p._id) === String(idOrName) || String((p.nome || '').toLowerCase()) === String((idOrName || '').toLowerCase()));
+    return (prof && (prof.cor || prof.color)) || '#9CA3AF';
+  };
+
+  const getProfessorName = (aula: any) => {
+    return typeof (aula.professorId as any)?.nome === 'string'
+      ? (aula.professorId as any).nome
+      : aula.professorNome || 'Não informado';
+  };
+
+  const getProfessorLookupKey = (aula: any) => {
+    if (aula.professorId) {
+      if (typeof aula.professorId === 'object') return aula.professorId._id || aula.professorId.nome || '';
+      return String(aula.professorId || '');
+    }
+    return aula.professorNome || '';
+  };
 
   useEffect(() => {
     carregarDados();
@@ -111,6 +144,10 @@ export default function AulasRealizadasPage() {
         : '';
 
       horarios.forEach(horario => {
+        // Ignore malformed horario entries: require an _id and a valid diaSemana and at least one time field.
+        if (!horario || !horario._id) return;
+        if (typeof horario.diaSemana !== 'number') return;
+        if (!horario.horarioInicio && !horario.horario) return;
         const dias = getDatesForDayOfWeek(filtros.dataInicio, filtros.dataFim, horario.diaSemana);
         dias.forEach(dateObj => {
           const dataStr = dateObj.toISOString().split('T')[0];
@@ -292,8 +329,21 @@ export default function AulasRealizadasPage() {
                              filtros.tipoAula === 'todas' ? aulasPendentes :
                              [];
 
+  // Reset pagination when filters change
+  useEffect(() => {
+    setPendentesPage(1);
+    setRealizadasPage(1);
+  }, [filtros]);
+
+  const totalPendentesPages = Math.max(1, Math.ceil(pendentesFiltradas.length / ITENS_POR_PAGINA));
+  const totalRealizadasPages = Math.max(1, Math.ceil(aulasParaExibir.length / ITENS_POR_PAGINA));
+
+  const pendentesParaExibir = pendentesFiltradas.slice((pendentesPage - 1) * ITENS_POR_PAGINA, pendentesPage * ITENS_POR_PAGINA);
+  const realizadasParaExibir = aulasParaExibir.slice((realizadasPage - 1) * ITENS_POR_PAGINA, realizadasPage * ITENS_POR_PAGINA);
+
   return (
-    <Layout title="Aulas - Superação Flux">
+    <RequireAuth showLoginRedirect={false}>
+      <Layout title="Aulas - Superação Flux">
       <div className="px-4 py-6 sm:px-0">
         {/* Header */}
         <div className="mb-6 fade-in-1">
@@ -302,12 +352,12 @@ export default function AulasRealizadasPage() {
         </div>
 
         {/* Filtros */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-6 fade-in-2">
+        <div className="bg-white rounded-md border border-gray-200 p-4 mb-6 fade-in-2">
           {/* Filtro de Tipo de Aula - Botões de Tab */}
           <div className="flex gap-2 mb-4 pb-4 border-b border-gray-200">
             <button
               onClick={() => setFiltros({ ...filtros, tipoAula: 'todas' })}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
                 filtros.tipoAula === 'todas' 
                   ? 'bg-green-600 text-white' 
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -318,7 +368,7 @@ export default function AulasRealizadasPage() {
             </button>
             <button
               onClick={() => setFiltros({ ...filtros, tipoAula: 'realizadas' })}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
                 filtros.tipoAula === 'realizadas' 
                   ? 'bg-green-600 text-white' 
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -329,7 +379,7 @@ export default function AulasRealizadasPage() {
             </button>
             <button
               onClick={() => setFiltros({ ...filtros, tipoAula: 'pendentes' })}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
                 filtros.tipoAula === 'pendentes' 
                   ? 'bg-yellow-600 text-white' 
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -430,7 +480,7 @@ export default function AulasRealizadasPage() {
         {(filtros.tipoAula === 'realizadas' && aulasParaExibir.length === 0) || 
             (filtros.tipoAula === 'pendentes' && pendentesFiltradas.length === 0) || 
             (filtros.tipoAula === 'todas' && aulasParaExibir.length === 0 && pendentesFiltradas.length === 0) ? (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center fade-in-3">
+          <div className="bg-white rounded-md border border-gray-200 p-12 text-center fade-in-3">
             <i className="fas fa-clipboard-list text-gray-300 text-5xl mb-4"></i>
             <h3 className="text-lg font-medium text-gray-900 mb-2">Nenhuma aula encontrada</h3>
             <p className="text-sm text-gray-600">Ajuste os filtros para ver mais resultados</p>
@@ -439,7 +489,7 @@ export default function AulasRealizadasPage() {
           <div className="space-y-4">
             {/* Tabela de Aulas Pendentes */}
             {(filtros.tipoAula === 'pendentes' || filtros.tipoAula === 'todas') && pendentesFiltradas.length > 0 && (
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden fade-in-3">
+              <div className="bg-white rounded-md border border-gray-200 overflow-hidden fade-in-3">
                 <div className="bg-yellow-50 px-4 py-3 border-b border-yellow-200">
                   <h3 className="text-sm font-semibold text-yellow-800 flex items-center gap-2">
                     <i className="fas fa-clock"></i>
@@ -457,7 +507,7 @@ export default function AulasRealizadasPage() {
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                      {pendentesFiltradas.map((aula, index) => (
+                      {pendentesParaExibir.map((aula, index) => (
                         <tr key={`${aula.horarioFixoId}-${aula.data}`} className={`hover:bg-gray-50 fade-in-${Math.min((index % 8) + 1, 8)}`}>
                           <td className="px-4 py-3 text-sm text-gray-900">
                             {new Date(aula.data).toLocaleDateString('pt-BR')}
@@ -466,22 +516,39 @@ export default function AulasRealizadasPage() {
                             {aula.horario}
                           </td>
                           <td className="px-4 py-3 text-sm text-gray-900">
-                            {aula.modalidade}
+                            <span className="inline-flex items-center gap-2">
+                              <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: getModalidadeColor(aula.modalidade) }} />
+                              <span>{aula.modalidade}</span>
+                            </span>
                           </td>
                           <td className="px-4 py-3 text-sm text-gray-900">
-                            {aula.professor}
+                            <span className="inline-flex items-center gap-2">
+                              <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: getProfessorColor(aula.professor) }} />
+                              <span>{aula.professor}</span>
+                            </span>
                           </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
+                {/* Paginação Pendentes */}
+                {pendentesFiltradas.length > ITENS_POR_PAGINA && (
+                  <div className="px-4 py-3 bg-white border-t border-gray-200 flex items-center justify-between text-sm">
+                    <div className="text-gray-600">Mostrando {Math.min(ITENS_POR_PAGINA, pendentesFiltradas.length - (pendentesPage - 1) * ITENS_POR_PAGINA)} de {pendentesFiltradas.length}</div>
+                    <div className="flex items-center gap-2">
+                      <button disabled={pendentesPage === 1} onClick={() => setPendentesPage(p => Math.max(1, p - 1))} className="px-3 py-1 border rounded-md bg-white disabled:opacity-50">Anterior</button>
+                      <div className="text-sm text-gray-700">Página {pendentesPage} de {totalPendentesPages}</div>
+                      <button disabled={pendentesPage >= totalPendentesPages} onClick={() => setPendentesPage(p => Math.min(totalPendentesPages, p + 1))} className="px-3 py-1 border rounded-md bg-white disabled:opacity-50">Próxima</button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
             {/* Tabela de Aulas Realizadas */}
             {(filtros.tipoAula === 'realizadas' || filtros.tipoAula === 'todas') && aulasParaExibir.length > 0 && (
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden fade-in-3">
+              <div className="bg-white rounded-md border border-gray-200 overflow-hidden fade-in-3">
                 {filtros.tipoAula === 'todas' && (
                   <div className="bg-green-50 px-4 py-3 border-b border-green-200">
                     <h3 className="text-sm font-semibold text-green-800 flex items-center gap-2">
@@ -504,18 +571,22 @@ export default function AulasRealizadasPage() {
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                      {aulasParaExibir.map((aula, index) => (
+                      {realizadasParaExibir.map((aula, index) => (
                         <tr key={aula._id} className={`hover:bg-gray-50 fade-in-${Math.min((index % 8) + 1, 8)}`}>
                           <td className="px-4 py-3 text-sm text-gray-900">
                             {new Date(aula.data).toLocaleDateString('pt-BR')}
                           </td>
                           <td className="px-4 py-3 text-sm text-gray-900">
-                            {aula.modalidade || 'Não informada'}
+                            <span className="inline-flex items-center gap-2">
+                              <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: getModalidadeColor(aula.modalidade || '') }} />
+                              <span>{aula.modalidade || 'Não informada'}</span>
+                            </span>
                           </td>
                           <td className="px-4 py-3 text-sm text-gray-900">
-                            {typeof (aula.professorId as any)?.nome === 'string' 
-                              ? (aula.professorId as any).nome 
-                              : aula.professorNome || 'Não informado'}
+                            <span className="inline-flex items-center gap-2">
+                              <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: getProfessorColor(getProfessorLookupKey(aula)) }} />
+                              <span>{getProfessorName(aula)}</span>
+                            </span>
                           </td>
                           <td className="px-4 py-3 text-sm text-center">
                             <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-green-50 text-green-700 font-medium text-xs">
@@ -542,17 +613,17 @@ export default function AulasRealizadasPage() {
                             <div className="flex items-center justify-center gap-2">
                               <button
                                 onClick={() => setAulaParaEditar(aula)}
-                                className="text-blue-600 hover:text-blue-700 transition-colors"
+                                className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md bg-white border border-gray-100 hover:bg-gray-50 text-primary-600"
                                 title="Editar"
                               >
-                                <i className="fas fa-edit"></i>
+                                <i className="fas fa-edit w-3" aria-hidden="true" />
                               </button>
                               <button
                                 onClick={() => setAulaParaExcluir(aula)}
-                                className="text-red-600 hover:text-red-700 transition-colors"
+                                className={`inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md border bg-red-50 border-red-100 text-red-700 hover:bg-red-100`}
                                 title="Excluir"
                               >
-                                <i className="fas fa-trash"></i>
+                                <i className="fas fa-trash w-3" aria-hidden="true" />
                               </button>
                             </div>
                           </td>
@@ -561,6 +632,17 @@ export default function AulasRealizadasPage() {
                     </tbody>
                   </table>
                 </div>
+                {/* Paginação Realizadas */}
+                {aulasParaExibir.length > ITENS_POR_PAGINA && (
+                  <div className="px-4 py-3 bg-white border-t border-gray-200 flex items-center justify-between text-sm">
+                    <div className="text-gray-600">Mostrando {Math.min(ITENS_POR_PAGINA, aulasParaExibir.length - (realizadasPage - 1) * ITENS_POR_PAGINA)} de {aulasParaExibir.length}</div>
+                    <div className="flex items-center gap-2">
+                      <button disabled={realizadasPage === 1} onClick={() => setRealizadasPage(p => Math.max(1, p - 1))} className="px-3 py-1 border rounded-md bg-white disabled:opacity-50">Anterior</button>
+                      <div className="text-sm text-gray-700">Página {realizadasPage} de {totalRealizadasPages}</div>
+                      <button disabled={realizadasPage >= totalRealizadasPages} onClick={() => setRealizadasPage(p => Math.min(totalRealizadasPages, p + 1))} className="px-3 py-1 border rounded-md bg-white disabled:opacity-50">Próxima</button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -568,74 +650,104 @@ export default function AulasRealizadasPage() {
 
         {/* Modal de Edição */}
         {aulaParaEditar && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-hidden">
-              <div className="bg-blue-600 text-white px-6 py-4 flex items-center justify-between">
-                <h3 className="text-lg font-semibold flex items-center gap-2">
-                  <i className="fas fa-edit"></i>
-                  Editar Aula - {new Date(aulaParaEditar.data).toLocaleDateString('pt-BR')}
-                </h3>
+          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg shadow-lg border p-6 max-w-3xl w-full max-h-[90vh] overflow-hidden">
+              <div className="flex items-start justify-between">
+                <div>
+                  <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+                    <i className="fas fa-edit text-primary-600"></i>
+                    Editar Aula - {new Date(aulaParaEditar.data).toLocaleDateString('pt-BR')}
+                  </h3>
+                  <div className="text-xs text-gray-500 flex items-center gap-2 mt-1">
+                    <i className="fas fa-info-circle text-primary-600"></i>
+                    <span>Atualize presenças e confirme as alterações da aula</span>
+                  </div>
+                </div>
                 <button
                   onClick={() => setAulaParaEditar(null)}
-                  className="text-white hover:text-gray-200 transition-colors"
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                  aria-label="Fechar"
                 >
-                  <i className="fas fa-times text-xl"></i>
+                  <i className="fas fa-times text-lg"></i>
                 </button>
               </div>
-              
-              <div className="p-6 overflow-y-auto max-h-[calc(90vh-180px)]">
-                <div className="mb-4">
-                  <p className="text-sm text-gray-600"><strong>Modalidade:</strong> {aulaParaEditar.modalidade}</p>
-                  <p className="text-sm text-gray-600"><strong>Professor:</strong> {typeof (aulaParaEditar.professorId as any)?.nome === 'string' 
-                    ? (aulaParaEditar.professorId as any).nome 
-                    : aulaParaEditar.professorNome || 'Não informado'}</p>
+
+              <div className="p-4 overflow-y-auto max-h-[calc(90vh-200px)] space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 items-end">
+                  <div>
+                    <label className="text-sm font-medium text-gray-700">Modalidade</label>
+                    <div className="mt-1 text-sm text-gray-900">
+                      <span className="inline-flex items-center gap-2">
+                        <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: getModalidadeColor(aulaParaEditar.modalidade || '') }} />
+                        <span>{aulaParaEditar.modalidade}</span>
+                      </span>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-700">Professor</label>
+                    <div className="mt-1 text-sm text-gray-900">
+                      <span className="inline-flex items-center gap-2">
+                        <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: getProfessorColor(getProfessorLookupKey(aulaParaEditar)) }} />
+                        <span>{getProfessorName(aulaParaEditar)}</span>
+                      </span>
+                    </div>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="text-sm font-medium text-gray-700">Data</label>
+                    <div className="mt-1 text-sm text-gray-900">{new Date(aulaParaEditar.data).toLocaleDateString('pt-BR')}</div>
+                  </div>
                 </div>
 
                 <div className="border-t pt-4">
                   <h4 className="text-sm font-semibold text-gray-900 mb-3">Alunos da Aula</h4>
                   <div className="space-y-2">
                     {aulaParaEditar.alunos.map((aluno, index) => (
-                      <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-md hover:bg-gray-100 transition-colors">
-                        <span className="text-sm text-gray-900">{aluno.nome}</span>
-                        <button
-                          onClick={() => togglePresenca(index)}
-                          className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
-                            aluno.presente === true ? 'bg-green-100 text-green-700 hover:bg-green-200' :
-                            aluno.presente === false ? 'bg-red-100 text-red-700 hover:bg-red-200' :
-                            'bg-gray-200 text-gray-600 hover:bg-gray-300'
-                          }`}
-                        >
-                          {aluno.presente === true ? (
-                            <><i className="fas fa-check mr-1"></i> Presente</>
-                          ) : aluno.presente === false ? (
-                            <><i className="fas fa-times mr-1"></i> Faltou</>
-                          ) : (
-                            <><i className="fas fa-minus mr-1"></i> Não registrado</>
-                          )}
-                        </button>
+                      <div key={index} className="p-3 bg-gray-50 rounded-md border border-gray-100 flex items-center justify-between">
+                        <div className="min-w-0">
+                          <div className="text-sm font-medium text-gray-900 truncate">{aluno.nome}</div>
+                        </div>
+                        <div>
+                          <button
+                            onClick={() => togglePresenca(index)}
+                            className={`flex items-center gap-2 px-3 py-1 rounded-md text-sm font-medium transition-colors ${
+                              aluno.presente === true ? 'bg-green-100 text-green-700' :
+                              aluno.presente === false ? 'bg-red-100 text-red-700' :
+                              'bg-gray-200 text-gray-600'
+                            }`}
+                          >
+                            {aluno.presente === true ? (
+                              <><i className="fas fa-check"></i> Presente</>
+                            ) : aluno.presente === false ? (
+                              <><i className="fas fa-times"></i> Faltou</>
+                            ) : (
+                              <><i className="fas fa-minus"></i> Não registrado</>
+                            )}
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
                 </div>
               </div>
 
-              <div className="bg-gray-50 px-6 py-4 flex items-center justify-end gap-3 border-t">
+              <div className="pt-3 border-t flex items-center justify-end gap-3">
                 <button
                   onClick={() => setAulaParaEditar(null)}
-                  className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors"
+                  className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
                   disabled={salvando}
                 >
-                  Cancelar
+                  <i className="fas fa-times text-gray-500"></i>
+                  <span>Cancelar</span>
                 </button>
                 <button
                   onClick={handleSalvarEdicao}
-                  className="px-4 py-2 bg-green-600 text-white rounded-md text-sm font-medium hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-md text-sm font-medium hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   disabled={salvando}
                 >
                   {salvando ? (
-                    <><i className="fas fa-spinner fa-spin mr-2"></i> Salvando...</>
+                    <><i className="fas fa-spinner fa-spin"></i> Salvando...</>
                   ) : (
-                    <><i className="fas fa-save mr-2"></i> Salvar Alterações</>
+                    <><i className="fas fa-save"></i> Atualizar</>
                   )}
                 </button>
               </div>
@@ -645,17 +757,29 @@ export default function AulasRealizadasPage() {
 
         {/* Modal de Confirmação de Exclusão */}
         {aulaParaExcluir && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
-              <div className="bg-red-600 text-white px-6 py-4 flex items-center gap-3">
-                <i className="fas fa-exclamation-triangle text-2xl"></i>
-                <h3 className="text-lg font-semibold">Confirmar Exclusão</h3>
+          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg shadow-lg border p-6 max-w-md w-full">
+              <div className="flex items-start justify-between">
+                <div>
+                  <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+                    <i className="fas fa-exclamation-triangle text-primary-600"></i>
+                    Confirmar Exclusão
+                  </h3>
+                  <div className="text-xs text-gray-500 flex items-center gap-2 mt-1">
+                    <i className="fas fa-info-circle text-primary-600"></i>
+                    <span>Esta ação removerá a aula do sistema e não poderá ser desfeita.</span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setAulaParaExcluir(null)}
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                  aria-label="Fechar"
+                >
+                  <i className="fas fa-times text-lg"></i>
+                </button>
               </div>
-              
-              <div className="p-6">
-                <p className="text-sm text-gray-700 mb-4">
-                  Tem certeza que deseja excluir esta aula?
-                </p>
+
+              <div className="p-4">
                 <div className="bg-gray-50 p-3 rounded-md text-sm">
                   <p><strong>Data:</strong> {new Date(aulaParaExcluir.data).toLocaleDateString('pt-BR')}</p>
                   <p><strong>Modalidade:</strong> {aulaParaExcluir.modalidade}</p>
@@ -663,29 +787,26 @@ export default function AulasRealizadasPage() {
                     ? (aulaParaExcluir.professorId as any).nome 
                     : aulaParaExcluir.professorNome || 'Não informado'}</p>
                 </div>
-                <p className="text-xs text-red-600 mt-3">
-                  <i className="fas fa-info-circle mr-1"></i>
-                  Esta ação não pode ser desfeita!
-                </p>
               </div>
 
-              <div className="bg-gray-50 px-6 py-4 flex items-center justify-end gap-3 border-t">
+              <div className="pt-3 border-t flex items-center justify-end gap-3">
                 <button
                   onClick={() => setAulaParaExcluir(null)}
-                  className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors"
+                  className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
                   disabled={salvando}
                 >
-                  Cancelar
+                  <i className="fas fa-times text-gray-500"></i>
+                  <span>Cancelar</span>
                 </button>
                 <button
                   onClick={handleExcluir}
-                  className="px-4 py-2 bg-red-600 text-white rounded-md text-sm font-medium hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-md text-sm font-medium hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   disabled={salvando}
                 >
                   {salvando ? (
-                    <><i className="fas fa-spinner fa-spin mr-2"></i> Excluindo...</>
+                    <><i className="fas fa-spinner fa-spin"></i> Excluindo...</>
                   ) : (
-                    <><i className="fas fa-trash mr-2"></i> Sim, Excluir</>
+                    <><i className="fas fa-trash"></i> Sim, Excluir</>
                   )}
                 </button>
               </div>
@@ -693,6 +814,7 @@ export default function AulasRealizadasPage() {
           </div>
         )}
       </div>
-    </Layout>
+      </Layout>
+    </RequireAuth>
   );
 }

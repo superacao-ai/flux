@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import RequireAuth from '@/components/RequireAuth';
 import Layout from '@/components/Layout';
 
 interface Especialidade {
@@ -32,6 +33,19 @@ interface ProfessorForm {
 }
 
 export default function ProfessoresPage() {
+    const coresSugeridas = [
+      '#ff887c',
+      '#dc2127',
+      '#ffb878',
+      '#fbd75b',
+      '#7ae7bf',
+      '#51b749',
+      '#46d6db',
+      '#5484ed',
+      '#a4bdfc',
+      '#dbadff',
+      '#e1e1e1'
+    ];
   const [professores, setProfessores] = useState<Professor[]>([]);
   const [especialidades, setEspecialidades] = useState<Especialidade[]>([]);
   const [loading, setLoading] = useState(true);
@@ -280,16 +294,19 @@ export default function ProfessoresPage() {
 
   if (loading) {
     return (
-      <Layout title="Professores - Superação Flux">
-        <div className="flex justify-center items-center h-64">
-          {/* Loading state removed */}
-        </div>
-      </Layout>
+      <RequireAuth showLoginRedirect={false}>
+        <Layout title="Professores - Superação Flux">
+          <div className="flex justify-center items-center h-64">
+            {/* Loading state removed */}
+          </div>
+        </Layout>
+      </RequireAuth>
     );
   }
 
   return (
-    <Layout title="Professores - Superação Flux" fullWidth>
+    <RequireAuth showLoginRedirect={false}>
+      <Layout title="Professores - Superação Flux" fullWidth>
       <div className="px-4 py-6 sm:px-0">
         <div className="flex items-center justify-between gap-4 fade-in-1">
           <div>
@@ -305,9 +322,9 @@ export default function ProfessoresPage() {
               <button
                 type="button"
                 onClick={abrirModalNovo}
-                className="h-10 inline-flex items-center gap-2 rounded-md bg-primary-600 text-white px-4 text-sm font-medium hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                className="transition-colors duration-200 h-10 inline-flex items-center gap-2  rounded-full bg-primary-600 text-white px-4 text-sm font-medium hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
               >
-                <i className="fas fa-user-plus w-4 text-white" aria-hidden="true" />
+                <i className="fas fa-user-plus w-4 text-white " aria-hidden="true" />
                 Novo Professor
               </button>
             </div>
@@ -356,54 +373,57 @@ export default function ProfessoresPage() {
             <div className="-my-2 -mx-4 overflow-x-auto sm:-mx-6 lg:-mx-8">
               <div className="inline-block min-w-full py-2 align-middle md:px-6 lg:px-8">
               <div className="overflow-hidden rounded-md border border-gray-200">
-                  <table className="w-full table-fixed text-sm border-collapse">
+                  <table className="w-full table-fixed text-sm border-collapse text-center">
                     <thead className="bg-white border-b border-gray-200">
                       <tr>
-                        <th scope="col" className="px-3 py-2 text-left text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
+                        <th scope="col" className="px-3 py-2 text-center text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
                           Nome
                         </th>
-                        <th scope="col" className="px-3 py-2 text-left text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
+                        <th scope="col" className="px-3 py-2 text-center text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
                           Email
                         </th>
-                        <th scope="col" className="px-3 py-2 text-left text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
+                        <th scope="col" className="px-3 py-2 text-center text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
                           Telefone
                         </th>
-                        <th scope="col" className="px-3 py-2 text-left text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
+                        <th scope="col" className="px-3 py-2 text-center text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
                           Especialidades
                         </th>
-                        <th scope="col" className="px-3 py-2 text-left text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
+                        <th scope="col" className="px-3 py-2 text-center text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
                           Status
                         </th>
-                        <th scope="col" className="px-3 py-2 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                          <span className="sr-only">Ações</span>
+                        <th scope="col" className="px-3 py-2 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">
+                          Ações
                         </th>
                       </tr>
                     </thead>
                     <tbody className="bg-white">
                       {filteredProfessores.map((professor, idx) => (
-                        <tr key={professor._id} className={`fade-in-${Math.min((idx % 8) + 1, 8)}`}>
-                          <td className="px-3 py-3 text-sm border-r border-b border-gray-200">
-                            <div className="flex items-center gap-2">
-                              <div 
+                        <tr
+                          key={professor._id}
+                          className={`fade-in-${Math.min((idx % 8) + 1, 8)} ${!professor.ativo ? 'bg-gray-100 text-gray-400' : ''}`}
+                        >
+                          <td className="px-3 py-3 text-sm border-r border-b border-gray-200 text-center">
+                            <div className="flex items-center justify-center gap-2">
+                              <div
                                 className="h-4 w-4 rounded-full border border-gray-300 flex-shrink-0"
-                                style={{ backgroundColor: professor.cor || '#3B82F6' }}
-                                title={`Cor: ${professor.cor || '#3B82F6'}`}
+                                style={{ backgroundColor: professor.ativo ? (professor.cor || '#3B82F6') : '#e5e7eb' }}
+                                title={professor.ativo ? `Cor: ${professor.cor || '#3B82F6'}` : 'Inativo'}
                               />
-                              <span className="font-medium text-gray-900">{professor.nome}</span>
+                              <span className={`font-medium ${professor.ativo ? 'text-gray-900' : 'text-gray-400'}`}>{professor.nome}</span>
                             </div>
                           </td>
-                          <td className="px-3 py-3 text-sm text-gray-500 border-r border-b border-gray-200">
+                          <td className={`px-3 py-3 text-sm border-r border-b border-gray-200 text-center ${!professor.ativo ? 'text-gray-400' : 'text-gray-500'}`}>
                             {professor.email || <span className="text-gray-400 italic">Não informado</span>}
                           </td>
-                          <td className="px-3 py-3 text-sm text-gray-500 border-r border-b border-gray-200">
+                          <td className={`px-3 py-3 text-sm border-r border-b border-gray-200 text-center ${!professor.ativo ? 'text-gray-400' : 'text-gray-500'}`}>
                             {professor.telefone || <span className="text-gray-400 italic">Não informado</span>}
                           </td>
-                          <td className="px-3 py-3 text-sm text-gray-500 border-r border-b border-gray-200">
-                            <div className="flex flex-wrap gap-1">
+                          <td className={`px-3 py-3 text-sm border-r border-b border-gray-200 text-center ${!professor.ativo ? 'text-gray-400' : 'text-gray-500'}`}>
+                            <div className="flex flex-wrap justify-center gap-1">
                               {professor.especialidades?.map((esp) => (
-                                <span 
+                                <span
                                   key={esp._id}
-                                  className="inline-flex rounded-full bg-blue-100 px-2 text-xs font-semibold text-blue-800"
+                                  className={`inline-flex rounded-full px-2 text-xs font-semibold ${professor.ativo ? 'bg-blue-100 text-blue-800' : 'bg-gray-200 text-gray-400'}`}
                                 >
                                   {esp.nome}
                                 </span>
@@ -413,21 +433,21 @@ export default function ProfessoresPage() {
                               )}
                             </div>
                           </td>
-                          <td className="px-3 py-3 text-sm border-r border-b border-gray-200">
+                          <td className="px-3 py-3 text-sm border-r border-b border-gray-200 text-center">
                             <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${
-                              professor.ativo 
-                                ? 'bg-green-100 text-green-800' 
-                                : 'bg-red-100 text-red-800'
+                              professor.ativo
+                                ? 'bg-green-100 text-green-800'
+                                : 'bg-gray-300 text-gray-500'
                             }`}>
                               {professor.ativo ? 'Ativo' : 'Inativo'}
                             </span>
                           </td>
-                          <td className="px-3 py-3 text-sm border-b border-gray-200">
+                          <td className={`px-3 py-3 text-sm border-b border-gray-200 text-center ${!professor.ativo ? 'text-gray-400' : ''}`}>
                             <div className="flex items-center justify-center gap-2">
                               <button onClick={() => abrirModalEditar(professor)} className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md bg-white border border-gray-100 hover:bg-gray-50 text-primary-600">
                                 <i className="fas fa-edit w-3" aria-hidden="true" />
                               </button>
-                              <button onClick={() => excluirProfessor(professor._id)} className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md bg-red-50 border border-red-100 text-red-700 hover:bg-red-100">
+                              <button onClick={() => excluirProfessor(professor._id)} className={`inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md border ${professor.ativo ? 'bg-red-50 border-red-100 text-red-700 hover:bg-red-100' : 'bg-gray-200 border-gray-300 text-gray-400 cursor-not-allowed'}`} disabled={!professor.ativo}>
                                 <i className="fas fa-trash w-3" aria-hidden="true" />
                               </button>
                             </div>
@@ -442,225 +462,212 @@ export default function ProfessoresPage() {
           </div>
         )}
 
-        {/* Modal de Cadastro/Edição */}
+        {/* Modal de Cadastro/Edição - padronizado conforme /modalidades */}
         {showModal && (
-          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-            <div className="relative top-20 mx-auto p-5 border w-[600px] shadow-lg rounded-md bg-white fade-in-4">
-              <div className="mt-3">
-                <h3 className="text-lg font-medium text-gray-900 mb-4">
-                  {editingId ? <><i className="fas fa-edit mr-2" aria-hidden="true" />Editar Professor</> : <><i className="fas fa-chalkboard-teacher mr-2" aria-hidden="true" />Novo Professor</>}
-                </h3>
-                
-                <form 
-                  className="space-y-4" 
-                  noValidate
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    salvarProfessor();
-                  }}
-                >
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Nome *
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.nome}
-                        onChange={handleNomeChange}
-                        className="block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                        placeholder="Nome completo"
-                        required
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Email <span className="text-gray-400 text-xs">(opcional)</span>
-                      </label>
-                      <input
-                        type="email"
-                        value={formData.email}
-                        onChange={handleEmailChange}
-                        className="block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                        placeholder="email@exemplo.com"
-                      />
-                    </div>
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-700 bg-opacity-50">
+            <div className="relative w-full max-w-lg mx-auto bg-white rounded-lg shadow-lg border border-gray-200 p-6">
+              {/* Header + Info */}
+              <div className="mb-2 border-b pb-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    {editingId ? (
+                      <i className="fas fa-edit text-green-600 text-lg" aria-hidden="true" />
+                    ) : (
+                      <i className="fas fa-chalkboard-teacher text-green-600 text-lg" aria-hidden="true" />
+                    )}
+                    <h3 className="text-base font-semibold text-gray-900">
+                      {editingId ? 'Editar Professor' : 'Novo Professor'}
+                    </h3>
                   </div>
-
+                  <button
+                    type="button"
+                    onClick={() => setShowModal(false)}
+                    className="text-gray-400 hover:text-gray-600 focus:outline-none"
+                    title="Fechar"
+                  >
+                    <i className="fas fa-times text-lg" aria-hidden="true" />
+                  </button>
+                </div>
+                <div className="flex items-center gap-2 mt-2">
+                  <i className="fas fa-info-circle text-green-600 text-sm" aria-hidden="true" />
+                  <span className="text-sm font-medium text-gray-500">Preencha os dados do professor e selecione as especialidades.</span>
+                </div>
+              </div>
+              {/* Form */}
+              <form
+                className="space-y-4"
+                noValidate
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  salvarProfessor();
+                }}
+              >
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Telefone <span className="text-gray-400 text-xs">(opcional)</span>
-                    </label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Nome *</label>
                     <input
-                      type="tel"
-                      value={formData.telefone}
-                      onChange={handleTelefoneChange}
-                      className="block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                      placeholder="(11) 99999-9999"
+                      type="text"
+                      value={formData.nome}
+                      onChange={handleNomeChange}
+                      className="block w-full h-10 border border-gray-300 rounded-md px-3 py-2 text-sm font-medium focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                      placeholder="Nome completo"
+                      required
                     />
                   </div>
-
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Cor do Professor
-                    </label>
-                    
-                    {/* Cores pastéis predefinidas */}
-                    <div className="mb-3">
-                      <p className="text-xs text-gray-600 mb-2">Cores sugeridas:</p>
-                      <div className="flex flex-wrap gap-2">
-                        {[
-                          '#16a34a', // Verde Superação
-                          '#3B82F6', // Azul padrão
-                          '#F97316', // Laranja
-                          '#F59E42', // Laranja claro
-                          '#EAB308', // Amarelo
-                          '#A21CAF', // Roxo
-                          '#F43F5E', // Rosa
-                          '#10B981', // Verde água
-                          '#6366F1', // Azul escuro
-                          '#FACC15', // Amarelo claro
-                          '#0EA5E9', // Azul claro
-                          '#F87171', // Vermelho
-                        ].map((cor) => (
-                          <button
-                            key={cor}
-                            type="button"
-                            onClick={() => setFormData(prev => ({...prev, cor: cor}))}
-                            className={`h-8 w-8 rounded-full border-2 transition-all hover:scale-110 ${
-                              formData.cor === cor ? 'border-gray-800 ring-2 ring-gray-400' : 'border-gray-300'
-                            }`}
-                            style={{ backgroundColor: cor }}
-                            title={cor}
-                          />
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Seletor de cor customizado */}
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="color"
-                        value={formData.cor}
-                        onChange={(e) => setFormData(prev => ({...prev, cor: e.target.value}))}
-                        className="h-10 w-20 border border-gray-300 rounded cursor-pointer"
-                      />
-                      <input
-                        type="text"
-                        value={formData.cor}
-                        onChange={(e) => setFormData(prev => ({...prev, cor: e.target.value.toUpperCase()}))}
-                        className="block flex-1 border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500 font-mono text-sm"
-                        placeholder="#3B82F6"
-                        pattern="^#[0-9A-F]{6}$"
-                      />
-                      <div 
-                        className="h-10 w-20 rounded border-2 border-gray-300"
-                        style={{ backgroundColor: formData.cor }}
-                      />
-                    </div>
-                    <p className="text-xs text-gray-500 mt-1">Cor usada nos badges e identificação visual do professor</p>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Email <span className="text-gray-400 text-sm font-medium">(opcional)</span></label>
+                    <input
+                      type="email"
+                      value={formData.email}
+                      onChange={handleEmailChange}
+                      className="block w-full h-10 border border-gray-300 rounded-md px-3 py-2 text-sm font-medium focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                      placeholder="email@exemplo.com"
+                    />
                   </div>
-
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <label className="block text-sm font-medium text-gray-700">
-                        Especialidades
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const nome = prompt('Nome da nova especialidade:');
-                          if (nome) {
-                            criarEspecialidade(nome);
-                          }
-                        }}
-                        className="text-sm bg-green-500 hover:bg-green-600 text-white px-2 py-1 rounded"
-                      >
-                        + Adicionar
-                      </button>
-                    </div>
-                    <div className="space-y-2 max-h-32 overflow-y-auto border border-gray-200 rounded-md p-2">
-                      {especialidades.length === 0 ? (
-                        <p className="text-gray-500 text-sm italic text-center py-2">
-                          Nenhuma especialidade cadastrada
-                        </p>
-                      ) : (
-                        especialidades.map((especialidade) => (
-                          <div key={especialidade._id} className="flex items-center justify-between">
-                            <label className="flex items-center">
-                              <input
-                                type="checkbox"
-                                checked={formData.especialidades.includes(especialidade._id)}
-                                onChange={(e) => handleEspecialidadeChange(especialidade._id, e.target.checked)}
-                                className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                              />
-                              <span className="ml-2 text-sm text-gray-700">
-                                {especialidade.nome}
-                                {especialidade.descricao && (
-                                  <span className="text-gray-500 text-xs block">{especialidade.descricao}</span>
-                                )}
-                              </span>
-                            </label>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (confirm(`Tem certeza que deseja excluir a especialidade "${especialidade.nome}"?`)) {
-                                  excluirEspecialidade(especialidade._id);
-                                }
-                              }}
-                              className="text-red-500 hover:text-red-700 text-xs ml-2"
-                              title="Excluir especialidade"
-                            >
-                              <i className="fas fa-trash-alt" aria-hidden="true" />
-                            </button>
-                          </div>
-                        ))
-                      )}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Telefone <span className="text-gray-400 text-sm font-medium">(opcional)</span></label>
+                  <input
+                    type="tel"
+                    value={formData.telefone}
+                    onChange={handleTelefoneChange}
+                    className="block w-full h-10 border border-gray-300 rounded-md px-3 py-2 text-sm font-medium focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                    placeholder="(11) 99999-9999"
+                  />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <label className="block text-sm font-medium text-gray-700">Cor</label>
+                    <div className="flex flex-wrap gap-1 p-1 bg-gray-50 border border-gray-200 rounded-md">
+                      {coresSugeridas.map((cor) => (
+                        <button
+                          key={cor}
+                          type="button"
+                          onClick={() => setFormData(prev => ({ ...prev, cor: cor }))}
+                          className={`relative h-6 w-6 rounded-full border flex items-center justify-center transition-all duration-150 hover:scale-105 hover:border-primary-400 focus:outline-none ${formData.cor === cor ? 'border-primary-600 ring-2 ring-primary-400' : 'border-gray-300'}`}
+                          style={{ backgroundColor: cor }}
+                          title={cor}
+                        >
+                          {formData.cor === cor && (
+                            <span className="absolute inset-0 flex items-center justify-center">
+                              <i className="fas fa-check text-white text-[10px] drop-shadow" />
+                            </span>
+                          )}
+                        </button>
+                      ))}
                     </div>
                   </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Senha (opcional)</label>
-                    <input type="password" value={formData.senha || ''} onChange={(e) => setFormData(prev => ({ ...prev, senha: e.target.value }))} className="w-full border rounded px-2 py-1" placeholder="Definir senha para professor (mín 6)" />
-                    <div className="text-xs text-gray-500 mt-1">Se preenchida, permite criar/atualizar a senha do professor (requer email).</div>
-                  </div>
-
-                  {editingId && (
-                    <div>
-                      <label className="flex items-center">
-                        <input
-                          type="checkbox"
-                          checked={formData.ativo}
-                          onChange={handleAtivoChange}
-                          className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                        />
-                        <span className="ml-2 text-sm text-gray-700">Professor ativo</span>
-                      </label>
-                    </div>
-                  )}
-
-                    <div className="flex justify-end space-x-3 pt-4 border-t">
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm font-medium text-gray-700">Especialidades</label>
                     <button
                       type="button"
-                      onClick={() => setShowModal(false)}
-                      className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+                      onClick={() => {
+                        const nome = prompt('Nome da nova especialidade:');
+                        if (nome) criarEspecialidade(nome);
+                      }}
+                      className="text-sm font-medium bg-green-500 hover:bg-green-600 text-white px-2 py-1 rounded flex items-center gap-1"
                     >
-                      Cancelar
-                    </button>
-                    <button
-                      type="submit"
-                      className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
-                    >
-                      {editingId ? <><i className="fas fa-save mr-2" aria-hidden="true" />Atualizar</> : <><i className="fas fa-chalkboard-teacher mr-2" aria-hidden="true" />Cadastrar</>}
+                      <i className="fas fa-plus" aria-hidden="true" /> Adicionar
                     </button>
                   </div>
-                </form>
-              </div>
+                  <div className="space-y-2 max-h-32 overflow-y-auto border border-gray-200 rounded-md p-2">
+                    {especialidades.length === 0 ? (
+                      <p className="text-gray-500 text-sm font-medium italic text-center py-2">Nenhuma especialidade cadastrada</p>
+                    ) : (
+                      especialidades.map((especialidade) => (
+                        <div key={especialidade._id} className="flex items-center justify-between gap-2 py-1">
+                          <div className="flex items-center gap-3">
+                            <button
+                              type="button"
+                              aria-pressed={formData.especialidades.includes(especialidade._id)}
+                              onClick={() => handleEspecialidadeChange(especialidade._id, !formData.especialidades.includes(especialidade._id))}
+                              className={`relative inline-flex h-4 w-8 items-center rounded-full transition-colors focus:outline-none border ${formData.especialidades.includes(especialidade._id) ? 'bg-green-500 border-green-500' : 'bg-gray-300 border-gray-300'}`}
+                            >
+                                <span
+                                  className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform duration-200 ${formData.especialidades.includes(especialidade._id) ? 'translate-x-4' : 'translate-x-1'}`}
+                                />
+                              </button>
+                            <span className="text-sm font-medium text-gray-700">
+                              {especialidade.nome}
+                              {especialidade.descricao && (
+                                <span className="text-gray-500 text-sm font-medium block">{especialidade.descricao}</span>
+                              )}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (confirm(`Tem certeza que deseja excluir a especialidade \"${especialidade.nome}\"?`)) {
+                                excluirEspecialidade(especialidade._id);
+                              }
+                            }}
+                            className="text-red-500 hover:text-red-700 text-sm font-medium ml-2"
+                            title="Excluir especialidade"
+                          >
+                            <i className="fas fa-trash-alt" aria-hidden="true" />
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Senha <span className="text-gray-400 text-sm font-medium">(opcional)</span></label>
+                  <input
+                    type="password"
+                    value={formData.senha || ''}
+                    onChange={(e) => setFormData(prev => ({ ...prev, senha: e.target.value }))}
+                    className="block w-full h-10 border border-gray-300 rounded-md px-3 py-2 text-sm font-medium focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                    placeholder="Definir senha para professor (mín 6)"
+                  />
+                </div>
+                {editingId && (
+                  <div className="flex items-center gap-3 mt-2">
+                    <span className="text-sm font-medium text-gray-700">Professor ativo</span>
+                    <button
+                      type="button"
+                      aria-pressed={formData.ativo}
+                      onClick={() => setFormData(prev => ({ ...prev, ativo: !prev.ativo }))}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none border ${formData.ativo ? 'bg-green-500 border-green-500' : 'bg-gray-300 border-gray-300'}`}
+                    >
+                      <span
+                        className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform duration-200 ${formData.ativo ? 'translate-x-5' : 'translate-x-1'}`}
+                      />
+                    </button>
+                  </div>
+                )}
+                {/* Action Buttons */}
+                <div className="flex justify-end gap-3 pt-4 border-t mt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowModal(false)}
+                    className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 flex items-center gap-2"
+                  >
+                    <i className="fas fa-times text-black" aria-hidden="true" /> Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 flex items-center gap-2"
+                  >
+                    {editingId ? (
+                      <>
+                        <i className="fas fa-save text-white mr-2" aria-hidden="true" /> Atualizar
+                      </>
+                    ) : (
+                      <>
+                        <i className="fas fa-chalkboard-teacher text-white mr-2" aria-hidden="true" /> Cadastrar
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}
       </div>
     </Layout>
+    </RequireAuth>
   );
 }

@@ -71,12 +71,16 @@ export async function POST(request: NextRequest) {
       tipo: user.tipo
     };
 
-    return NextResponse.json({
+    // Return token in an HttpOnly cookie (so middleware / server-side checks can use it)
+    const res = NextResponse.json({
       success: true,
       message: 'Login realizado com sucesso',
       token,
       user: userData
     });
+    // cookie options: keep for 24h, httpOnly, secure in production
+    res.cookies.set('token', token, { httpOnly: true, path: '/', maxAge: 60 * 60 * 24, sameSite: 'lax', secure: process.env.NODE_ENV === 'production' });
+    return res;
 
   } catch (error) {
     // Log full error server-side for debugging

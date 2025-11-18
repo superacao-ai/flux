@@ -96,6 +96,35 @@ export async function PUT(
 
     console.log(`[PUT /api/alunos/${id}] Body recebido:`, body);
 
+    // If attempting to unfreeze (congelado: false), check for substitutes
+    // If client provides forceUnfreeze=true, skip the substitute check (admin override)
+    if (Object.prototype.hasOwnProperty.call(body, 'congelado') && body.congelado === false && !body.forceUnfreeze) {
+      try {
+        // Find active matriculas for this aluno
+        const alunoObjectId = mongoose.Types.ObjectId.isValid(id) ? new mongoose.Types.ObjectId(id) : null;
+        if (alunoObjectId) {
+          const matriculas = await Matricula.find({ alunoId: alunoObjectId, ativo: true }).lean();
+          const substitutes: any[] = [];
+
+          for (const m of matriculas) {
+            const sub = await Matricula.findOne({ replacesMatriculaId: m._id, ativo: true }).lean();
+            if (sub) {
+              substitutes.push(sub);
+            }
+          }
+
+          if (substitutes.length > 0) {
+            // Return conflict with substitute info; UI should prompt admin for resolution
+            return NextResponse.json({ success: false, error: 'substitute_exists', substitutes }, { status: 409 });
+          }
+        }
+      } catch (e) {
+        console.error('Erro ao verificar substitutos antes de descongelar:', e);
+        // fallthrough to attempt update (but safer to fail)
+        return NextResponse.json({ success: false, error: 'Erro ao verificar substitutos' }, { status: 500 });
+      }
+    }
+
     const alunoAtualizado = await Aluno.findByIdAndUpdate(
       id,
       { ...body, atualizadoEm: new Date() },

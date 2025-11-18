@@ -1,0 +1,97 @@
+[
+  {
+    "_id": "691b40333b20b4b6a9c34697",
+    "horarioFixoId": "6911f5b4680d4a1af4f72cdf",
+    "professorId": "68eebe21031eebfa3c99d49a",
+    "data": "2025-11-23T03:00:00.000Z",
+    "diaSemana": 1,
+    "modalidade": "Personal - UP",
+    "horarioInicio": "05:30",
+    "horarioFim": "06:00",
+    "alunos": [
+      {
+        "alunoId": "691235f568cd7a867524920b",
+        "nome": "PAULA RIGOTO",
+        "presente": null,
+        "statusNaEpoca": {
+          "congelado": false,
+          "ausente": false,
+          "emEspera": false
+        },
+        "era_reagendamento": false,
+        "observacoes": ""
+      },
+      {
+        "alunoId": "691235f668cd7a8675249213",
+        "nome": "KARINE BITTENCOURT",
+        "presente": null,
+        "statusNaEpoca": {
+          "congelado": false,
+          "ausente": false,
+          "emEspera": false
+        },
+        "era_reagendamento": false,
+        "observacoes": ""
+      },
+      {
+        "alunoId": "691235f668cd7a867524921b",
+        "nome": "JACKELINE ARANTES",
+        "presente": null,
+        "statusNaEpoca": {
+          "congelado": false,
+          "ausente": false,
+          "emEspera": false
+        },
+        "era_reagendamento": false,
+        "observacoes": ""
+      },
+      {
+        "alunoId": "691235f668cd7a8675249223",
+        "nome": "RENAN VEGGI",
+        "presente": null,
+        "statusNaEpoca": {
+          "congelado": false,
+          "ausente": false,
+          "emEspera": false
+        },
+        "era_reagendamento": false,
+        "observacoes": ""
+      },
+      {
+        "alunoId": "691235f768cd7a867524922b",
+        "nome": "LAIS FERNANDA",
+        "presente": null,
+        "statusNaEpoca": {
+          "congelado": false,
+          "ausente": false,
+          "emEspera": false
+        },
+        "era_reagendamento": false,
+        "observacoes": ""
+      },
+      {
+        "alunoId": "6917385eed9c3a87f84fd6d8",
+        "nome": "Joana silva",
+        "presente": null,
+        "statusNaEpoca": {
+          "congelado": true,
+          "ausente": true,
+          "emEspera": false
+        },
+        "era_reagendamento": false,
+        "observacoes": "congelado"
+      }
+    ],
+    "status": "enviada",
+    "enviouEm": "2025-11-17T15:33:07.761Z",
+    "enviadoPor": "68f52ab5e8d109486a2e36ee",
+    "total_alunos": 5,
+    "total_presentes": 0,
+    "total_faltas": 0,
+    "total_reagendamentos": 0,
+    "historicoCorrecoes": [],
+    "createdAt": "2025-11-17T15:33:07.767Z",
+    "updatedAt": "2025-11-17T15:33:07.767Z",
+    "__v": 0
+  }
+]

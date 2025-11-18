@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import RequireAuth from '@/components/RequireAuth';
 import Layout from '@/components/Layout';
 
 interface Aluno {
@@ -207,7 +208,8 @@ export default function ReagendamentosPage() {
   };
 
   return (
-    <Layout title="Reagendamentos - Superação Flux" fullWidth>
+    <RequireAuth showLoginRedirect={false}>
+      <Layout title="Reagendamentos - Superação Flux" fullWidth>
       <div className="px-4 py-6 sm:px-0">
         <div className="sm:flex sm:items-center mb-6 fade-in-1">
           <div className="sm:flex-auto">
@@ -223,18 +225,11 @@ export default function ReagendamentosPage() {
             <button
               type="button"
               onClick={() => setShowClearModal(true)}
-              className="inline-flex items-center justify-center rounded-md border border-red-300 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 shadow-sm hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 sm:w-auto"
+              className="inline-flex transition-colors duration-200 items-center justify-center rounded-full border border-red-300 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 shadow-sm hover:bg-red-100 focus:outline-none  focus:ring-offset-2 sm:w-auto"
               title="Limpar todo o histórico de reagendamentos"
             >
               <i className="fas fa-trash-alt mr-2"></i>
               Limpar Histórico
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowModal(true)}
-              className="inline-flex items-center justify-center rounded-md border border-transparent bg-primary-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 sm:w-auto"
-            >
-              Novo Reagendamento
             </button>
           </div>
         </div>
@@ -382,14 +377,14 @@ export default function ReagendamentosPage() {
                   <button
                     type="button"
                     onClick={() => setShowModal(false)}
-                    className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+                    className="px-4 py-2 border border-gray-300 rounded-full text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
                   >
                     Cancelar
                   </button>
                   <button
                     type="submit"
                     disabled={loading}
-                    className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50"
+                    className="px-4 py-2 border border-transparent rounded-full shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50"
                   >
                     {loading ? 'Salvando...' : 'Solicitar'}
                   </button>
@@ -403,7 +398,7 @@ export default function ReagendamentosPage() {
       {/* Modal de confirmação para limpar histórico */}
       {showClearModal && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
-          <div className="relative mx-auto p-6 border w-96 shadow-lg rounded-md bg-white fade-in-5">
+          <div className="relative mx-auto p-6 border w-96 shadow-lg rounded-md bg-white">
             <div className="text-center">
               <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 mb-4">
                 <i className="fas fa-exclamation-triangle text-red-600 text-lg"></i>
@@ -433,7 +428,7 @@ export default function ReagendamentosPage() {
                   type="button"
                   onClick={limparHistorico}
                   disabled={clearing}
-                  className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50 flex items-center gap-2"
+                  className="px-4 py-2 transition-colors duration-200 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50 flex items-center gap-2"
                 >
                   {clearing ? (
                     <>
@@ -452,6 +447,7 @@ export default function ReagendamentosPage() {
           </div>
         </div>
       )}
-    </Layout>
+      </Layout>
+    </RequireAuth>
   );
 }

@@ -5,12 +5,12 @@ import AulaRealizada from '@/models/AulaRealizada';
 // PUT - Atualizar aula realizada
 export async function PUT(
   request: Request,
-  { params }: { params: { id: string } }
+  context: any
 ) {
   try {
     await connectDB();
     
-    const { id } = params;
+  const { id } = context?.params || {};
     const body = await request.json();
 
     // Validar ID
@@ -74,12 +74,12 @@ export async function PUT(
 // DELETE - Excluir aula realizada
 export async function DELETE(
   request: Request,
-  { params }: { params: { id: string } }
+  context: any
 ) {
   try {
     await connectDB();
     
-    const { id } = params;
+  const { id } = context?.params || {};
 
     // Validar ID
     if (!id || !id.match(/^[0-9a-fA-F]{24}$/)) {

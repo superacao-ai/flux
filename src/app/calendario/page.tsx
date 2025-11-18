@@ -446,7 +446,7 @@ export default function CalendarioPage() {
   };
 
   return (
-    <RequireAuth>
+    <RequireAuth showLoginRedirect={false}>
       <Layout title="Calendário - Superação Flux" fullWidth>
         <div className="w-full px-4 py-6 sm:px-0">
           <div className="sm:flex sm:items-center mb-6 fade-in-1">
@@ -708,9 +708,11 @@ export default function CalendarioPage() {
                     {/* Exibir reagendamentos de destino (alunos que virão neste dia) */}
                     {inCurrentMonth && getReagendamentosForDate(dObj.date).destino.map((reag, rIdx) => {
                       const matriculaId = reag.matriculaId;
-                      const alunoNome = matriculaId && typeof matriculaId === 'object' && matriculaId.alunoId
-                        ? (typeof matriculaId.alunoId === 'string' ? '' : (matriculaId.alunoId?.nome || 'Aluno'))
-                        : 'Aluno';
+                      const aluno = matriculaId && typeof matriculaId === 'object' && matriculaId.alunoId && typeof matriculaId.alunoId !== 'string'
+                        ? matriculaId.alunoId
+                        : null;
+                      const alunoNome = aluno?.nome || 'Aluno';
+                      const inactive = !!(aluno?.congelado || aluno?.ausente);
                       
                       const novoHorarioFixoId = reag.novoHorarioFixoId;
                       const professorNome = novoHorarioFixoId && typeof novoHorarioFixoId === 'object' && novoHorarioFixoId.professorId
@@ -720,19 +722,19 @@ export default function CalendarioPage() {
                       return (
                         <div
                           key={`reag-${rIdx}`}
-                          className="w-full bg-orange-50 border border-orange-300 rounded-md px-2 py-1 text-xs"
+                          className={`w-full border rounded-md px-2 py-1 text-xs ${inactive ? 'bg-gray-100 border-gray-300 text-gray-500 filter grayscale' : 'bg-orange-50 border-orange-300'}`}
                         >
-                          <div className="font-semibold text-orange-900">
+                          <div className={`font-semibold ${inactive ? 'text-gray-600' : 'text-orange-900'}`}>
                             {reag.novoHorarioInicio} - {reag.novoHorarioFim}
                           </div>
                           {professorNome && (
                             <div className="text-[10px] mt-0.5">
-                              <span className="inline-block px-1.5 py-0.5 rounded-md bg-orange-600 text-white text-[9px] font-medium">
+                              <span className={`inline-block px-1.5 py-0.5 rounded-md ${inactive ? 'bg-gray-300 text-gray-700' : 'bg-orange-600 text-white'} text-[9px] font-medium`}>
                                 {professorNome}
                               </span>
                             </div>
                           )}
-                          <div className="text-orange-700 text-[10px] mt-0.5">
+                          <div className={`text-[10px] mt-0.5 ${inactive ? 'text-gray-500 line-through' : 'text-orange-700'}`}>
                             {alunoNome} (Reagendado)
                           </div>
                         </div>
@@ -747,30 +749,26 @@ export default function CalendarioPage() {
 
         {/* Modal de detalhes do horário */}
         {horarioSelecionado && (
-          <div 
-            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+          <div
+            className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50 p-4"
             onClick={() => {
               setHorarioSelecionado(null);
               setDataClicada(null);
             }}
           >
-            <div 
-              className="bg-white rounded-md shadow-md max-w-2xl w-full max-h-[80vh] overflow-hidden"
+            <div
+              className="bg-white rounded-lg shadow-lg border border-gray-200 max-w-2xl w-full max-h-[80vh] overflow-hidden p-6"
               onClick={(e) => e.stopPropagation()}
             >
               {/* Header */}
-              <div className="bg-gray-50 border-b border-gray-200 px-6 py-4 flex justify-between items-center">
+              <div className="flex items-start justify-between">
                 <div>
-                  <h2 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
-                    <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
+                  <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+                    <i className="fas fa-edit text-primary-600"></i>
                     {horarioSelecionado.horarioInicio} - {horarioSelecionado.horarioFim}
-                  </h2>
-                  <p className="text-gray-600 text-sm mt-1 flex items-center gap-2">
-                    <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
+                  </h3>
+                  <p className="text-xs text-gray-500 mt-1 flex items-center gap-2">
+                    <i className="fas fa-info-circle text-primary-600"></i>
                     <span>{diasSemana[horarioSelecionado.diaSemana]}</span>
                     {dataClicada && (
                       <>
@@ -778,21 +776,21 @@ export default function CalendarioPage() {
                         <span>{dataClicada.toLocaleDateString('pt-BR')}</span>
                       </>
                     )}
-                    {(typeof horarioSelecionado.professorId === 'string' 
-                      ? '' 
+                    {(typeof horarioSelecionado.professorId === 'string'
+                      ? ''
                       : horarioSelecionado.professorId?.nome) && (
                       <>
                         <span>•</span>
-                        <span 
+                        <span
                           className="inline-block px-2 py-1 rounded-md text-white text-xs font-medium"
-                          style={{ 
-                            backgroundColor: typeof horarioSelecionado.professorId === 'string' 
-                              ? '#3B82F6' 
+                          style={{
+                            backgroundColor: typeof horarioSelecionado.professorId === 'string'
+                              ? '#3B82F6'
                               : (horarioSelecionado.professorId?.cor || '#3B82F6')
                           }}
                         >
-                          {typeof horarioSelecionado.professorId === 'string' 
-                            ? '' 
+                          {typeof horarioSelecionado.professorId === 'string'
+                            ? ''
                             : horarioSelecionado.professorId?.nome || 'Professor não definido'}
                         </span>
                       </>
@@ -805,15 +803,17 @@ export default function CalendarioPage() {
                     setDataClicada(null);
                   }}
                   className="text-gray-400 hover:text-gray-600 transition-colors"
+                  aria-label="Fechar"
                 >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
+                  <i className="fas fa-times text-base"></i>
                 </button>
               </div>
 
+              {/* Separator between header and content */}
+              <div className="border-t border-gray-200 mt-4 mb-4" />
+
               {/* Conteúdo */}
-              <div className="p-6 overflow-y-auto max-h-[calc(80vh-100px)]">
+              <div className="overflow-y-auto max-h-[calc(80vh-100px)]">
                 {horarioSelecionado.observacaoTurma && (
                   <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
                     <p className="text-sm text-yellow-800">
@@ -927,30 +927,23 @@ export default function CalendarioPage() {
                           console.log('[Modal] ✅ Este aluno tem reagendamento:', matricula.alunoId?.nome);
                         }
                         
+                        // Determine inactive state for consistent styling
+                        const inactive = !!(matricula.alunoId?.congelado || matricula.alunoId?.ausente);
+
                         return (
                           <div 
                             key={matricula._id || `aluno-${idx}`}
-                            className={`flex items-center justify-between p-3 rounded-md border ${
-                              matricula.alunoId?.ausente 
-                                ? 'bg-red-100 border-red-300' 
-                                : matricula.alunoId?.congelado 
-                                  ? 'bg-sky-100 border-sky-300'
-                                  : matricula.alunoId?.emEspera
+                            className={`flex items-center justify-between p-3 rounded-md border transition-colors ${
+                              inactive
+                                ? 'bg-gray-100 border-gray-300 text-gray-500 filter grayscale'
+                                : (matricula.alunoId?.emEspera
                                     ? 'bg-amber-100 border-amber-300'
-                                    : (reagendamentoAluno ? 'bg-gray-100 border-gray-300' : 'bg-gray-50 border-gray-200')
+                                    : (reagendamentoAluno ? 'bg-gray-100 border-gray-300' : 'bg-gray-50 border-gray-200'))
                             }`}
                           >
                             <div className="flex items-center gap-3 flex-1">
                               <div className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold text-white ${
-                                reagendamentoAluno
-                                  ? 'bg-gray-400'
-                                  : (matricula.alunoId?.ausente 
-                                    ? 'bg-red-500' 
-                                    : matricula.alunoId?.congelado 
-                                      ? 'bg-sky-500'
-                                      : matricula.alunoId?.emEspera
-                                        ? 'bg-amber-500'
-                                        : 'bg-green-500')
+                                inactive ? 'bg-gray-400' : (reagendamentoAluno ? 'bg-gray-400' : (matricula.alunoId?.emEspera ? 'bg-amber-500' : 'bg-green-500'))
                               }`}>
                                 {matricula.alunoId?.nome?.charAt(0).toUpperCase() || '?'}
                               </div>
@@ -1002,7 +995,6 @@ export default function CalendarioPage() {
                                         </span>
                                       </span>
                                     )}
-                                    <i className="fas fa-external-link-alt text-gray-500 text-[10px] ml-0.5"></i>
                                   </button>
                                 )}
                                 <div className="flex items-center gap-2">
@@ -1011,7 +1003,7 @@ export default function CalendarioPage() {
                                     const isAusente = matricula.alunoId?.ausente;
                                     const isEmEspera = matricula.alunoId?.emEspera;
                                     const nameColor = isAusente ? '#ef4444' : (isCongelado ? '#0ea5e9' : (isEmEspera ? '#eab308' : undefined));
-                                    const hasStatus = isCongelado || isAusente || isEmEspera;
+                                    const hasStatus = isCongelado || isAusente;
                                     
                                     let reagendadoColor = '#9CA3AF';
                                     if (reagendamentoAluno) {
@@ -1022,13 +1014,9 @@ export default function CalendarioPage() {
                                     
                                     return (
                                       <p 
-                                        className={`font-medium ${
-                                          reagendamentoAluno 
-                                            ? (matricula.alunoId?.ausente || matricula.alunoId?.congelado || matricula.alunoId?.emEspera ? '' : 'text-gray-600') 
-                                            : (hasStatus ? 'line-through text-gray-400' : 'text-gray-900')
-                                        }`}
+                                        className={`font-medium ${hasStatus ? 'line-through text-gray-500' : (reagendamentoAluno ? 'text-gray-600' : 'text-gray-900')}`}
                                         style={{ 
-                                          color: reagendamentoAluno ? reagendadoColor : (nameColor || (hasStatus ? undefined : undefined))
+                                          color: reagendamentoAluno ? reagendadoColor : (nameColor || undefined)
                                         }}
                                       >
                                         {matricula.alunoId?.nome || 'Nome não disponível'}
@@ -1227,7 +1215,7 @@ export default function CalendarioPage() {
                                         </span>
                                       </span>
                                     )}
-                                    <i className="fas fa-external-link-alt text-green-600 text-[10px] ml-0.5"></i>
+                                    {/* external link icon removed for cleaner modal */}
                                   </button>
                                   <div className="flex items-center gap-2">
                                     {(() => {
@@ -1235,11 +1223,11 @@ export default function CalendarioPage() {
                                       const isAusente = aluno?.ausente;
                                       const isEmEspera = aluno?.emEspera;
                                       const nameColor = isAusente ? '#ef4444' : (isCongelado ? '#0ea5e9' : (isEmEspera ? '#eab308' : undefined));
-                                      const hasStatus = isCongelado || isAusente || isEmEspera;
+                                      const hasStatus = isCongelado || isAusente;
                                       return (
                                         <p 
-                                          className={`font-medium ${hasStatus ? 'line-through text-gray-400' : 'text-gray-900'}`}
-                                          style={{ color: nameColor || (hasStatus ? undefined : undefined) }}
+                                          className={`font-medium ${hasStatus ? 'line-through text-gray-500' : 'text-gray-900'}`}
+                                          style={{ color: nameColor || undefined }}
                                         >
                                           {alunoNome}
                                         </p>
@@ -1352,29 +1340,35 @@ export default function CalendarioPage() {
             onClick={() => setReagendamentoModal(null)}
           >
             <div 
-              className="bg-white rounded-md shadow-lg max-w-lg w-full fade-in-5"
+              className="bg-white rounded-lg shadow-lg border border-gray-200 max-w-lg w-full p-6 "
               onClick={(e) => e.stopPropagation()}
             >
               {/* Header */}
-              <div className="bg-orange-500 text-white px-6 py-4 flex justify-between items-center">
+              <div className="flex items-start justify-between">
                 <div>
-                  <h2 className="text-xl font-semibold">Reagendar Aula</h2>
-                  <p className="text-orange-100 text-sm mt-1">
+                  <h2 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+                    <i className="fas fa-edit text-primary-600"></i>
+                    Reagendar Aula
+                  </h2>
+                  <p className="text-xs text-gray-500 mt-1 flex items-center gap-2">
+                    <i className="fas fa-user text-primary-600"></i>
                     {reagendamentoModal.aluno.nome}
                   </p>
                 </div>
                 <button
                   onClick={() => setReagendamentoModal(null)}
-                  className="text-white hover:text-gray-200 transition-colors"
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                  aria-label="Fechar"
                 >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
+                  <i className="fas fa-times text-base"></i>
                 </button>
               </div>
 
+              {/* Separator between header and content */}
+              <div className="border-t border-gray-200 mt-4 mb-4" />
+
               {/* Conteúdo */}
-              <div className="p-6 max-h-[70vh] overflow-y-auto">
+              <div className="max-h-[70vh] overflow-y-auto text-sm">
                 {/* Resumo do Reagendamento - Compacto */}
                 <div className="mb-6 p-3 bg-gradient-to-r from-red-50 via-gray-50 to-green-50 border border-gray-300 rounded-md">
                   <div className="flex items-center gap-2">
@@ -1617,19 +1611,21 @@ export default function CalendarioPage() {
               </div>
 
               {/* Footer */}
-              <div className="px-6 py-4 bg-gray-50 border-t flex justify-end gap-2">
+              <div className="mt-6 pt-3 border-t border-gray-200 flex justify-end gap-3">
                 <button
                   onClick={() => setReagendamentoModal(null)}
-                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
+                  className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 flex items-center gap-2"
                 >
-                  Cancelar
+                  <i className="fas fa-times text-gray-600"></i>
+                  <span>Cancelar</span>
                 </button>
                 <button
                   onClick={confirmarReagendamento}
                   disabled={!dataSelecionadaReagendamento || !horarioNovoSelecionado}
-                  className="px-4 py-2 bg-orange-500 text-white rounded-md hover:bg-orange-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-4 py-2 rounded-md text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
-                  Confirmar Reagendamento
+                  <i className="fas fa-save"></i>
+                  <span>Confirmar</span>
                 </button>
               </div>
             </div>
