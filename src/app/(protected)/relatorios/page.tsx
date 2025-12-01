@@ -105,6 +105,7 @@ interface RelatorioDados {
 }
 
 export default function RelatoriosPage() {
+  const [mounted, setMounted] = useState(false);
   const [dados, setDados] = useState<RelatorioDados | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -135,6 +136,11 @@ export default function RelatoriosPage() {
   }>>([]);
   // IDs de aulas em processo de devolução (exclusão)
   const [deletingAulas, setDeletingAulas] = useState<string[]>([]);
+
+  // Marcar como montado
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const devolverAula = async (aulaId: string) => {
     const result = await Swal.fire({
@@ -545,6 +551,53 @@ export default function RelatoriosPage() {
     const colSums = (faltasSemanaHorario.horarios || []).map((_, j) => matriz.reduce((a, linha) => a + (linha[j] || 0), 0));
     setFaltasPorHorario(colSums);
   }, [faltasSemanaHorario]);
+
+  // Skeleton loading enquanto não está montado
+  if (!mounted) {
+    return (
+      <ProtectedPage tab="relatorios" title="Relatórios - Superação Flux" fullWidth>
+        <div className="px-4 py-6 sm:px-0">
+          {/* Header skeleton */}
+          <div className="mb-8">
+            <div className="h-5 bg-gray-200 rounded w-44 mb-2 animate-pulse" />
+            <div className="h-4 bg-gray-200 rounded w-72 animate-pulse" />
+          </div>
+          
+          {/* Filtros skeleton */}
+          <div className="bg-white rounded-md border border-gray-200 p-4 mb-6">
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+              {[1, 2, 3, 4, 5, 6].map(i => (
+                <div key={i}>
+                  <div className="h-4 bg-gray-200 rounded w-16 mb-2 animate-pulse" />
+                  <div className="h-10 bg-gray-200 rounded w-full animate-pulse" />
+                </div>
+              ))}
+            </div>
+          </div>
+          
+          {/* Stats cards skeleton */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            {[1, 2, 3, 4].map(i => (
+              <div key={i} className="bg-white rounded-lg border border-gray-200 p-4">
+                <div className="h-4 bg-gray-200 rounded w-24 mb-3 animate-pulse" />
+                <div className="h-8 bg-gray-200 rounded w-16 animate-pulse" />
+              </div>
+            ))}
+          </div>
+          
+          {/* Charts skeleton */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {[1, 2].map(i => (
+              <div key={i} className="bg-white rounded-lg border border-gray-200 p-6">
+                <div className="h-5 bg-gray-200 rounded w-48 mb-4 animate-pulse" />
+                <div className="h-48 bg-gray-100 rounded animate-pulse" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </ProtectedPage>
+    );
+  }
 
   if (error) {
     return (

@@ -1877,6 +1877,56 @@ export default function HorariosPage() {
     await fetchHorarios();
   };
 
+  // Skeleton loading enquanto não está montado
+  if (!mounted) {
+    return (
+      <ProtectedPage tab="horarios" title="Horários - Superação Flux" fullWidth>
+        <div className="px-4 py-6 sm:px-0">
+          {/* Header skeleton */}
+          <div className="flex items-center justify-between gap-4 mb-6">
+            <div>
+              <div className="h-5 bg-gray-200 rounded w-28 mb-2 animate-pulse" />
+              <div className="h-4 bg-gray-200 rounded w-64 animate-pulse" />
+            </div>
+            <div className="flex gap-2">
+              <div className="h-10 w-28 bg-gray-200 rounded-full animate-pulse" />
+              <div className="h-10 w-32 bg-gray-200 rounded-full animate-pulse" />
+            </div>
+          </div>
+          
+          {/* Modalidades pills skeleton */}
+          <div className="mb-6 flex flex-wrap gap-2">
+            {[1, 2, 3, 4, 5].map(i => (
+              <div key={i} className="h-9 bg-gray-200 rounded-full w-24 animate-pulse" />
+            ))}
+          </div>
+          
+          {/* Table skeleton */}
+          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+            {/* Header */}
+            <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
+              <div className="flex gap-4">
+                <div className="h-4 bg-gray-200 rounded w-16 animate-pulse" />
+                {['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((d, i) => (
+                  <div key={i} className="h-4 bg-gray-200 rounded w-12 animate-pulse" />
+                ))}
+              </div>
+            </div>
+            {/* Rows */}
+            {[1, 2, 3, 4, 5, 6, 7, 8].map(i => (
+              <div key={i} className="border-b border-gray-200 px-4 py-3 flex gap-4 items-center">
+                <div className="h-4 bg-gray-200 rounded w-12 animate-pulse" />
+                {[1, 2, 3, 4, 5, 6].map(j => (
+                  <div key={j} className="h-12 bg-gray-100 rounded w-20 animate-pulse" />
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      </ProtectedPage>
+    );
+  }
+
   return (
     <>
       {showModalLote.open && (

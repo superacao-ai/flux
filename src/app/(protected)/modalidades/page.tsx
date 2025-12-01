@@ -24,6 +24,7 @@ export interface Modalidade {
 }
 
 export default function ModalidadesPage() {
+  const [mounted, setMounted] = useState(false);
     const coresSugeridas = [
       '#ff887c',
       '#dc2127',
@@ -56,6 +57,11 @@ export default function ModalidadesPage() {
     }
   });
   const [loading, setLoading] = useState(false);
+
+  // Marcar como montado
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Cores predefinidas para as modalidades
   const coresPredefinidas = [
@@ -393,6 +399,45 @@ export default function ModalidadesPage() {
       return nome.includes(q) || desc.includes(q);
     });
   }, [modalidades, query]);
+
+  // Skeleton loading enquanto não está montado
+  if (!mounted) {
+    return (
+      <ProtectedPage tab="modalidades" title="Modalidades - Superação Flux" fullWidth>
+        <div className="px-4 py-6 sm:px-0">
+          {/* Header skeleton */}
+          <div className="flex items-center justify-between gap-4 mb-6">
+            <div>
+              <div className="h-5 bg-gray-200 rounded w-32 mb-2 animate-pulse" />
+              <div className="h-4 bg-gray-200 rounded w-72 animate-pulse" />
+            </div>
+            <div className="h-10 w-36 bg-gray-200 rounded-full animate-pulse" />
+          </div>
+          
+          {/* Search skeleton */}
+          <div className="mb-6">
+            <div className="h-10 bg-gray-200 rounded-lg w-full max-w-md animate-pulse" />
+          </div>
+          
+          {/* Cards grid skeleton */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {[1, 2, 3, 4, 5, 6].map(i => (
+              <div key={i} className="bg-white rounded-lg border border-gray-200 p-4">
+                <div className="flex items-start gap-3">
+                  <div className="h-10 w-10 bg-gray-200 rounded-lg animate-pulse" />
+                  <div className="flex-1 space-y-2">
+                    <div className="h-5 bg-gray-200 rounded w-28 animate-pulse" />
+                    <div className="h-4 bg-gray-200 rounded w-full animate-pulse" />
+                    <div className="h-4 bg-gray-200 rounded w-20 animate-pulse" />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </ProtectedPage>
+    );
+  }
 
   return (
     <ProtectedPage tab="modalidades" title="Modalidades - Superação Flux" fullWidth>

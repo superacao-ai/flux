@@ -31,6 +31,7 @@ interface AulaRealizada {
 }
 
 export default function AulasRealizadasPage() {
+  const [mounted, setMounted] = useState(false);
   const [aulas, setAulas] = useState<AulaRealizada[]>([]);
   const [loading, setLoading] = useState(true);
   const [filtros, setFiltros] = useState({
@@ -62,6 +63,11 @@ export default function AulasRealizadasPage() {
   const ITENS_POR_PAGINA = 8;
   const [pendentesPage, setPendentesPage] = useState(1);
   const [realizadasPage, setRealizadasPage] = useState(1);
+
+  // Marcar como montado
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Helpers to resolve colors for modalidade and professor (fallbacks provided)
   const getModalidadeColor = (nome: string) => {
@@ -610,6 +616,56 @@ export default function AulasRealizadasPage() {
 
   const pendentesParaExibir = pendentesFiltradas.slice((pendentesPage - 1) * ITENS_POR_PAGINA, pendentesPage * ITENS_POR_PAGINA);
   const realizadasParaExibir = aulasParaExibir.slice((realizadasPage - 1) * ITENS_POR_PAGINA, realizadasPage * ITENS_POR_PAGINA);
+
+  // Skeleton loading enquanto não está montado
+  if (!mounted) {
+    return (
+      <ProtectedPage tab="aulas" title="Aulas - Superação Flux">
+        <div className="px-4 py-6 sm:px-0">
+          {/* Header skeleton */}
+          <div className="flex items-center justify-between gap-4 mb-6">
+            <div>
+              <div className="h-5 bg-gray-200 rounded w-24 mb-2 animate-pulse" />
+              <div className="h-4 bg-gray-200 rounded w-64 animate-pulse" />
+            </div>
+          </div>
+          
+          {/* Filtros skeleton */}
+          <div className="bg-white rounded-md border border-gray-200 p-4 mb-6">
+            <div className="flex gap-2 mb-4 pb-4 border-b border-gray-200">
+              {[1, 2, 3].map(i => (
+                <div key={i} className="h-10 bg-gray-200 rounded-full w-24 animate-pulse" />
+              ))}
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {[1, 2, 3, 4].map(i => (
+                <div key={i}>
+                  <div className="h-4 bg-gray-200 rounded w-16 mb-2 animate-pulse" />
+                  <div className="h-10 bg-gray-200 rounded w-full animate-pulse" />
+                </div>
+              ))}
+            </div>
+          </div>
+          
+          {/* Cards skeleton */}
+          <div className="space-y-4">
+            {[1, 2, 3, 4].map(i => (
+              <div key={i} className="bg-white rounded-lg border border-gray-200 p-4">
+                <div className="flex justify-between items-start">
+                  <div className="space-y-2 flex-1">
+                    <div className="h-5 bg-gray-200 rounded w-32 animate-pulse" />
+                    <div className="h-4 bg-gray-200 rounded w-48 animate-pulse" />
+                    <div className="h-4 bg-gray-200 rounded w-40 animate-pulse" />
+                  </div>
+                  <div className="h-6 bg-gray-200 rounded-full w-20 animate-pulse" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </ProtectedPage>
+    );
+  }
 
   return (
     <ProtectedPage tab="aulas" title="Aulas - Superação Flux">

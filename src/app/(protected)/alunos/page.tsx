@@ -53,6 +53,7 @@ interface AlunoHorario {
 }
 
 export default function AlunosPage() {
+    const [mounted, setMounted] = useState(false);
     const [showReagendarModal, setShowReagendarModal] = useState(false);
     const [reagendarData, setReagendarData] = useState<any>(null);
   const [alunos, setAlunos] = useState<Aluno[]>([]);
@@ -68,6 +69,11 @@ export default function AlunosPage() {
   // Estado para reposição de falta
   const [showReporModal, setShowReporModal] = useState(false);
   const [reporData, setReporData] = useState<any>(null);
+
+  // Marcar como montado no cliente
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Função para abrir modal de faltas - usando nova API com status de reposição
   const abrirModalFaltas = async (aluno: Aluno) => {
@@ -883,6 +889,53 @@ export default function AlunosPage() {
       toast.error('Erro ao excluir alunos selecionados');
     }
   };
+
+  // Skeleton loading enquanto não está montado
+  if (!mounted) {
+    return (
+      <ProtectedPage tab="alunos" title="Alunos - Superação Flux" fullWidth>
+        <div className="px-4 py-6 sm:px-0">
+          {/* Header skeleton */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+            <div>
+              <div className="h-5 bg-gray-200 rounded w-24 mb-2 animate-pulse" />
+              <div className="h-4 bg-gray-200 rounded w-72 animate-pulse" />
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-28 bg-gray-200 rounded-full animate-pulse" />
+              <div className="h-10 w-24 bg-gray-200 rounded-full animate-pulse" />
+            </div>
+          </div>
+          
+          {/* Search skeleton */}
+          <div className="mb-6">
+            <div className="h-10 bg-gray-200 rounded-lg w-full max-w-md animate-pulse" />
+          </div>
+          
+          {/* Table skeleton */}
+          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+            <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
+              <div className="flex gap-6">
+                {[1, 2, 3, 4, 5, 6].map(i => (
+                  <div key={i} className="h-4 bg-gray-200 rounded w-16 animate-pulse" />
+                ))}
+              </div>
+            </div>
+            {[1, 2, 3, 4, 5, 6, 7, 8].map(i => (
+              <div key={i} className="border-b border-gray-200 px-4 py-4 flex gap-6 items-center">
+                <div className="h-4 w-4 bg-gray-200 rounded animate-pulse" />
+                <div className="h-4 bg-gray-200 rounded w-32 animate-pulse" />
+                <div className="h-6 bg-gray-200 rounded-full w-20 animate-pulse" />
+                <div className="h-4 bg-gray-200 rounded w-24 animate-pulse" />
+                <div className="h-4 bg-gray-200 rounded w-16 animate-pulse" />
+                <div className="h-4 bg-gray-200 rounded w-20 animate-pulse" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </ProtectedPage>
+    );
+  }
 
   return (
   <ProtectedPage tab="alunos" title="Alunos - Superação Flux" fullWidth>

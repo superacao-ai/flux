@@ -440,8 +440,28 @@ export default function UsuariosPage() {
   // Verificando permissão
   if (hasPermission === null) {
     return (
-      <ProtectedPage tab="usuarios" title="Usuários - Superação Flux">
-          <div className="flex justify-center items-center h-64"></div>
+      <ProtectedPage tab="usuarios" title="Usuários - Superação Flux" fullWidth>
+        <div className="px-4 py-6 sm:px-0">
+          {/* Header skeleton */}
+          <div className="flex items-center justify-between gap-4 mb-6">
+            <div>
+              <div className="h-5 bg-gray-200 rounded w-32 mb-2 animate-pulse" />
+              <div className="h-4 bg-gray-200 rounded w-64 animate-pulse" />
+            </div>
+            <div className="h-10 w-32 bg-gray-200 rounded-full animate-pulse" />
+          </div>
+          
+          {/* Table skeleton */}
+          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+            {[1, 2, 3, 4, 5].map(i => (
+              <div key={i} className="border-b border-gray-200 px-4 py-4 flex gap-4 items-center">
+                <div className="h-4 bg-gray-200 rounded w-32 animate-pulse" />
+                <div className="h-4 bg-gray-200 rounded w-40 animate-pulse" />
+                <div className="h-4 bg-gray-200 rounded w-24 animate-pulse" />
+              </div>
+            ))}
+          </div>
+        </div>
       </ProtectedPage>
     );
   }
@@ -457,8 +477,41 @@ export default function UsuariosPage() {
 
   if (loading) {
     return (
-      <ProtectedPage tab="usuarios" title="Usuários - Superação Flux">
-          <div className="flex justify-center items-center h-64"></div>
+      <ProtectedPage tab="usuarios" title="Usuários - Superação Flux" fullWidth>
+        <div className="px-4 py-6 sm:px-0">
+          {/* Header skeleton */}
+          <div className="flex items-center justify-between gap-4 mb-6">
+            <div>
+              <div className="h-5 bg-gray-200 rounded w-32 mb-2 animate-pulse" />
+              <div className="h-4 bg-gray-200 rounded w-64 animate-pulse" />
+            </div>
+            <div className="h-10 w-32 bg-gray-200 rounded-full animate-pulse" />
+          </div>
+          
+          {/* Search skeleton */}
+          <div className="mb-6">
+            <div className="h-10 bg-gray-200 rounded-lg w-full max-w-md animate-pulse" />
+          </div>
+          
+          {/* Table skeleton */}
+          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+            <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
+              <div className="flex gap-4">
+                {[1, 2, 3, 4].map(i => (
+                  <div key={i} className="h-4 bg-gray-200 rounded w-20 animate-pulse" />
+                ))}
+              </div>
+            </div>
+            {[1, 2, 3, 4, 5].map(i => (
+              <div key={i} className="border-b border-gray-200 px-4 py-4 flex gap-4 items-center">
+                <div className="h-4 bg-gray-200 rounded w-32 animate-pulse" />
+                <div className="h-4 bg-gray-200 rounded w-40 animate-pulse" />
+                <div className="h-4 bg-gray-200 rounded w-24 animate-pulse" />
+                <div className="h-4 bg-gray-200 rounded w-16 animate-pulse" />
+              </div>
+            ))}
+          </div>
+        </div>
       </ProtectedPage>
     );
   }
