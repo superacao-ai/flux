@@ -1,0 +1,1619 @@
+"use client";
+import Swal from 'sweetalert2';
+import { toast } from 'react-toastify';
+import ReagendarAulaModal from "@/components/ReagendarAulaModal";
+import ReporFaltaModal from "@/components/ReporFaltaModal";
+
+import { useState, useEffect, useMemo } from 'react';
+// Link removed; modal will be used for creating new alunos
+import ProtectedPage from '@/components/ProtectedPage';
+
+interface Modalidade {
+  _id: string;
+  nome: string;
+  cor: string;
+  duracao: number;
+  limiteAlunos: number;
+}
+
+interface Professor {
+  _id: string;
+  nome: string;
+  especialidade: string;
+}
+
+interface Aluno {
+  _id: string;
+  nome: string;
+  email: string;
+  telefone: string;
+  endereco?: string;
+  modalidadeId: Modalidade;
+  plano?: string;
+  observacoes?: string;
+  ativo: boolean;
+  modalidades?: { _id: string; nome: string; cor?: string }[];
+  horarios?: AlunoHorario[];
+  congelado?: boolean;
+  ausente?: boolean;
+  // emEspera removed
+  periodoTreino?: string | null;
+  parceria?: string | null;
+  caracteristicas?: string[];
+}
+
+interface AlunoHorario {
+  diaSemana: number;
+  horarioInicio: string;
+  horarioFim: string;
+  professorNome?: string;
+  modalidadeNome?: string;
+  horarioId?: string;
+  matriculaId?: string;
+}
+
+export default function AlunosPage() {
+    const [showReagendarModal, setShowReagendarModal] = useState(false);
+    const [reagendarData, setReagendarData] = useState<any>(null);
+  const [alunos, setAlunos] = useState<Aluno[]>([]);
+  const [modalidades, setModalidades] = useState<Modalidade[]>([]);
+  const [professores, setProfessores] = useState<Professor[]>([]);
+  const [loading, setLoading] = useState(true);
+  // Estado para modal de faltas
+  const [showModalFaltas, setShowModalFaltas] = useState(false);
+  const [faltasAlunoSelecionado, setFaltasAlunoSelecionado] = useState<any[]>([]);
+  const [alunoModalFaltas, setAlunoModalFaltas] = useState<Aluno | null>(null);
+  const [loadingFaltas, setLoadingFaltas] = useState(false);
+  
+  // Estado para reposição de falta
+  const [showReporModal, setShowReporModal] = useState(false);
+  const [reporData, setReporData] = useState<any>(null);
+
+  // Função para abrir modal de faltas - usando nova API com status de reposição
+  const abrirModalFaltas = async (aluno: Aluno) => {
+    setAlunoModalFaltas(aluno);
+    setShowModalFaltas(true);
+    setLoadingFaltas(true);
+    try {
+      const token = localStorage.getItem('token');
+      const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+      
+      // Usar nova API que retorna faltas com status de reposição
+      const res = await fetch(`/api/alunos/${aluno._id}/faltas`, { headers });
+      const json = res.ok ? await res.json() : null;
+      
+      if (json && json.success && Array.isArray(json.data)) {
+        setFaltasAlunoSelecionado(json.data);
+      } else {
+        setFaltasAlunoSelecionado([]);
+      }
+    } catch (err) {
+      console.error('Erro ao buscar faltas:', err);
+      setFaltasAlunoSelecionado([]);
+    } finally {
+      setLoadingFaltas(false);
+    }
+  };
+  
+
+  // Fetch all alunos and attach their horarios (so students without horarios are included)
+  const fetchAlunos = async () => {
+    try {
+      // Determinar parâmetros de busca baseado no filtro de status
+      let url = '/api/alunos';
+      if (appliedFilterStatus === 'inativo') {
+        url += '?onlyInactive=true';
+      } else if (appliedFilterStatus === 'all') {
+        url += '?includeInactive=true';
+      }
+      // Se 'ativo', usa o padrão (só ativos)
+      
+      // Fetch all alunos
+      const respAlunos = await fetch(url);
+      const dataAlunos = await respAlunos.json();
+      let alunosList: any[] = [];
+      if (dataAlunos && dataAlunos.success) {
+        alunosList = dataAlunos.data || [];
+      }
+
+      // Fetch all horarios to attach schedule info per aluno
+      const respHor = await fetch('/api/horarios');
+      const dataHor = await respHor.json();
+      const horarios = (dataHor && dataHor.success) ? (dataHor.data as any[]) : [];
+
+      // Build a map of alunoId -> horarios
+      // Prefer the newer `matriculas` shape on HorarioFixo: expand matriculas into per-aluno entries.
+      // Fallback to legacy HorarioFixo.alunoId when present (for older seeds/backups).
+      const horariosMap: Record<string, AlunoHorario[]> = {};
+      horarios.forEach(h => {
+        try {
+          const ms = (h as any).matriculas;
+              if (Array.isArray(ms) && ms.length > 0) {
+            // expand each matricula into a horario entry for the referenced aluno
+            for (let i = 0; i < ms.length; i++) {
+              const m = ms[i] || {};
+              // matricula.alunoId may be populated or just an id string
+              const alunoRef = m.alunoId || null;
+              const alunoId = alunoRef && (typeof alunoRef === 'string' ? alunoRef : (alunoRef._id || alunoRef)) || null;
+              if (!alunoId) continue;
+
+              const mod = (h.modalidadeId && (h.modalidadeId.nome || h.modalidadeId._id)) ? h.modalidadeId : ((m && (m.modalidadeId || null)) || null);
+              let professorNome = (m && (m.professorNome || m.professorNome === '') && m.professorNome) ? m.professorNome : (h.professorId && (h.professorId.nome || h.professorId) ? (h.professorId.nome || String(h.professorId)) : '');
+              // Verificar se é ObjectId de professor apagado
+              if (professorNome && typeof professorNome === 'string' && /^[0-9a-f]{24}$/i.test(professorNome)) {
+                professorNome = 'Sem professor';
+              }
+                  const horarioEntry: AlunoHorario = {
+                diaSemana: h.diaSemana,
+                horarioInicio: h.horarioInicio,
+                horarioFim: h.horarioFim,
+                professorNome: professorNome,
+                modalidadeNome: mod ? (mod.nome || '') : ''
+                    , horarioId: h._id || undefined
+                    , matriculaId: (m && (m._id || m.id)) ? String(m._id || m.id) : undefined
+              };
+              horariosMap[String(alunoId)] = horariosMap[String(alunoId)] || [];
+              horariosMap[String(alunoId)].push(horarioEntry);
+            }
+          } else {
+            // legacy shape: horario has a single alunoId field
+            const aluno = h.alunoId;
+            if (aluno && aluno._id) {
+              const mod = (h.modalidadeId && (h.modalidadeId.nome || h.modalidadeId._id)) ? h.modalidadeId : (aluno.modalidadeId || null);
+              let professorNome = h.professorId && (h.professorId.nome || h.professorId) ? (h.professorId.nome || String(h.professorId)) : '';
+              // Verificar se é ObjectId de professor apagado
+              if (professorNome && typeof professorNome === 'string' && /^[0-9a-f]{24}$/i.test(professorNome)) {
+                professorNome = 'Sem professor';
+              }
+              const horarioEntry: AlunoHorario = {
+                diaSemana: h.diaSemana,
+                horarioInicio: h.horarioInicio,
+                horarioFim: h.horarioFim,
+                professorNome: professorNome,
+                modalidadeNome: mod ? (mod.nome || '') : ''
+                , horarioId: h._id || undefined
+              };
+              horariosMap[String(aluno._id)] = horariosMap[String(aluno._id)] || [];
+              horariosMap[String(aluno._id)].push(horarioEntry);
+            }
+          }
+        } catch (e) {
+          // ignore problematic horario entries
+          console.warn('Erro ao processar horario para map de alunos:', e);
+        }
+      });
+
+      // Compose final alunos array: ensure every aluno appears, attach modalidade(s) and horarios
+      const finalAlunos = alunosList.map(a => {
+        // collect modalidades: combine aluno.modalidadeId and any modalidade info from horarios
+        const modalidadesSet = new Map<string, { _id: string; nome: string; cor?: string }>();
+        if (a.modalidadeId && a.modalidadeId._id) {
+          modalidadesSet.set(String(a.modalidadeId._id), { _id: String(a.modalidadeId._id), nome: a.modalidadeId.nome || 'N/A', cor: a.modalidadeId.cor || '#3B82F6' });
+        }
+        const alunoHorarios = horariosMap[String(a._id)] || [];
+        alunoHorarios.forEach(h => {
+          if (h.modalidadeNome) {
+            // we don't have modalidade _id here, use name as key
+            modalidadesSet.set(h.modalidadeNome, { _id: h.modalidadeNome, nome: h.modalidadeNome, cor: '#3B82F6' });
+          }
+        });
+
+        // Derive characteristic flags from the aluno object first; if missing, try to infer from horarios (matriculas or h.alunoId)
+        let congelado = a.congelado === true;
+        let ausente = a.ausente === true;
+        // emEspera flag removed from summary derivation
+        let periodoTreino = a.periodoTreino || null;
+        let parceria = a.parceria || a.parceriaNome || null;
+
+        if (!congelado || !ausente || !periodoTreino || !parceria) {
+          for (let i = 0; i < horarios.length; i++) {
+            const h = horarios[i];
+            try {
+              // check matriculas shape
+              const ms = (h as any).matriculas;
+              if (Array.isArray(ms)) {
+                for (let j = 0; j < ms.length; j++) {
+                  const m = ms[j] || {};
+                  const alunoRef = m.alunoId || null;
+                  const alunoId = alunoRef && (typeof alunoRef === 'string' ? alunoRef : (alunoRef._id || alunoRef)) || null;
+                  if (!alunoId) continue;
+                  if (String(alunoId) === String(a._id)) {
+                    if (!congelado && m.congelado === true) congelado = true;
+                    if (!ausente && m.ausente === true) ausente = true;
+                    // emEspera field ignored
+                    if (!periodoTreino && m.periodoTreino) periodoTreino = m.periodoTreino;
+                    if (!parceria && (m.parceria || m.parceriaNome)) parceria = m.parceria || m.parceriaNome || parceria;
+                  }
+                }
+              } else {
+                // legacy horario.alunoId shape
+                const hhAluno = h.alunoId;
+                if (hhAluno && (hhAluno._id || hhAluno)) {
+                  const hhId = hhAluno._id || hhAluno;
+                  if (String(hhId) === String(a._id)) {
+                    if (!congelado && hhAluno.congelado === true) congelado = true;
+                    if (!ausente && hhAluno.ausente === true) ausente = true;
+                    // emEspera field ignored
+                    if (!periodoTreino && hhAluno.periodoTreino) periodoTreino = hhAluno.periodoTreino;
+                    if (!parceria && (hhAluno.parceria || hhAluno.parceriaNome)) parceria = hhAluno.parceria || hhAluno.parceriaNome || parceria;
+                  }
+                }
+              }
+            } catch (e) {
+              // ignore per-entry errors
+            }
+            // if we already have everything truthy, break early
+            if (congelado && ausente && periodoTreino && parceria) break;
+          }
+        }
+
+        const alunoObj = {
+          _id: a._id,
+          nome: a.nome,
+          email: a.email || '',
+          telefone: a.telefone || 'Não informado',
+          endereco: a.endereco || '',
+          modalidadeId: a.modalidadeId || { _id: '', nome: 'N/A', cor: '#3B82F6', duracao: 0, limiteAlunos: 0 },
+          plano: a.plano,
+          observacoes: a.observacoes,
+          ativo: a.ativo !== undefined ? a.ativo : true,
+          modalidades: Array.from(modalidadesSet.values()),
+          horarios: alunoHorarios,
+          congelado,
+          ausente,
+          periodoTreino,
+          parceria,
+          caracteristicas: Array.isArray(a.caracteristicas) ? a.caracteristicas : [],
+        } as Aluno;
+
+        return alunoObj;
+      });
+
+      setAlunos(finalAlunos);
+      // ...reposições removidas
+    } catch (error) {
+      console.error('Erro ao buscar alunos:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ...reposições removidas
+
+  const fetchModalidades = async () => {
+    try {
+      const response = await fetch('/api/modalidades');
+      const data = await response.json();
+      if (data.success) {
+        setModalidades(data.data);
+      }
+    } catch (error) {
+      console.error('Erro ao buscar modalidades:', error);
+    }
+  };
+
+  const fetchProfessores = async () => {
+    try {
+      const response = await fetch('/api/usuarios');
+      const data = await response.json();
+      let usuariosList: any[] = [];
+      if (Array.isArray(data)) usuariosList = data;
+      else if (data && data.data) usuariosList = data.data;
+      const professores = usuariosList
+        .filter((u: any) => String(u.tipo || '').toLowerCase() === 'professor')
+        .map((u: any) => ({
+          _id: u._id,
+          nome: u.nome,
+          email: u.email || '',
+          telefone: u.telefone || '',
+          especialidades: u.especialidades || [],
+          especialidade: (u.especialidades && u.especialidades.length > 0) ? (typeof u.especialidades[0] === 'string' ? u.especialidades.join(', ') : u.especialidades.map((e:any)=> e.nome || e).join(', ')) : '',
+          cor: u.cor || '#3B82F6',
+          ativo: u.ativo !== undefined ? u.ativo : true,
+          tipo: u.tipo,
+          abas: u.abas || [],
+          isUsuario: true
+        }));
+      setProfessores(professores);
+    } catch (error) {
+      console.error('Erro ao buscar professores:', error);
+    }
+  };
+
+  // Resolve a canonical color for a modalidade entry using the global modalidades list
+  const getModalidadeColor = (m: any) => {
+    if (!m) return '#3B82F6';
+    // try find by id or name in global modalidades state
+    const id = (m && ((m._id || (m as any).id))) || null;
+    const nome = m && (m.nome || '');
+    const found = modalidades.find(md => (id && String(md._id) === String(id)) || (md.nome && md.nome === nome));
+    return (found && found.cor) || m.cor || '#3B82F6';
+  };
+
+  // Função para padronizar nomes: converter para MAIÚSCULAS
+  const padronizarNome = (nome: string): string => {
+    return String(nome || '').trim().toUpperCase();
+  };
+
+  
+
+  // Estados para edição
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingAluno, setEditingAluno] = useState<Aluno | null>(null);
+  const [editFormData, setEditFormData] = useState({
+    nome: '',
+    email: '',
+    telefone: '',
+    endereco: '',
+    observacoes: ''
+  });
+
+  const [editFlags, setEditFlags] = useState<{
+    congelado: boolean;
+    ausente: boolean;
+    periodoTreino: string | null;
+    parceria: string | null;
+    ativo: boolean;
+  }>({ congelado: false, ausente: false, periodoTreino: null, parceria: null, ativo: true });
+  const [editCaracteristicas, setEditCaracteristicas] = useState<string[]>([]);
+  const [newCaracteristica, setNewCaracteristica] = useState('');
+
+  // ...modal de reposição removido
+
+  // ...debug modal reposição removido
+
+  // Estados para seleção múltipla
+  const [selectedAlunos, setSelectedAlunos] = useState<string[]>([]);
+  const [selectAll, setSelectAll] = useState(false);
+  const [query, setQuery] = useState('');
+  // Filtros da página (staged / applied below)
+
+  // Staged UI filter values (user edits these, then clicks Aplicar filtros)
+  const [uiFilterModalidade, setUiFilterModalidade] = useState('');
+  const [uiFilterStatus, setUiFilterStatus] = useState<'all' | 'ativo' | 'inativo'>('all');
+  const [uiFilterCaracteristica, setUiFilterCaracteristica] = useState('');
+  const [uiFilterProfessor, setUiFilterProfessor] = useState('');
+
+  // Applied filters used for actual filtering
+  const [appliedFilterModalidade, setAppliedFilterModalidade] = useState('');
+  const [appliedFilterStatus, setAppliedFilterStatus] = useState<'all' | 'ativo' | 'inativo'>('ativo');
+  const [appliedFilterCaracteristica, setAppliedFilterCaracteristica] = useState('');
+  const [appliedFilterProfessor, setAppliedFilterProfessor] = useState('');
+
+  // Carregar dados quando o filtro de status mudar
+  useEffect(() => {
+    fetchAlunos();
+    fetchModalidades();
+    fetchProfessores();
+  }, [appliedFilterStatus]);
+
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 8;
+
+  // Counts for quick stats
+  const caracteristicasCounts = useMemo(() => {
+    let congelado = 0;
+    let ausente = 0;
+    let totalpass = 0;
+    let periodo1236 = 0;
+    alunos.forEach(a => {
+      if (a.congelado) congelado++;
+      if (a.ausente) ausente++;
+      if (String(a.parceria || '').toLowerCase() === 'totalpass') totalpass++;
+      if (String(a.periodoTreino || '').toLowerCase() === '12/36') periodo1236++;
+    });
+    return { congelado, ausente, totalpass, periodo1236 };
+  }, [alunos]);
+
+  // Função para abrir modal de edição
+  const abrirEdicao = (aluno: Aluno) => {
+    setEditingAluno(aluno);
+    setEditFormData({
+      nome: aluno.nome,
+      email: aluno.email || '',
+      telefone: aluno.telefone,
+      endereco: aluno.endereco || '',
+      observacoes: aluno.observacoes || ''
+    });
+    // set flags for edit modal
+    setEditFlags({
+      congelado: aluno.congelado === true,
+      ausente: aluno.ausente === true,
+      periodoTreino: aluno.periodoTreino || null,
+      parceria: aluno.parceria || null,
+      ativo: aluno.ativo !== undefined ? aluno.ativo : true,
+    });
+    // custom características
+    setEditCaracteristicas(Array.isArray((aluno as any).caracteristicas) ? (aluno as any).caracteristicas.slice() : []);
+    setShowEditModal(true);
+  };
+
+  const abrirNovoAluno = () => {
+    setEditingAluno(null);
+    setEditFormData({ nome: '', email: '', telefone: '', endereco: '', observacoes: '' });
+    setEditFlags({ congelado: false, ausente: false, periodoTreino: null, parceria: null, ativo: true });
+    setEditCaracteristicas([]);
+    setShowEditModal(true);
+  };
+
+  // ...toda lógica de modal de reposição removida
+
+  // Função para salvar edição
+  const salvarEdicao = async () => {
+    try {
+      if (!editFormData.nome || String(editFormData.nome).trim() === '') { toast.warning('Nome é obrigatório'); return; }
+
+      const payload: any = {
+        nome: editFormData.nome,
+        email: (typeof editFormData.email === 'string' ? String(editFormData.email).trim() : editFormData.email),
+        telefone: (typeof editFormData.telefone === 'string' ? String(editFormData.telefone).trim() : editFormData.telefone),
+        endereco: (typeof editFormData.endereco === 'string' ? String(editFormData.endereco).trim() : editFormData.endereco),
+        observacoes: (typeof editFormData.observacoes === 'string' ? String(editFormData.observacoes).trim() : editFormData.observacoes),
+        congelado: !!editFlags.congelado,
+        ausente: !!editFlags.ausente,
+        periodoTreino: editFlags.periodoTreino,
+        parceria: editFlags.parceria,
+        ativo: !!editFlags.ativo,
+        caracteristicas: Array.isArray(editCaracteristicas) && editCaracteristicas.length > 0 ? editCaracteristicas : undefined,
+      };
+
+      // Do not send an empty email (''), it can violate unique sparse index — omit the field instead
+      if (!payload.email) delete payload.email;
+      // Also omit other empty string fields to keep documents clean
+      if (!payload.telefone) delete payload.telefone;
+      if (!payload.endereco) delete payload.endereco;
+      if (!payload.observacoes) delete payload.observacoes;
+
+      let response;
+      if (editingAluno && editingAluno._id) {
+        response = await fetch(`/api/alunos/${editingAluno._id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      } else {
+        response = await fetch(`/api/alunos`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      }
+
+      const data = await response.json();
+      console.log('salvarEdicao response:', data);
+      if (data && data.success) {
+        // If we just created a student, some backends ignore custom flags on POST.
+        // As a fallback, if we created a new aluno, call PUT to ensure flags are persisted.
+              if (!editingAluno) {
+          const createdId = data.data?._id || data.data?.id || data.id || null;
+          if (createdId) {
+            try {
+              const flagsPayload = {
+                congelado: !!payload.congelado,
+                ausente: !!payload.ausente,
+                periodoTreino: payload.periodoTreino,
+                parceria: payload.parceria,
+                ativo: !!payload.ativo,
+              };
+              const respFlags = await fetch(`/api/alunos/${createdId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(flagsPayload) });
+              const dataFlags = await respFlags.json();
+              console.log('flags PUT response:', dataFlags);
+            } catch (err) {
+              console.warn('Falha ao atualizar flags via PUT após criação:', err);
+            }
+          }
+        }
+
+        await fetchAlunos();
+        setShowEditModal(false);
+      } else {
+        toast.error('Erro: ' + (data && data.error ? data.error : 'erro'));
+      }
+    } catch (error) {
+      console.error('Erro ao salvar aluno:', error);
+      toast.error('Erro ao salvar aluno');
+    }
+  };
+
+  // Função para reativar aluno
+  const reativarAluno = async (id: string, nome: string) => {
+    try {
+      // Primeiro, buscar informações das matrículas do aluno
+      const checkResponse = await fetch(`/api/alunos/${id}/matriculas-check`);
+      const checkData = await checkResponse.json();
+      
+      let warningMessage = `Deseja reativar o aluno "${nome}"?`;
+      let hasIssues = false;
+      
+      if (checkData.success && checkData.matriculas && checkData.matriculas.length > 0) {
+        const problematicas = checkData.matriculas.filter((m: any) => m.turmaLotada || m.horarioInexistente);
+        
+        if (problematicas.length > 0) {
+          hasIssues = true;
+          warningMessage = `O aluno "${nome}" possui ${problematicas.length} matrícula(s) com problemas:\n\n`;
+          
+          problematicas.forEach((m: any) => {
+            if (m.horarioInexistente) {
+              warningMessage += `• Horário ${m.diaSemana} ${m.horarioInicio}-${m.horarioFim} não existe mais\n`;
+            } else if (m.turmaLotada) {
+              warningMessage += `• Turma ${m.diaSemana} ${m.horarioInicio}-${m.horarioFim} está lotada (${m.alunosAtuais}/${m.limiteAlunos})\n`;
+            }
+          });
+          
+          warningMessage += `\nAo reativar, essas matrículas NÃO serão reativadas automaticamente. Você precisará matricular o aluno novamente.`;
+        }
+      }
+
+      const result = await Swal.fire({
+        title: 'Reativar aluno?',
+        text: warningMessage,
+        icon: hasIssues ? 'warning' : 'question',
+        showCancelButton: true,
+        confirmButtonColor: '#10b981',
+        cancelButtonColor: '#6b7280',
+        confirmButtonText: 'Sim, reativar',
+        cancelButtonText: 'Cancelar'
+      });
+      
+      if (!result.isConfirmed) {
+        return;
+      }
+
+      // Reativar o aluno
+      const response = await fetch(`/api/alunos/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ativo: true }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        await fetchAlunos();
+        if (hasIssues) {
+          toast.success('Aluno reativado. Atenção: matricule o aluno novamente nas turmas desejadas.');
+        } else {
+          toast.success('Aluno reativado com sucesso');
+        }
+      } else {
+        toast.error(`Erro: ${data.error}`);
+      }
+    } catch (error) {
+      console.error('Erro ao reativar aluno:', error);
+      toast.error('Erro ao reativar aluno');
+    }
+  };
+
+  // Função para excluir aluno individual
+  const excluirAluno = async (id: string, nome: string, isAtivo: boolean) => {
+    // Se o aluno já está inativo, oferecer exclusão definitiva
+    if (!isAtivo) {
+      const result = await Swal.fire({
+        title: 'Excluir permanentemente?',
+        text: `O aluno "${nome}" já está inativo. Deseja excluí-lo permanentemente do banco de dados?`,
+        icon: 'error',
+        showCancelButton: true,
+        confirmButtonColor: '#d33',
+        cancelButtonColor: '#6b7280',
+        confirmButtonText: 'Sim, excluir permanentemente',
+        cancelButtonText: 'Cancelar',
+        footer: '<span class="text-sm text-gray-500">Esta ação não pode ser desfeita!</span>'
+      });
+      
+      if (!result.isConfirmed) {
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/alunos/${id}?permanent=true`, {
+          method: 'DELETE',
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          await fetchAlunos();
+          toast.success('Aluno excluído permanentemente');
+        } else {
+          toast.error(`Erro: ${data.error}`);
+        }
+      } catch (error) {
+        console.error('Erro ao excluir aluno:', error);
+        toast.error('Erro ao excluir aluno');
+      }
+      return;
+    }
+
+    // Exclusão normal (soft delete)
+    const result = await Swal.fire({
+      title: 'Excluir aluno?',
+      text: `Tem certeza que deseja excluir o aluno "${nome}"?`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#d33',
+      cancelButtonColor: '#6b7280',
+      confirmButtonText: 'Sim, excluir',
+      cancelButtonText: 'Cancelar'
+    });
+    
+    if (!result.isConfirmed) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/alunos/${id}`, {
+        method: 'DELETE',
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        await fetchAlunos();
+        toast.success('Aluno excluído com sucesso');
+      } else {
+        toast.error(`Erro: ${data.error}`);
+      }
+    } catch (error) {
+      console.error('Erro ao excluir aluno:', error);
+      toast.error('Erro ao excluir aluno');
+    }
+  };
+
+  // Cancelar reagendamento (quando criado a partir do modal de faltas)
+  const cancelarReagendamento = async (reagendamentoId: string) => {
+    if (!reagendamentoId) return;
+    const result = await Swal.fire({
+      title: 'Cancelar reagendamento?',
+      text: 'Tem certeza que deseja cancelar este reagendamento?',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#d33',
+      cancelButtonColor: '#6b7280',
+      confirmButtonText: 'Sim, cancelar',
+      cancelButtonText: 'Não'
+    });
+    if (!result.isConfirmed) return;
+    try {
+      const res = await fetch(`/api/reagendamentos/${reagendamentoId}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (data && data.success) {
+        // remove marcação de reagendamento das faltas locais
+        setFaltasAlunoSelecionado(prev => prev.map(f => (f.reagendamentoId === reagendamentoId ? { ...f, reagendadoPara: null, reagendamentoId: null, reagendamentoStatus: null } : f)));
+        toast.success('Reagendamento cancelado com sucesso');
+      } else {
+        toast.error('Erro ao cancelar reagendamento: ' + (data && (data.error || data.message) ? (data.error || data.message) : 'erro'));
+      }
+    } catch (e) {
+      console.error('Erro ao cancelar reagendamento', e);
+      toast.error('Erro ao cancelar reagendamento');
+    }
+  };
+
+  // Filter alunos by query (name, email, phone, modalidades, modalidadeId.nome, plano)
+  // Also support searching by status keywords typed into the main search input: e.g. "congelado", "ausente", "12/36", "totalpass", "ativo", "inativo".
+  const filteredAlunos = useMemo(() => {
+    const q = String(query || '').trim().toLowerCase();
+    const wantsCongelado = q.includes('congelado');
+    const wantsAusente = q.includes('ausente') || q.includes('parou') || q.includes('paroude') || q.includes('paroudevir');
+    const wants12_36 = q.includes('12/36') || q.includes('1236');
+    const wantsTotalpass = q.includes('totalpass');
+    const wantsAtivo = q.includes('ativo') && !q.includes('inativo');
+    const wantsInativo = q.includes('inativo');
+    const wantsAnyKeyword = wantsCongelado || wantsAusente || wants12_36 || wantsTotalpass || wantsAtivo || wantsInativo;
+
+    return alunos.filter(aluno => {
+      const nome = String(aluno.nome || '').toLowerCase();
+      const email = String(aluno.email || '').toLowerCase();
+      const telefone = String(aluno.telefone || '').toLowerCase();
+      const plano = String(aluno.plano || '').toLowerCase();
+      const modIdNome = String(aluno.modalidadeId?.nome || '').toLowerCase();
+      const modalidadesStr = (aluno.modalidades || []).map(m => String(m.nome || '').toLowerCase()).join(' ');
+
+      // base query match (name, email, phone, plano, modalidade)
+      const baseMatch = q === '' || nome.includes(q) || email.includes(q) || telefone.includes(q) || plano.includes(q) || modIdNome.includes(q) || modalidadesStr.includes(q);
+
+      // If the user typed any of the special status keywords, require those to match.
+      if (wantsAnyKeyword) {
+        if (wantsCongelado && !aluno.congelado) return false;
+        if (wantsAusente && !aluno.ausente) return false;
+        if (wants12_36 && String(aluno.periodoTreino || '').toLowerCase() !== '12/36') return false;
+        if (wantsTotalpass && String(aluno.parceria || '').toLowerCase() !== 'totalpass') return false;
+        if (wantsAtivo && !aluno.ativo) return false;
+        if (wantsInativo && aluno.ativo) return false;
+        // Also allow combination queries such as "joão congelado": in that case the baseMatch must also be satisfied
+        if (!baseMatch && q.split(' ').filter(Boolean).length > 1) return false;
+      } else {
+        if (!baseMatch) return false;
+      }
+
+      // apply applied filters (UI filters remain authoritative)
+      if (appliedFilterModalidade) {
+        const has = (aluno.modalidades || []).some(m => String(m.nome || '').toLowerCase() === String(appliedFilterModalidade).toLowerCase()) || String(aluno.modalidadeId?.nome || '').toLowerCase() === String(appliedFilterModalidade).toLowerCase();
+        if (!has) return false;
+      }
+
+      if (appliedFilterCaracteristica) {
+        const c = String(appliedFilterCaracteristica).toLowerCase();
+        if (c === 'congelado' && !aluno.congelado) return false;
+        if (c === 'ausente' && !aluno.ausente) return false;
+        if (c === '12/36' && String(aluno.periodoTreino || '').toLowerCase() !== '12/36') return false;
+        if (c === 'totalpass' && String(aluno.parceria || '').toLowerCase() !== 'totalpass') return false;
+        // custom caracteristicas
+        if (c !== 'congelado' && c !== 'ausente' && c !== '12/36' && c !== 'totalpass') {
+          const hasCustom = Array.isArray(aluno.caracteristicas) && aluno.caracteristicas.some(x => String(x || '').toLowerCase() === c);
+          if (!hasCustom) return false;
+        }
+      }
+
+      // Filtro por professor
+      if (appliedFilterProfessor) {
+        const professorFilter = String(appliedFilterProfessor).toLowerCase();
+        const alunoProfs = (aluno.horarios || []).map(h => String(h.professorNome || '').toLowerCase());
+        const hasProfessor = alunoProfs.some(p => p === professorFilter);
+        if (!hasProfessor) return false;
+      }
+
+      return true;
+    });
+  }, [alunos, query, appliedFilterModalidade, appliedFilterStatus, appliedFilterCaracteristica, appliedFilterProfessor]);
+
+  // available custom caracteristicas
+  const availableCaracteristicas = useMemo(() => {
+    const s = new Set<string>();
+    alunos.forEach(a => {
+      if (Array.isArray(a.caracteristicas)) a.caracteristicas.forEach(c => { if (c) s.add(String(c)); });
+    });
+    return Array.from(s).sort();
+  }, [alunos]);
+
+  // available professores (extracted from aluno horarios)
+  const availableProfessores = useMemo(() => {
+    const s = new Set<string>();
+    alunos.forEach(a => {
+      if (Array.isArray(a.horarios)) {
+        a.horarios.forEach(h => {
+          if (h.professorNome) s.add(String(h.professorNome));
+        });
+      }
+    });
+    return Array.from(s).sort();
+  }, [alunos]);
+
+  // Pagination: slice the filtered list
+  const totalPages = Math.max(1, Math.ceil(filteredAlunos.length / pageSize));
+  const pagedAlunos = filteredAlunos.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
+  // Função para selecionar/deselecionar todos os alunos
+  const toggleSelectAll = () => {
+    if (selectAll) {
+      setSelectedAlunos([]);
+    } else {
+      setSelectedAlunos(pagedAlunos.map(aluno => aluno._id));
+    }
+  };
+
+  // Função para selecionar/deselecionar aluno individual
+  const toggleSelectAluno = (alunoId: string) => {
+    setSelectedAlunos(prev => {
+      const newSelected = prev.includes(alunoId)
+        ? prev.filter(id => id !== alunoId)
+        : [...prev, alunoId];
+      return newSelected;
+    });
+  };
+
+  // Keep selectAll in sync with current selection and filtered list
+  useEffect(() => {
+    setSelectAll(selectedAlunos.length > 0 && pagedAlunos.length > 0 && selectedAlunos.length === pagedAlunos.length);
+  }, [selectedAlunos, pagedAlunos]);
+
+  // Clamp currentPage when the number of pages changes
+  useEffect(() => {
+    if (currentPage > totalPages) setCurrentPage(totalPages);
+  }, [totalPages]);
+
+  
+
+  // Função para excluir alunos selecionados em massa
+  const excluirSelecionados = async () => {
+    if (selectedAlunos.length === 0) {
+      toast.warning('Nenhum aluno selecionado');
+      return;
+    }
+
+    // Verificar se algum dos alunos selecionados está inativo
+    const alunosSelecionadosData = alunos.filter(a => selectedAlunos.includes(a._id));
+    const algumInativo = alunosSelecionadosData.some(a => !a.ativo);
+
+    let result;
+    if (algumInativo) {
+      result = await Swal.fire({
+        title: 'Excluir permanentemente?',
+        text: `Você selecionou ${selectedAlunos.length} aluno(s). Alguns já estão inativos. Deseja excluí-los permanentemente?`,
+        icon: 'error',
+        showCancelButton: true,
+        confirmButtonColor: '#d33',
+        cancelButtonColor: '#6b7280',
+        confirmButtonText: 'Sim, excluir permanentemente',
+        cancelButtonText: 'Cancelar',
+        footer: '<span class="text-sm text-gray-500">Esta ação não pode ser desfeita!</span>'
+      });
+    } else {
+      result = await Swal.fire({
+        title: 'Excluir alunos selecionados?',
+        text: `Tem certeza que deseja excluir ${selectedAlunos.length} aluno(s) selecionado(s)?`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#d33',
+        cancelButtonColor: '#6b7280',
+        confirmButtonText: 'Sim, excluir todos',
+        cancelButtonText: 'Cancelar'
+      });
+    }
+    
+    if (!result.isConfirmed) {
+      return;
+    }
+
+    try {
+      const promises = selectedAlunos.map(id => {
+        const aluno = alunos.find(a => a._id === id);
+        const url = aluno && !aluno.ativo ? `/api/alunos/${id}?permanent=true` : `/api/alunos/${id}`;
+        return fetch(url, { method: 'DELETE' });
+      });
+
+      const responses = await Promise.all(promises);
+      const results = await Promise.all(responses.map(r => r.json()));
+
+      const sucessos = results.filter(r => r.success).length;
+      const erros = results.length - sucessos;
+
+      await fetchAlunos();
+      setSelectedAlunos([]);
+      setSelectAll(false);
+
+      if (erros === 0) {
+        toast.success(`${sucessos} aluno(s) excluído(s) com sucesso`);
+      } else {
+        toast.warning(`${sucessos} excluído(s), ${erros} erro(s)`);
+      }
+    } catch (error) {
+      console.error('Erro ao excluir alunos:', error);
+      toast.error('Erro ao excluir alunos selecionados');
+    }
+  };
+
+  return (
+  <ProtectedPage tab="alunos" title="Alunos - Superação Flux" fullWidth>
+      <div className="px-4 py-6 sm:px-0">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 fade-in-1">
+            <div className="sm:flex sm:items-center sm:space-x-6">
+            <div>
+                <h1 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+                  <i className="fas fa-users text-primary-600"></i>
+                  Alunos
+                </h1>
+                <p className="mt-2 text-sm text-gray-600 max-w-xl">Gerencie o cadastro de alunos do studio — pesquise, edite e organize seus alunos.</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button type="button" onClick={abrirNovoAluno} className="h-10 inline-flex items-center justify-center rounded-full bg-primary-600 px-4 text-sm font-medium text-white hover:bg-primary-700">
+              <i className="fas fa-plus mr-2" aria-hidden="true"></i>
+              Novo Aluno
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (appliedFilterStatus === 'inativo') {
+                  setAppliedFilterStatus('ativo');
+                } else {
+                  setAppliedFilterStatus('inativo');
+                }
+                setCurrentPage(1);
+              }}
+              className={`h-10 inline-flex items-center justify-center rounded-full px-4 text-sm font-medium transition-colors ${
+                appliedFilterStatus === 'inativo'
+                  ? 'bg-gray-700 text-white hover:bg-gray-800'
+                  : 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+              }`}
+              title={appliedFilterStatus === 'inativo' ? 'Voltar para ativos' : 'Ver alunos excluídos/inativos'}
+            >
+              <i className={`fas ${appliedFilterStatus === 'inativo' ? 'fa-arrow-left' : 'fa-user-slash'} mr-2`} aria-hidden="true"></i>
+              {appliedFilterStatus === 'inativo' ? 'Voltar' : 'Excluídos'}
+            </button>
+            {selectedAlunos.length > 0 && (
+              <button
+                type="button"
+                onClick={excluirSelecionados}
+                className="h-10 inline-flex items-center justify-center rounded-full border border-red-200 bg-red-50 px-4 text-sm font-medium text-red-700 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-500"
+              >
+                <span className="hidden sm:inline"></span>
+                <span>Excluir ({selectedAlunos.length})</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Search row placed above the table for clearer layout */}
+        <div className="mt-4 sm:mt-6 fade-in-2">
+          <div className="flex items-center justify-between gap-4">
+            <div className="relative w-full sm:w-1/2">
+              <svg className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z" /></svg>
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Pesquisar por nome, email, telefone, modalidade ou plano..."
+                className="block w-full pl-10 pr-3 border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 bg-white"
+              />
+            </div>
+            <div className="hidden sm:flex items-center text-sm text-gray-600">
+              <div>Resultados: {filteredAlunos.length}</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Filters row: modalidade, características (single select), status, professor, and apply button */}
+        <div className="mt-4 mb-4 bg-white rounded-md p-3 border border-gray-200 fade-in-2">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:gap-3">
+            <div className="flex flex-wrap items-center gap-3 flex-1">
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-gray-600 mr-2">Modalidade:</label>
+                <select value={uiFilterModalidade} onChange={(e) => { setUiFilterModalidade(e.target.value); setAppliedFilterModalidade(e.target.value); setCurrentPage(1); }} className="border border-gray-200 rounded-md px-2 py-1 text-sm">
+                  <option value="">Todas</option>
+                  {modalidades.map(m => (
+                    <option key={m._id} value={m.nome}>{m.nome}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-gray-600 mr-2">Professor:</label>
+                <select value={uiFilterProfessor} onChange={(e) => { setUiFilterProfessor(e.target.value); setAppliedFilterProfessor(e.target.value); setCurrentPage(1); }} className="border border-gray-200 rounded-md px-2 py-1 text-sm">
+                  <option value="">Todos</option>
+                  {availableProfessores.map(prof => (
+                    <option key={prof} value={prof}>{prof}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-gray-600 mr-2">Características:</label>
+                <select value={uiFilterCaracteristica} onChange={(e) => { setUiFilterCaracteristica(e.target.value); setAppliedFilterCaracteristica(e.target.value); setCurrentPage(1); }} className="border border-gray-200 rounded-md px-2 py-1 text-sm">
+                  <option value="">Todas</option>
+                  <option value="congelado">Congelado</option>
+                  <option value="ausente">Parou de Vir</option>
+                  <option value="12/36">12/36</option>
+                  <option value="TOTALPASS">TOTALPASS</option>
+                  {availableCaracteristicas.length > 0 && (
+                    <optgroup label="Personalizadas">
+                      {availableCaracteristicas.map(c => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                </select>
+              </div>
+            </div>
+
+            <div className="mt-3 sm:mt-0 sm:ml-auto flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => { 
+                  setUiFilterModalidade(''); 
+                  setUiFilterCaracteristica(''); 
+                  setUiFilterProfessor('');
+                  setAppliedFilterModalidade('');
+                  setAppliedFilterCaracteristica('');
+                  setAppliedFilterProfessor('');
+                  setSelectedAlunos([]); 
+                  setCurrentPage(1); 
+                }}
+                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-full border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 shadow-sm focus:outline-none"
+                title="Limpar filtros">
+                <i className="fas fa-eraser text-xs" aria-hidden="true" />
+                <span>Limpar</span>
+              </button>
+
+              {/* Filters apply automatically on change */}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-6 flex flex-col">
+          <div className="-my-2 -mx-4 overflow-x-auto sm:-mx-6 lg:-mx-8 fade-in-3">
+            <div className="inline-block min-w-full py-2 align-middle md:px-6 lg:px-8">
+              <div className="overflow-hidden rounded-md border border-gray-200">
+                <table className="w-full table-fixed text-sm border-collapse text-center">
+                  <thead className="bg-white border-b border-gray-200">
+                    <tr className="text-center">
+                      <th scope="col" className="w-12 px-2 py-2 text-center text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                          checked={selectAll}
+                          onChange={toggleSelectAll}
+                        />
+                      </th>
+                      <th scope="col" className="px-3 py-2 text-center text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
+                        Nome
+                      </th>
+                      <th scope="col" className="px-3 py-2 text-center text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
+                        Modalidades
+                      </th>
+                      <th scope="col" className="px-3 py-2 text-center text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
+                        Reposição
+                      </th>
+                      <th scope="col" className="px-3 py-2 text-center text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
+                        Status
+                      </th>
+                      <th scope="col" className="px-3 py-2 text-center text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
+                        Telefone
+                      </th>
+                      <th scope="col" className="px-3 py-2 text-center text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
+                        Ativo
+                      </th>
+                      <th scope="col" className="px-3 py-2 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">
+                        Ações
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white">
+                    {loading && (
+                      <tr>
+                        <td colSpan={9} className="px-3 py-4 text-center text-sm text-gray-500 border-b border-gray-200">
+                          Carregando alunos...
+                        </td>
+                      </tr>
+                    )}
+
+                    {!loading && filteredAlunos.length > 0 && (
+                      pagedAlunos.map((aluno, idx) => {
+                        const isMuted = !!(aluno.congelado || aluno.ausente);
+                        const isInativo = !aluno.ativo;
+                        const isLast = idx === pagedAlunos.length - 1;
+                        const fadeClass = isLast ? 'fade-in-8' : `fade-in-${Math.min((idx % 8) + 1, 8)}`;
+                        const rowClass = isInativo ? 'bg-gray-200 text-gray-600' : isMuted ? 'bg-gray-50 text-gray-500' : '';
+                        return (
+                          <tr key={aluno._id} className={`${rowClass} ${fadeClass}`}>
+                            <td className="w-12 px-2 py-3 text-sm border-r border-b border-gray-200 text-center">
+                              <input
+                                type="checkbox"
+                                className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                                checked={selectedAlunos.includes(aluno._id)}
+                                onChange={() => toggleSelectAluno(aluno._id)}
+                              />
+                            </td>
+                            <td className="px-3 py-3 text-sm border-r border-b border-gray-200 text-center">
+                              <div className="flex flex-col items-center">
+                                <div className="flex items-center gap-2 justify-center w-full">
+                                  {typeof (aluno as any).frequencia !== 'undefined' ? (
+                                    <span className="inline-flex items-center justify-center px-2 py-0.5 text-[11px] font-semibold rounded-md bg-gray-100 text-gray-800">
+                                      {(aluno as any).frequencia}%
+                                    </span>
+                                  ) : null}
+
+                                  <div className={`truncate font-medium ${isMuted ? 'text-gray-500' : 'text-gray-900'}`} title={aluno.nome}>{aluno.nome}</div>
+                                </div>
+
+                                {aluno.observacoes && (
+                                  <span className={`inline-block mt-2 px-3 py-1.5 rounded-full text-xs font-semibold border max-w-[12rem] truncate ${isMuted ? 'bg-gray-50 text-gray-500 border-gray-200' : 'bg-yellow-100 text-yellow-800 border-yellow-200'}`} title={aluno.observacoes}>
+                                    <i className="fas fa-sticky-note mr-1" />
+                                    {aluno.observacoes}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-3 py-3 text-sm text-gray-500 border-r border-b border-gray-200 text-center align-middle">
+                              <div className="flex flex-col items-center gap-3">
+                                {(aluno.modalidades && aluno.modalidades.length > 0) ? (
+                                  aluno.modalidades.map(m => {
+                                    const hs = (aluno.horarios || []).filter(h => String(h.modalidadeNome || '').toLowerCase() === String(m.nome || '').toLowerCase());
+                                    return (
+                                      <div key={(m._id || m.nome)} className="w-full">
+                                        <div className={`inline-flex items-center gap-2 px-2 py-0.5 rounded-full text-xs font-medium ${isMuted ? 'bg-gray-50 border-gray-200 text-gray-500' : 'bg-gray-100 border border-gray-200 text-gray-700'}`}>
+                                          <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: isMuted ? '#D1D5DB' : getModalidadeColor(m) }} />
+                                          <span className="truncate max-w-[12rem] text-sm">{m.nome}</span>
+                                        </div>
+                                        {hs && hs.length > 0 ? (
+                                          <div className="mt-1 text-[10px] text-gray-600 space-y-0.5">
+                                            {hs.map((h, i) => (
+                                              <div key={`${h.diaSemana}-${h.horarioInicio}-${h.horarioFim}-${i}`} className="text-[10px] text-gray-500">
+                                                {['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'][h.diaSemana]} {h.horarioInicio}–{h.horarioFim}{h.professorNome ? (<span className="text-[10px] text-gray-400"> — {h.professorNome}</span>) : null}
+                                              </div>
+                                            ))}
+                                          </div>
+                                        ) : (
+                                          <div className="mt-1 text-xs text-gray-400">—</div>
+                                        )}
+                                      </div>
+                                    );
+                                  })
+                                ) : (
+                                  <div>
+                                    {aluno.horarios && aluno.horarios.length > 0 ? (
+                                      <div className="mt-1 text-[10px] text-gray-600 space-y-0.5">
+                                        {aluno.horarios.map((h, i) => (
+                                          <div key={i} className="text-[10px] text-gray-500">
+                                            {['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'][h.diaSemana]} {h.horarioInicio}–{h.horarioFim}{h.professorNome ? (<span className="text-[10px] text-gray-400"> — {h.professorNome}</span>) : null}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    ) : (
+                                      <div className="mt-1 text-xs text-gray-400">—</div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+
+                            <td className="px-3 py-3 text-sm border-r border-b border-gray-200 text-center">
+                              <button
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-yellow-50 text-yellow-700 text-xs font-medium border border-yellow-200 hover:bg-yellow-100"
+                                onClick={() => abrirModalFaltas(aluno)}
+                                title="Ver faltas do aluno"
+                              >
+                                <i className="fas fa-history"></i> Ver Faltas
+                              </button>
+                            </td>
+
+                            <td className="px-3 py-3 text-sm text-gray-500 border-r border-b border-gray-200 text-center">
+                              <div className="flex items-center justify-center gap-2 flex-wrap">
+                                {(aluno.congelado) && (
+                                  <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold ${isMuted ? 'bg-gray-50 border-gray-200 text-gray-400' : 'bg-sky-50 border-sky-200 text-sky-700'}`}>
+                                    <i className="fas fa-snowflake" />
+                                    <span>Congelado</span>
+                                  </span>
+                                )}
+
+                                {(aluno.ausente) && (
+                                  <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold ${isMuted ? 'bg-gray-50 border-gray-200 text-gray-400' : 'bg-rose-50 border-rose-200 text-rose-700'}`}>
+                                    <i className="fas fa-user-clock" />
+                                    <span>Parou de Vir</span>
+                                  </span>
+                                )}
+
+                                {(aluno.periodoTreino === '12/36') && (
+                                  <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold ${isMuted ? 'bg-gray-50 border-gray-200 text-gray-400' : 'bg-green-50 border-green-200 text-green-700'}`}>
+                                    <i className="fas fa-clock" />
+                                    <span>12/36</span>
+                                  </span>
+                                )}
+
+                                {(aluno.parceria === 'TOTALPASS') && (
+                                  <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold ${isMuted ? 'bg-gray-50 border-gray-200 text-gray-400' : 'bg-purple-50 border-purple-200 text-purple-700'}`}>
+                                    <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAC1UlEQVR4AbyWg5LlQBiFY3uSu7Zt27Zt27Zt27Zt60G2tC8w/3aWk/qvkkGqzuU53V+7qSwPQ6S5rttM07Sptm3PJZqXQ5pLypwci8UakjoUIpoo8HDE1EgQhC/kcyYR5IZoms6UJOmtaZo1/zT418OSypuwLPsDh3JHpK7vlmXV+NsTBmn5N2zMXZGeeEneZcpxnLYpA7k0HGS+1aZUVZ336wdZAGNNHzDX9wupvmCs6gVsASs0hKIooykyO5f6X4RaxcH7sCya3i4BRpdDAxiGMeUfgDqyWWQA+9Q4VHhoAHP74MgA2uyO2QfQF3cDi0D8077hcStzzk0M+nYMBnNtX1CHN/0lZWhjUAY1DEjuXgv4qkWA5piEAHitFs2IC8CVzR/0kcnnvU+vpzKuTgOhXqn0AKTO1VEB7qN5QLNM0Neharghe70Y+IoFUwPoS7qhsLllIPbN7xx6zpgb+qUAoClwLk1BQWVwIwTgnJ8UGiDj1ozkAIyrxx1XvnLhoM9WwXu3NDzAvdnJAcRWlVDIfbYAaJ4N+pqVj7ZvHB6VHECb1QGFrF1DAPmmtY0EoI5qlhyA7Gw4NLIpIN/R0aErdx/P84cuMQCjS+C9WYKCfM3iwdNMFcF7HfClFpkvYpvKyfcBoWEZTP1yEdASDwFfnZLhWv5wLogtK6beCdUJrVDY2j8Cdb86tgWu6D2R33u+Xi8G98l8sMiEU4Y1AcZU/FxqAOvACFSwOr4lClt7h+FDaU4nv6d+S+CAommUSwkgtqgIcrdaWYUuG37h7vOFCIAs3+inYRjxVYrE7X7G0/MGgGzJ+Ji+MtXfwvMGwNw8AAHoy7pHu5Coqjo3bNDfKX8OvXHKZqlCVqN0wJvlA98xAQImYNfMBthd+kDnrpkBcieVBRgVVsCQOEPrzinQjqPQfiETAzKACnCLioragbrSwFAppSYGmpkF7J5bQoId4XMA6lRclYDTIrUAAAAASUVORK5CYII=" alt="TOTALPASS" className={`w-3 h-3 ${isMuted ? 'opacity-50 filter grayscale' : ''}`} />
+                                    <span>TOTALPASS</span>
+                                  </span>
+                                )}
+
+                                {/* custom caracteristicas */}
+                                {Array.isArray(aluno.caracteristicas) && aluno.caracteristicas.length > 0 && (
+                                  aluno.caracteristicas.map((c, i) => (
+                                    <span key={String(c) + i} className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${isMuted ? 'bg-gray-50 border-gray-200 text-gray-500' : 'bg-gray-50 border-gray-200 text-gray-700'}`}>
+                                      {c}
+                                    </span>
+                                  ))
+                                )}
+
+                                {(!aluno.congelado && !aluno.ausente && aluno.periodoTreino !== '12/36' && !aluno.parceria && (!Array.isArray(aluno.caracteristicas) || aluno.caracteristicas.length === 0)) && (
+                                  <div className="text-xs text-gray-400">—</div>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-3 py-3 text-sm text-gray-500 border-r border-b border-gray-200 text-center">
+                              {aluno.telefone}
+                            </td>
+                            <td className="px-3 py-3 text-sm border-r border-b border-gray-200 text-center">
+                              <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
+                                isInativo 
+                                  ? 'bg-gray-400 text-white' 
+                                  : 'bg-green-100 text-green-800'
+                              }`}>
+                                {isInativo ? 'Inativo' : 'Ativo'}
+                              </span>
+                            </td>
+                            <td className="px-3 py-3 text-sm border-b border-gray-200">
+                              <div className="flex items-center justify-center gap-2">
+                                {isInativo ? (
+                                  <>
+                                    <button 
+                                      onClick={() => reativarAluno(aluno._id, aluno.nome)} 
+                                      className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-md bg-green-50 border border-green-200 text-green-700 hover:bg-green-100"
+                                      title="Reativar aluno"
+                                    >
+                                      <i className="fas fa-undo w-3" aria-hidden="true" />
+                                      <span>Reativar</span>
+                                    </button>
+                                    <button 
+                                      onClick={() => excluirAluno(aluno._id, aluno.nome, aluno.ativo)} 
+                                      className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md bg-red-50 border border-red-100 text-red-700 hover:bg-red-100"
+                                      title="Excluir permanentemente"
+                                    >
+                                      <i className="fas fa-trash w-3" aria-hidden="true" />
+                                    </button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <button onClick={() => abrirEdicao(aluno)} className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md bg-white border border-gray-100 hover:bg-gray-50 text-primary-600">
+                                      <i className="fas fa-edit w-3" aria-hidden="true" />
+                                    </button>
+                                    <button onClick={() => excluirAluno(aluno._id, aluno.nome, aluno.ativo)} className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md bg-red-50 border border-red-100 text-red-700 hover:bg-red-100">
+                                      <i className="fas fa-trash w-3" aria-hidden="true" />
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      
+          {/* Pagination controls */}
+          <div className="mt-4 px-4 sm:px-0 fade-in-4">
+            <div className="flex items-center justify-between">
+              <div className="text-sm text-gray-600">Mostrando {pagedAlunos.length} de {filteredAlunos.length} resultados</div>
+              <div className="flex items-center gap-2">
+                <button type="button" disabled={currentPage === 1} onClick={() => setCurrentPage(p => Math.max(1, p - 1))} className="px-3 py-1 border border-gray-200 rounded-md bg-white text-sm disabled:opacity-50">Anterior</button>
+                <div className="text-sm text-gray-700">Página {currentPage} de {totalPages}</div>
+                <button type="button" disabled={currentPage >= totalPages} onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} className="px-3 py-1 border border-gray-200 rounded-md bg-white text-sm disabled:opacity-50">Próxima</button>
+              </div>
+            </div>
+          </div>
+
+          {/* keep currentPage within bounds when filtered results change */}
+        
+
+      {/* Modal de Edição */}
+      {showEditModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-600 bg-opacity-50">
+          <div className="relative w-full max-w-lg mx-auto bg-white rounded-lg shadow-lg border border-gray-200 p-6">
+            {/* Header + Info */}
+            <div className="mb-2 border-b pb-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <i className={`fas fa-edit text-primary-600 text-lg`} aria-hidden="true" />
+                  <h3 className="text-base font-semibold text-gray-900">{editingAluno ? 'Editar Aluno' : 'Novo Aluno'}</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowEditModal(false)}
+                  className="text-gray-400 hover:text-gray-600 focus:outline-none"
+                  title="Fechar"
+                >
+                  <i className="fas fa-times text-lg" aria-hidden="true" />
+                </button>
+              </div>
+              <div className="flex items-center gap-2 mt-2">
+                <i className="fas fa-info-circle text-primary-600 text-xs" aria-hidden="true" />
+                <span className="text-xs text-gray-500">Edite os dados do aluno abaixo.</span>
+              </div>
+            </div>
+            {/* Form */}
+            <form
+              className="space-y-3"
+              noValidate
+              onSubmit={(e) => {
+                e.preventDefault();
+                salvarEdicao();
+              }}
+            >
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 items-end">
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Nome *</label>
+                  <input
+                    type="text"
+                    value={editFormData.nome}
+                    onChange={(e) => setEditFormData({...editFormData, nome: e.target.value})}
+                    className="block w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-medium focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                    placeholder="Nome completo"
+                    required
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Telefone <span className="text-gray-400 text-xs">(pode ser &quot;Não informado&quot;)</span></label>
+                  <input
+                    type="tel"
+                    value={editFormData.telefone}
+                    onChange={(e) => setEditFormData({...editFormData, telefone: e.target.value})}
+                    className="block w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-medium focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                    placeholder="(11) 99999-9999 ou Não informado"
+                  />
+                </div>
+              </div>
+              <div className="mb-3">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Observações</label>
+                <textarea
+                  value={editFormData.observacoes}
+                  onChange={(e) => setEditFormData({...editFormData, observacoes: e.target.value})}
+                  className="block w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-medium h-10 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                  rows={1}
+                  placeholder="Observações sobre o aluno"
+                />
+              </div>
+              {/* Modalidade removida do modal de edição/novo aluno */}
+              <div className="relative border border-gray-200 rounded-md p-4 mb-3 mt-0">
+                <div className="absolute -top-3 left-4 bg-white px-2 text-sm font-medium text-gray-700">Status do plano</div>
+                <div className="mt-1 flex flex-wrap gap-2 pb-1 items-center">
+                  <button type="button" onClick={() => setEditFlags({...editFlags, congelado: !editFlags.congelado})} className={`px-2 py-1 rounded-full border text-xs font-medium inline-flex items-center gap-1 ${editFlags.congelado ? 'bg-sky-50 border-sky-300 text-sky-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'}`}>
+                    <i className="fas fa-snowflake text-xs" />
+                    <span className="whitespace-nowrap">Congelado</span>
+                  </button>
+
+                  <button type="button" onClick={() => setEditFlags({...editFlags, ausente: !editFlags.ausente})} className={`px-2 py-1 rounded-full border text-xs font-medium inline-flex items-center gap-1 ${editFlags.ausente ? 'bg-rose-50 border-rose-300 text-rose-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'}`}>
+                    <i className="fas fa-user-clock text-xs" />
+                    <span className="whitespace-nowrap">Parou de Vir</span>
+                  </button>
+
+                  <button type="button" onClick={() => setEditFlags({...editFlags, periodoTreino: editFlags.periodoTreino === '12/36' ? null : '12/36'})} className={`px-2 py-1 rounded-full border text-xs font-medium inline-flex items-center gap-1 ${editFlags.periodoTreino === '12/36' ? 'bg-green-50 border-green-300 text-green-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'}`}>
+                    <i className="fas fa-clock text-xs" />
+                    <span className="whitespace-nowrap">12/36</span>
+                  </button>
+
+                  <button type="button" onClick={() => setEditFlags({...editFlags, parceria: editFlags.parceria === 'TOTALPASS' ? null : 'TOTALPASS'})} className={`px-2 py-1 rounded-full border text-xs font-medium inline-flex items-center gap-1 ${editFlags.parceria === 'TOTALPASS' ? 'bg-purple-50 border-purple-300 text-purple-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'}`}>
+                    <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAC1UlEQVR4AbyWg5LlQBiFY3uSu7Zt27Zt27Zt27Zt60G2tC8w/3aWk/qvkkGqzuU53V+7qSwPQ6S5rttM07Sptm3PJZqXQ5pLypwci8UakjoUIpoo8HDE1EgQhC/kcyYR5IZoms6UJOmtaZo1/zT418OSypuwLPsDh3JHpK7vlmXV+NsTBmn5N2zMXZGeeEneZcpxnLYpA7k0HGS+1aZUVZ336wdZAGNNHzDX9wupvmCs6gVsASs0hKIooykyO5f6X4RaxcH7sCya3i4BRpdDAxiGMeUfgDqyWWQA+9Q4VHhoAHP74MgA2uyO2QfQF3cDi0D8077hcStzzk0M+nYMBnNtX1CHN/0lZWhjUAY1DEjuXgv4qkWA5piEAHitFs2IC8CVzR/0kcnnvU+vpzKuTgOhXqn0AKTO1VEB7qN5QLNM0Neharghe70Y+IoFUwPoS7qhsLllIPbN7xx6zpgb+qUAoClwLk1BQWVwIwTgnJ8UGiDj1ozkAIyrxx1XvnLhoM9WwXu3NDzAvdnJAcRWlVDIfbYAaJ4N+pqVj7ZvHB6VHECb1QGFrF1DAPmmtY0EoI5qlhyA7Gw4NLIpIN/R0aErdx/P84cuMQCjS+C9WYKCfM3iwdNMFcF7HfClFpkvYpvKyfcBoWEZTP1yEdASDwFfnZLhWv5wLogtK6beCdUJrVDY2j8Cdb86tgWu6D2R33u+Xi8G98l8sMiEU4Y1AcZU/FxqAOvACFSwOr4lClt7h+FDaU4nv6d+S+CAommUSwkgtqgIcrdaWYUuG37h7vOFCIAs3+inYRjxVYrE7X7G0/MGgGzJ+Ji+MtXfwvMGwNw8AAHoy7pHu5Coqjo3bNDfKX8OvXHKZqlCVqN0wJvlA98xAQImYNfMBthd+kDnrpkBcieVBRgVVsCQOEPrzinQjqPQfiETAzKACnCLioragbrSwFAppSYGmpkF7J5bQoId4XMA6lRclYDTIrUAAAAASUVORK5CYII=" alt="TOTALPASS" className="w-3 h-3" />
+                    <span>TOTALPASS</span>
+                  </button>
+                </div>
+
+                {Array.isArray(editCaracteristicas) && editCaracteristicas.length > 0 && (
+                  <div className="w-full flex gap-2 flex-wrap mt-2">
+                    {editCaracteristicas.map((c, i) => (
+                      <span key={i} className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gray-100 border border-gray-200 text-xs">
+                        <span className="truncate max-w-[10rem]">{c}</span>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {/* Action Buttons */}
+              <div className="flex justify-end gap-2 pt-3 border-t mt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowEditModal(false)}
+                  className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 flex items-center gap-2"
+                >
+                  <i className="fas fa-times text-black" aria-hidden="true" /> Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 flex items-center gap-2"
+                >
+                  <i className="fas fa-save text-white mr-2" aria-hidden="true" /> {editingAluno ? 'Atualizar' : 'Criar'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de faltas do aluno */}
+      {showModalFaltas && alunoModalFaltas && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4"
+          onClick={() => setShowModalFaltas(false)}
+        >
+          <div
+            className="bg-white rounded-lg shadow-lg border border-gray-200 max-w-2xl w-full p-6 max-h-[85vh] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                  <i className="fas fa-history text-orange-500"></i>
+                  Faltas de {alunoModalFaltas.nome}
+                </h3>
+                <p className="text-xs text-gray-500 mt-1">
+                  Você tem até 7 dias após cada falta para solicitar a reposição
+                </p>
+              </div>
+              <button
+                onClick={() => setShowModalFaltas(false)}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+                aria-label="Fechar"
+              >
+                <i className="fas fa-times text-lg"></i>
+              </button>
+            </div>
+
+            <div className="border-t border-gray-200 mb-4" />
+
+            {/* Content */}
+            {loadingFaltas ? (
+              <div className="flex items-center justify-center py-8">
+                <i className="fas fa-spinner fa-spin text-primary-600 text-xl"></i>
+              </div>
+            ) : faltasAlunoSelecionado.length === 0 ? (
+              <div className="text-center py-8">
+                <i className="fas fa-check-circle text-green-500 text-4xl mb-3"></i>
+                <p className="text-gray-500">Nenhuma falta registrada</p>
+              </div>
+            ) : (
+              <div className="space-y-3 max-h-[calc(85vh-220px)] overflow-y-auto">
+                {faltasAlunoSelecionado.map((falta, idx) => {
+                  // Determinar cor e ícone baseado no status
+                  const getStatusInfo = () => {
+                    switch (falta.statusReposicao) {
+                      case 'aprovada':
+                        return { 
+                          bgColor: 'bg-green-50 border-green-200', 
+                          badgeColor: 'bg-green-100 text-green-700',
+                          icon: 'fa-check-circle text-green-500',
+                          label: 'Reposta'
+                        };
+                      case 'pendente':
+                        return { 
+                          bgColor: 'bg-yellow-50 border-yellow-200', 
+                          badgeColor: 'bg-yellow-100 text-yellow-700',
+                          icon: 'fa-clock text-yellow-500',
+                          label: 'Aguardando aprovação'
+                        };
+                      case 'rejeitada':
+                        return { 
+                          bgColor: 'bg-red-50 border-red-200', 
+                          badgeColor: 'bg-red-100 text-red-700',
+                          icon: 'fa-times-circle text-red-500',
+                          label: 'Rejeitada'
+                        };
+                      case 'expirada':
+                        return { 
+                          bgColor: 'bg-gray-50 border-gray-200', 
+                          badgeColor: 'bg-gray-100 text-gray-500',
+                          icon: 'fa-ban text-gray-400',
+                          label: 'Prazo expirado'
+                        };
+                      default: // disponivel
+                        return { 
+                          bgColor: 'bg-orange-50 border-orange-200', 
+                          badgeColor: 'bg-orange-100 text-orange-700',
+                          icon: 'fa-exclamation-circle text-orange-500',
+                          label: `${falta.diasRestantes} dia${falta.diasRestantes !== 1 ? 's' : ''} restante${falta.diasRestantes !== 1 ? 's' : ''}`
+                        };
+                    }
+                  };
+                  
+                  const statusInfo = getStatusInfo();
+                  
+                  return (
+                    <div key={idx} className={`p-3 border rounded-lg ${statusInfo.bgColor}`}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <i className={`fas ${statusInfo.icon}`}></i>
+                            <span className="font-medium text-sm text-gray-900">{falta.dataFormatada}</span>
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${statusInfo.badgeColor}`}>
+                              {statusInfo.label}
+                            </span>
+                          </div>
+                          <div className="text-xs text-gray-600">
+                            <span className="font-medium">{falta.modalidade || 'Modalidade não informada'}</span>
+                            <span className="mx-1">•</span>
+                            <span>{falta.horarioInicio} - {falta.horarioFim}</span>
+                          </div>
+                          <div className="text-xs text-gray-500 mt-0.5">
+                            Professor: {falta.professorNome}
+                          </div>
+                          
+                          {/* Info da reposição se existir */}
+                          {falta.reposicao && falta.statusReposicao !== 'rejeitada' && (
+                            <div className="mt-2 text-xs text-gray-600 bg-white bg-opacity-50 rounded p-2">
+                              <i className="fas fa-arrow-right mr-1"></i>
+                              Reposição: {new Date(falta.reposicao.novaData).toLocaleDateString('pt-BR')} às {falta.reposicao.novoHorarioInicio}-{falta.reposicao.novoHorarioFim}
+                            </div>
+                          )}
+                        </div>
+                        
+                        {/* Botão de repor - só mostra se disponível ou rejeitada */}
+                        {(falta.statusReposicao === 'disponivel' || falta.statusReposicao === 'rejeitada') && (
+                          <button
+                            onClick={() => {
+                              setReporData({
+                                aulaRealizadaId: falta.aulaRealizadaId,
+                                data: falta.data,
+                                horarioInicio: falta.horarioInicio,
+                                horarioFim: falta.horarioFim,
+                                horarioFixoId: falta.horarioFixoId,
+                                modalidade: falta.modalidade,
+                                diasRestantes: falta.diasRestantes,
+                                prazoFinal: falta.prazoFinal,
+                              });
+                              setShowReporModal(true);
+                            }}
+                            className="px-3 py-1.5 text-xs bg-orange-600 text-white rounded-md hover:bg-orange-700 flex items-center gap-1 whitespace-nowrap"
+                          >
+                            <i className="fas fa-redo"></i>
+                            Repor
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            
+            {/* Footer com legenda */}
+            <div className="mt-4 pt-3 border-t border-gray-200">
+              <div className="flex flex-wrap gap-3 text-xs text-gray-500">
+                <span className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-orange-400"></span> Disponível para repor
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-yellow-400"></span> Aguardando aprovação
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-green-400"></span> Reposição aprovada
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-gray-400"></span> Prazo expirado
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+    {/* Modal de Reposição de Falta */}
+    {showReporModal && reporData && alunoModalFaltas && (
+      <ReporFaltaModal
+        open={showReporModal}
+        onClose={() => { setShowReporModal(false); setReporData(null); }}
+        alunoId={alunoModalFaltas._id}
+        alunoNome={alunoModalFaltas.nome}
+        falta={reporData}
+        onSuccess={() => {
+          setShowReporModal(false);
+          setReporData(null);
+          // Recarregar faltas
+          abrirModalFaltas(alunoModalFaltas);
+        }}
+      />
+    )}
+
+    {/* Modal de reagendamento compartilhado */}
+    {showReagendarModal && reagendarData && (
+      <ReagendarAulaModal
+        open={showReagendarModal}
+        onClose={() => setShowReagendarModal(false)}
+        aluno={reagendarData.aluno}
+        horarioOriginal={reagendarData.falta.horarioOriginal || reagendarData.falta.horario || null}
+        dataOriginal={reagendarData.falta.data || null}
+        matricula={reagendarData.falta.matricula || reagendarData.falta.matriculaId || reagendarData.falta.matricula_id || null}
+        onCreated={(created: any) => {
+          // Mark the falta as reagendada in the faltas list
+          try {
+            const makeKey = (f: any) => {
+              const d = f && f.data ? new Date(f.data).toISOString().slice(0,10) : '';
+              const hid = (f && f.horarioOriginal && (f.horarioOriginal._id || f.horarioOriginal.horarioId || '')) || '';
+              return `${d}__${hid}`;
+            };
+            const createdKey = `${(created && (created.dataOriginal || created.data_original)) || ''}__${(created && (created.horarioFixoId?._id || created.horarioFixoId || created.horario_fixo_id)) || ''}`;
+            setFaltasAlunoSelecionado(prev => prev.map(f => {
+              try {
+                if (makeKey(f) === createdKey) {
+                  return { ...f, reagendadoPara: created.novaData || created.nova_data || null, reagendamentoId: created._id || created.id || null, reagendamentoStatus: created.status || null };
+                }
+              } catch (e) { /* ignore */ }
+              return f;
+            }));
+          } catch (e) {
+            console.warn('Erro ao marcar falta reagendada', e);
+          }
+        }}
+      />
+    )}
+    </ProtectedPage>
+  );
+}

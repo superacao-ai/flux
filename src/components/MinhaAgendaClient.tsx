@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { toast } from 'react-toastify';
 
 // Tipos
 interface Aluno {
@@ -76,6 +77,7 @@ interface Reagendamento {
   novoHorarioInicio: string;
   novoHorarioFim: string;
   status: string;
+  isReposicao?: boolean;
   horarioFixoId: {
     _id: string;
     diaSemana: number;
@@ -100,6 +102,11 @@ interface Reagendamento {
       nome: string;
       email?: string;
     };
+  };
+  alunoId?: {
+    _id: string;
+    nome: string;
+    email?: string;
   };
 }
 
@@ -213,9 +220,11 @@ export default function MinhaAgendaClient() {
         if (res.ok) {
           const data = await res.json();
           const list = Array.isArray(data) ? data : (data.data || []);
-          const aprovados = list.filter((r: Reagendamento) => r.status === 'aprovado');
-          
-          setReagendamentos(aprovados);
+
+          // Mostrar reagendamentos que não foram rejeitados (inclui 'pendente' e 'aprovado')
+          const visiveis = list.filter((r: Reagendamento) => r.status !== 'rejeitado');
+
+          setReagendamentos(visiveis);
         }
       } catch (err) {
         console.error('[MinhaAgenda] Erro ao buscar reagendamentos:', err);
@@ -355,15 +364,19 @@ export default function MinhaAgendaClient() {
   const isHoje = dataFormatada === hojeFormatado;
   
   // Reagendamentos que TÊM DESTINO nesta data (alunos vindo de outros dias)
+  // Só mostra como "efetivamente trocado" se status for aprovado
   const reagendamentosParaDentro = reagendamentos.filter(r => {
     if (!r.novaData) return false;
+    if (r.status !== 'aprovado') return false; // Só aprovados aparecem no destino
     const reagData = r.novaData.split('T')[0];
     return reagData === dataFormatada;
   });
   
   // Reagendamentos que TÊM ORIGEM nesta data (alunos saindo para outros dias)
+  // Só mostra como "efetivamente trocado" se status for aprovado
   const reagendamentosParaFora = reagendamentos.filter(r => {
     if (!r.dataOriginal) return false;
+    if (r.status !== 'aprovado') return false; // Só aprovados saem da origem
     const reagData = r.dataOriginal.split('T')[0];
     return reagData === dataFormatada;
   });
@@ -372,8 +385,15 @@ export default function MinhaAgendaClient() {
   const alunoReagendadoParaFora = (alunoId: string, horarioId?: string) => {
     if (!horarioId) return null;
     return reagendamentosParaFora.find(r => {
-      const rAlunoId = r.horarioFixoId?.alunoId?._id || r.matriculaId?.alunoId?._id;
-      return rAlunoId === alunoId && r.horarioFixoId?._id === horarioId;
+      const rAlunoId = (r.matriculaId && typeof r.matriculaId !== 'string' && r.matriculaId.alunoId && typeof r.matriculaId.alunoId !== 'string')
+        ? (r.matriculaId.alunoId._id || '')
+        : (r.horarioFixoId && typeof r.horarioFixoId !== 'string' && r.horarioFixoId.alunoId && typeof r.horarioFixoId.alunoId !== 'string')
+          ? (r.horarioFixoId.alunoId._id || '')
+          : '';
+
+      const rHorarioFixoId = typeof r.horarioFixoId === 'string' ? r.horarioFixoId : (r.horarioFixoId?._id || '');
+
+      return rAlunoId === alunoId && rHorarioFixoId === horarioId;
     });
   };
 
@@ -381,9 +401,23 @@ export default function MinhaAgendaClient() {
   const alunosReagendadosParaDentro = (horarioId?: string) => {
     if (!horarioId) return [];
     return reagendamentosParaDentro
-      .filter(r => r.novoHorarioFixoId?._id === horarioId)
+      .filter(r => {
+        const novoHorarioFixoId = typeof r.novoHorarioFixoId === 'string' ? r.novoHorarioFixoId : (r.novoHorarioFixoId?._id || '');
+        return novoHorarioFixoId === horarioId;
+      })
       .map(r => {
-        const aluno = r.horarioFixoId?.alunoId || r.matriculaId?.alunoId;
+        // Para reposições, o aluno vem direto do campo alunoId
+        // Para reagendamentos normais, vem da matrícula ou do horarioFixo
+        let aluno = null;
+        
+        if (r.alunoId && typeof r.alunoId !== 'string' && r.alunoId._id) {
+          aluno = r.alunoId;
+        } else if (r.matriculaId && typeof r.matriculaId !== 'string' && r.matriculaId.alunoId && typeof r.matriculaId.alunoId !== 'string') {
+          aluno = r.matriculaId.alunoId;
+        } else if (r.horarioFixoId && typeof r.horarioFixoId !== 'string' && r.horarioFixoId.alunoId && typeof r.horarioFixoId.alunoId !== 'string') {
+          aluno = r.horarioFixoId.alunoId;
+        }
+
         return {
           _id: aluno?._id || '',
           nome: aluno?.nome || 'Aluno',
@@ -447,6 +481,17 @@ export default function MinhaAgendaClient() {
   const enviarAula = async (horarioFixoId: string) => {
     if (enviandoAula) return;
     
+    // Bloquear envio de aulas futuras
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    const dataAula = new Date(dataSelecionada);
+    dataAula.setHours(0, 0, 0, 0);
+    
+    if (dataAula > hoje) {
+      toast.warning('Não é possível enviar aulas de datas futuras.');
+      return;
+    }
+    
     setEnviandoAula(true);
 
     try {
@@ -454,7 +499,7 @@ export default function MinhaAgendaClient() {
       const token = localStorage.getItem('token');
       
       if (!token) {
-        alert('Sessão expirada. Por favor, faça login novamente.');
+        toast.error('Sessão expirada. Por favor, faça login novamente.');
         setEnviandoAula(false);
         return;
       }
@@ -494,11 +539,15 @@ export default function MinhaAgendaClient() {
         .filter(h => h.horarioFixoId === horarioFixoId)
         .flatMap(h => {
           const reags = alunosReagendadosParaDentro(h.horarioFixoId);
-          return reags.map(r => ({
-            reagendamentoId: (r as any)._reagendamento?._id,
-            presente: getPresencaStatus(r._id, h.horarioFixoId || '') ?? null,
-            observacoes: '',
-          }));
+          return reags.map(r => {
+            const reagId = (r as any)._reagendamento?._id || '';
+            return {
+              reagendamentoId: reagId,
+              // buscar presença gravada usando o ID do reagendamento (presenças de reagendados são salvas com esse id)
+              presente: reagId ? getPresencaStatus(reagId, h.horarioFixoId || '') ?? null : null,
+              observacoes: '',
+            };
+          });
         });
 
       console.log('Enviando aula:', {
@@ -553,16 +602,16 @@ export default function MinhaAgendaClient() {
           console.warn('[MinhaAgenda] Falha ao limpar drafts após envio:', e);
         }
 
-        alert('Aula enviada com sucesso!');
+        toast.success('Aula enviada com sucesso!');
       } else {
         console.error('Erro na API:', data);
         console.error('Status:', res.status);
         console.error('Response completo:', res);
-        alert(`Erro ao enviar aula: ${data.error || 'Erro desconhecido'}\n\nDetalhes: ${data.details || ''}\n\nStack: ${data.stack || ''}`);
+        toast.error(`Erro ao enviar aula: ${data.error || 'Erro desconhecido'}`);
       }
     } catch (err) {
       console.error('Erro ao enviar aula:', err);
-      alert(`Erro ao enviar aula: ${err instanceof Error ? err.message : 'Erro desconhecido'}`);
+      toast.error(`Erro ao enviar aula: ${err instanceof Error ? err.message : 'Erro desconhecido'}`);
     } finally {
       setEnviandoAula(false);
     }
@@ -667,12 +716,27 @@ export default function MinhaAgendaClient() {
   // Navegar entre dias (apenas dias com horários)
   const mudarDia = (direcao: number) => {
     const dataAtual = new Date(dataSelecionada);
+    
+    // Obter data de início da plataforma
+    const dataInicioPlataforma = localStorage.getItem('dataInicioPlataforma') || '';
+    
     let tentativas = 0;
     const maxTentativas = 7; // Procurar nos próximos 7 dias
     
     while (tentativas < maxTentativas) {
       dataAtual.setDate(dataAtual.getDate() + direcao);
       const novoDia = dataAtual.getDay();
+      
+      // Verificar se a data está dentro do período permitido
+      if (dataInicioPlataforma) {
+        const dataAtualStr = `${dataAtual.getFullYear()}-${String(dataAtual.getMonth() + 1).padStart(2, '0')}-${String(dataAtual.getDate()).padStart(2, '0')}`;
+        
+        // Se estiver tentando ir para antes da data de início
+        if (direcao < 0 && dataAtualStr < dataInicioPlataforma) {
+          toast.info('Você chegou à data de início do sistema: ' + dataInicioPlataforma.split('-').reverse().join('/'));
+          return;
+        }
+      }
       
       // Verificar se tem horários ativos neste dia
       const temHorarios = horarios.some(h => h.diaSemana === novoDia && h.ativo);
@@ -687,6 +751,29 @@ export default function MinhaAgendaClient() {
   };
 
   // Formatar data
+  // Parse YYYY-MM-DD (or ISO) into a local Date at midnight to avoid timezone shifts
+  const parseDateOnly = (s?: string) => {
+    if (!s) return new Date(NaN);
+    const dateOnly = String(s).split('T')[0];
+    const parts = dateOnly.split('-');
+    if (parts.length === 3) {
+      const y = Number(parts[0]);
+      const m = Number(parts[1]) - 1;
+      const d = Number(parts[2]);
+      if (!isNaN(y) && !isNaN(m) && !isNaN(d)) {
+        return new Date(y, m, d);
+      }
+    }
+    const parsed = new Date(s);
+    return parsed;
+  };
+
+  const formatDateFromString = (s?: string) => {
+    const d = parseDateOnly(s);
+    if (isNaN(d.getTime())) return s ? String(s).split('T')[0] : '';
+    return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  };
+
   const formatarData = (data: Date) => {
     return data.toLocaleDateString('pt-BR', { 
       day: '2-digit', 
@@ -830,14 +917,14 @@ export default function MinhaAgendaClient() {
                     <div className="text-center bg-white rounded-md px-2.5 py-1.5 shadow-sm">
                       <div className={`text-sm font-bold ${aulaStatus.get(horario.horarioFixoId || '')?.enviada ? 'text-gray-600' : 'text-gray-900'}`}>
                         {(() => {
-                          // Contar apenas alunos fixos (não reagendados para fora)
-                          let count = 0;
-                          horario.alunos.forEach(aluno => {
-                            if (!alunoReagendadoParaFora(aluno._id, horario.horarioFixoId)) {
-                              count++;
-                            }
-                          });
-                          return count;
+                          // Contar alunos matriculados nesse horário (fixos)
+                          // Observação: não incluímos reagendamentos vindos de outros horários (reagendamentosParaDentro)
+                          // e contamos todos os alunos que pertencem a este horário, mesmo que tenham um reagendamento para fora.
+                          try {
+                            return (horario.alunos && Array.isArray(horario.alunos)) ? horario.alunos.length : 0;
+                          } catch (e) {
+                            return 0;
+                          }
                         })()}
                       </div>
                       <div className={`text-xs ${aulaStatus.get(horario.horarioFixoId || '')?.enviada ? 'text-gray-500' : 'text-gray-600'} font-medium`}>Fixos</div>
@@ -884,7 +971,7 @@ export default function MinhaAgendaClient() {
                 <div className={`border-t ${aulaStatus.get(horario.horarioFixoId || '')?.enviada ? 'border-gray-300 bg-gray-50' : 'border-gray-200 bg-white'}`}>
                   <div className="p-4">{horario.alunos.length === 0 && alunosReagendadosParaDentro(horario.horarioFixoId).length === 0 ? (
                     <div className="p-6 text-center">
-                      <i className="fas fa-inbox text-gray-300 text-4xl mb-3 block"></i>
+                      <i className="fas fa-inbox text-gray-300 text-4xl mb-3 mx-auto"></i>
                       <p className="text-gray-500 font-medium">Nenhum aluno neste horário</p>
                     </div>
                   ) : (
@@ -893,6 +980,7 @@ export default function MinhaAgendaClient() {
                       {horario.alunos.map((aluno) => {
                         const reagendamento = alunoReagendadoParaFora(aluno._id, horario.horarioFixoId);
                         const foiReagendado = !!reagendamento;
+                        const aulaEnviada = aulaStatus.get(horario.horarioFixoId || '')?.enviada ?? false;
 
                         // Definir estilo baseado no status
                         let bgColor = 'bg-white';
@@ -902,28 +990,28 @@ export default function MinhaAgendaClient() {
 
                         if (foiReagendado) {
                           bgColor = 'bg-gray-100';
-                          badgeClass = 'bg-orange-100 text-orange-800 border-orange-200';
+                          badgeClass = aulaEnviada ? 'bg-gray-100 text-gray-600 border-gray-200' : 'bg-amber-100 text-amber-800 border-amber-200';
                           badgeIcon = 'fa-exchange-alt';
                         } else if (aluno.ausente) {
                           bgColor = 'bg-red-50';
-                          badgeClass = 'bg-red-100 text-red-800 border-red-200';
+                          badgeClass = aulaEnviada ? 'bg-gray-100 text-gray-600 border-gray-200' : 'bg-red-100 text-red-800 border-red-200';
                           badgeIcon = 'fa-ban';
                         } else if (aluno.congelado) {
                           bgColor = 'bg-blue-50';
-                          badgeClass = 'bg-blue-100 text-blue-800 border-blue-200';
+                          badgeClass = aulaEnviada ? 'bg-gray-100 text-gray-600 border-gray-200' : 'bg-blue-100 text-blue-800 border-blue-200';
                           badgeIcon = 'fa-snowflake';
                         } else if (aluno.emEspera) {
                           bgColor = 'bg-yellow-50';
-                          badgeClass = 'bg-yellow-100 text-yellow-800 border-yellow-200';
+                          badgeClass = aulaEnviada ? 'bg-gray-100 text-gray-600 border-gray-200' : 'bg-yellow-100 text-yellow-800 border-yellow-200';
                           badgeIcon = 'fa-hourglass-half';
                         }
 
                         return (
                           <div
                             key={aluno._id}
-                            className={`p-3 rounded-md border shadow-sm ${inactive ? 'bg-gray-100 text-gray-500 filter grayscale' : bgColor} border-gray-200 transition-all flex items-center justify-between gap-3`}
+                            className={`p-3 rounded-md border shadow-sm ${inactive ? 'bg-gray-100 text-gray-500 filter grayscale' : bgColor} border-gray-200 transition-all`}
                           >
-                            <div className="flex items-center gap-3 flex-1 min-w-0">
+                            <div className="flex items-center gap-3">
                               {/* Avatar (rounded) */}
                               <div
                                 className={`w-10 h-10 rounded-full overflow-hidden flex items-center justify-center font-bold text-sm flex-shrink-0 ${aulaStatus.get(horario.horarioFixoId || '')?.enviada ? 'bg-gray-100 text-gray-600' : (inactive ? 'bg-gray-400 text-gray-700' : 'text-white')}`}
@@ -945,8 +1033,46 @@ export default function MinhaAgendaClient() {
                                   <div className="text-xs text-gray-500 mt-1 truncate">{aluno.observacoes}</div>
                                 )}
 
+                                {/* Presença/Falta abaixo do nome */}
+                                {!foiReagendado && !aluno.emEspera && !aluno.ausente && !aluno.congelado && (
+                                  (() => {
+                                    const status = getPresencaStatus(aluno._id, horario.horarioFixoId || '');
+                                    const aulaEnviada = aulaStatus.get(horario.horarioFixoId || '')?.enviada ?? false;
+                                    const checked = status === true;
+
+                                    return (
+                                      <div className="flex items-center gap-2 mt-2">
+                                        <span className={`${aulaEnviada ? 'text-gray-400' : 'text-gray-700'} text-xs font-semibold`}>FALTOU</span>
+
+                                        <label className={`relative inline-flex items-center ${aulaEnviada ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
+                                          <input
+                                            type="checkbox"
+                                            className="sr-only"
+                                            checked={checked}
+                                            disabled={aulaEnviada}
+                                            onChange={(e) => marcarPresenca(aluno._id, horario.horarioFixoId || '', e.target.checked)}
+                                            aria-label={`Marcar presença de ${aluno.nome}`}
+                                          />
+
+                                          <div className={`w-12 h-6 rounded-full transition-colors ${checked ? 'bg-green-500' : 'bg-gray-300'}`}></div>
+                                          <div className={`absolute left-1 top-1 w-4 h-4 bg-white rounded-full shadow transform transition-transform ${checked ? 'translate-x-6' : ''}`}></div>
+                                        </label>
+
+                                        <span className={`${aulaEnviada ? 'text-gray-400' : (checked ? 'text-green-600' : 'text-gray-700')} text-xs font-semibold`}>PRESENTE</span>
+                                      </div>
+                                    );
+                                  })()
+                                )}
+
                                 {/* Badges adicionais (congelado, ausente, periodoTreino, parceria) */}
                                 <div className="mt-2 flex items-center gap-2 flex-wrap">
+                                  {/* Se o aluno foi reagendado para fora, mostrar badge indicando para qual data foi reagendado */}
+                                  {foiReagendado && reagendamento && (
+                                    <span className="inline-flex items-center gap-2 px-2 py-0.5 rounded text-xs font-medium border bg-gray-100 text-gray-600 border-gray-200">
+                                      <i className="fas fa-exchange-alt text-gray-600 text-sm" />
+                                      <span>Reagendado para {formatDateFromString(reagendamento.novaData)} às {reagendamento.novoHorarioInicio}</span>
+                                    </span>
+                                  )}
                                   {aluno.congelado && (
                                     <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] rounded-md font-medium border ${aulaStatus.get(horario.horarioFixoId || '')?.enviada ? 'bg-gray-100 text-gray-600 border-gray-200' : 'bg-sky-100 text-sky-700 border-sky-200'}`}>
                                       <i className={`fas fa-snowflake ${aulaStatus.get(horario.horarioFixoId || '')?.enviada ? 'text-gray-600' : ''}`}></i>
@@ -982,65 +1108,67 @@ export default function MinhaAgendaClient() {
                                 </div>
                               </div>
                             </div>
-
-                            <div className="flex items-center gap-3 flex-shrink-0">
-                              {/* Presença/Falta Selector */}
-                              {!foiReagendado && !aluno.emEspera && !aluno.ausente && !aluno.congelado && (
-                                (() => {
-                                  const status = getPresencaStatus(aluno._id, horario.horarioFixoId || '');
-                                  const aulaEnviada = aulaStatus.get(horario.horarioFixoId || '')?.enviada ?? false;
-                                  const checked = status === true;
-
-                                  return (
-                                    <div className="flex items-center gap-3">
-                                      <span className={`${aulaEnviada ? 'text-gray-400' : 'text-gray-700'} text-xs font-semibold`}>FALTOU</span>
-
-                                      <label className={`relative inline-flex items-center ${aulaEnviada ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
-                                        <input
-                                          type="checkbox"
-                                          className="sr-only"
-                                          checked={checked}
-                                          disabled={aulaEnviada}
-                                          onChange={(e) => marcarPresenca(aluno._id, horario.horarioFixoId || '', e.target.checked)}
-                                          aria-label={`Marcar presença de ${aluno.nome}`}
-                                        />
-
-                                        <div className={`w-12 h-6 rounded-full transition-colors ${checked ? 'bg-green-500' : 'bg-gray-300'}`}></div>
-                                        <div className={`absolute left-1 top-1 w-4 h-4 bg-white rounded-full shadow transform transition-transform ${checked ? 'translate-x-6' : ''}`}></div>
-                                      </label>
-
-                                      <span className={`${aulaEnviada ? 'text-gray-400' : (checked ? 'text-green-600' : 'text-gray-700')} text-xs font-semibold`}>PRESENTE</span>
-                                    </div>
-                                  );
-                                })()
-                              )}
-                            </div>
                           </div>
                         );
                       })}
                       {/* Reagendados PARA DENTRO */}
-                      {alunosReagendadosParaDentro(horario.horarioFixoId).map((aluno: any) => (
-                        <div
-                          key={`reag-${aluno._id}`}
-                          className="p-3 rounded-md border shadow-sm border-green-200 bg-green-50 transition-all flex items-center gap-3"
-                        >
+                      {alunosReagendadosParaDentro(horario.horarioFixoId).map((aluno: any) => {
+                        const reag = (aluno as any)._reagendamento;
+                        const reagId = reag?._id || '';
+                        // Para reposições, usar o ID do aluno, para reagendamentos usar o ID do reagendamento
+                        const alunoIdentifier = (reag?.isReposicao === true && aluno._id) ? aluno._id : reagId;
+                        const statusPresenca = getPresencaStatus(alunoIdentifier, horario.horarioFixoId || '');
+                        const aulaEnviada = aulaStatus.get(horario.horarioFixoId || '')?.enviada ?? false;
+                        const isReposicao = reag?.isReposicao === true;
+
+                        return (
                           <div
-                            className="w-10 h-10 rounded-md flex items-center justify-center text-white font-bold text-sm flex-shrink-0"
-                            style={{ backgroundColor: '#22c55e' }}
+                            key={`reag-${reagId || aluno._id}`}
+                            className={`p-3 rounded-md border shadow-sm transition-all ${aulaEnviada ? 'bg-gray-100 text-gray-500 filter grayscale border-gray-200' : isReposicao ? 'border-orange-200 bg-orange-50' : 'border-green-200 bg-green-50'}`}
                           >
-                            {aluno.nome.charAt(0).toUpperCase()}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="font-semibold text-gray-900 text-sm">{aluno.nome}</div>
-                            <div className="mt-1">
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 border border-green-300">
-                                <i className="fas fa-exchange-alt"></i>
-                                Para {new Date(aluno._reagendamento.novaData).toLocaleDateString('pt-BR')} às {aluno._reagendamento.novoHorarioInicio}
-                              </span>
+                            <div className="flex items-center gap-3">
+                              <div
+                                className={`w-10 h-10 rounded-full overflow-hidden flex items-center justify-center font-bold text-sm flex-shrink-0 ${aulaEnviada ? 'bg-gray-100 text-gray-600' : 'text-white'}`}
+                                style={{ backgroundColor: aulaEnviada ? undefined : (isReposicao ? '#f97316' : '#22c55e') }}
+                              >
+                                {aluno.nome.charAt(0).toUpperCase()}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className={`${aulaEnviada ? 'text-gray-600 line-through' : 'font-semibold text-gray-900'} text-sm`}>{aluno.nome}</div>
+                                
+                                {/* Badge de reagendamento/reposição */}
+                                <div className="mt-1">
+                                  <span className={`${aulaEnviada ? 'inline-flex items-center gap-2 px-2 py-0.5 rounded text-xs font-medium bg-white text-gray-600 border border-gray-200' : isReposicao ? 'inline-flex items-center gap-2 px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800 border border-orange-300' : 'inline-flex items-center gap-2 px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 border border-green-300'}`}>
+                                    <i className={`fas ${isReposicao ? 'fa-redo' : 'fa-exchange-alt'} ${aulaEnviada ? 'text-gray-600' : isReposicao ? 'text-orange-600' : 'text-green-600'} text-sm`} />
+                                    {isReposicao ? 'Reposição' : 'Reagendamento'} de {formatDateFromString(reag?.dataOriginal)} às {(typeof reag?.horarioFixoId === 'object' ? reag.horarioFixoId.horarioInicio : (reag.horarioFixoId || '--:--'))}
+                                  </span>
+                                </div>
+
+                                {/* Presença/Falta abaixo do badge */}
+                                <div className="flex items-center gap-2 mt-2">
+                                  <span className={`${aulaEnviada ? 'text-gray-400' : 'text-gray-700'} text-xs font-semibold`}>FALTOU</span>
+
+                                  <label className={`relative inline-flex items-center ${aulaEnviada ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
+                                    <input
+                                      type="checkbox"
+                                      className="sr-only"
+                                      checked={statusPresenca === true}
+                                      disabled={aulaEnviada}
+                                      onChange={(e) => marcarPresenca(alunoIdentifier, horario.horarioFixoId || '', e.target.checked)}
+                                      aria-label={`Marcar presença de ${aluno.nome}`}
+                                    />
+
+                                    <div className={`w-12 h-6 rounded-full transition-colors ${statusPresenca ? 'bg-green-500' : 'bg-gray-300'}`}></div>
+                                    <div className={`absolute left-1 top-1 w-4 h-4 bg-white rounded-full shadow transform transition-transform ${statusPresenca ? 'translate-x-6' : ''}`}></div>
+                                  </label>
+
+                                  <span className={`${aulaEnviada ? 'text-gray-400' : (statusPresenca ? 'text-green-600' : 'text-gray-700')} text-xs font-semibold`}>PRESENTE</span>
+                                </div>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                   </div>
@@ -1056,28 +1184,43 @@ export default function MinhaAgendaClient() {
                   )}
 
                   {/* Botão de Enviar Aula */}
-                  {horariosExpandidos.has(horario.horarioFixoId || '') && !aulaStatus.get(horario.horarioFixoId || '')?.enviada && (
-                    <div className="p-4 border-t bg-blue-50">
-                      <button
-                        onClick={() => enviarAula(horario.horarioFixoId || '')}
-                        disabled={enviandoAula}
-                        className={`w-full py-3 px-4 rounded-md font-bold transition-all flex items-center justify-center gap-2 ${enviandoAula ? 'cursor-not-allowed' : 'shadow-sm hover:opacity-95 active:scale-95'}`}
-                        style={enviandoAula ? { backgroundColor: '#D1D5DB', color: '#6B7280' } : { backgroundColor: horario.modalidade?.cor || '#2563EB', color: '#FFFFFF' }}
-                      >
-                        {enviandoAula ? (
-                          <>
-                            <i className="fas fa-spinner fa-spin"></i>
-                            Enviando Aula...
-                          </>
+                  {horariosExpandidos.has(horario.horarioFixoId || '') && !aulaStatus.get(horario.horarioFixoId || '')?.enviada && (() => {
+                    const hoje = new Date();
+                    hoje.setHours(0, 0, 0, 0);
+                    const dataAula = new Date(dataSelecionada);
+                    dataAula.setHours(0, 0, 0, 0);
+                    const isAulaFutura = dataAula > hoje;
+                    
+                    return (
+                      <div className="p-4 border-t bg-blue-50">
+                        {isAulaFutura ? (
+                          <div className="text-center py-3 px-4 rounded-md bg-yellow-100 border border-yellow-300 text-yellow-800">
+                            <i className="fas fa-clock mr-2"></i>
+                            Não é possível enviar aulas de datas futuras
+                          </div>
                         ) : (
-                          <>
-                            <i className="fas fa-check-double"></i>
-                            Confirmar e Enviar Aula
-                          </>
+                          <button
+                            onClick={() => enviarAula(horario.horarioFixoId || '')}
+                            disabled={enviandoAula}
+                            className={`w-full py-3 px-4 rounded-md font-bold transition-all flex items-center justify-center gap-2 ${enviandoAula ? 'cursor-not-allowed' : 'shadow-sm hover:opacity-95 active:scale-95'}`}
+                            style={enviandoAula ? { backgroundColor: '#D1D5DB', color: '#6B7280' } : { backgroundColor: horario.modalidade?.cor || '#2563EB', color: '#FFFFFF' }}
+                          >
+                            {enviandoAula ? (
+                              <>
+                                <i className="fas fa-spinner fa-spin"></i>
+                                Enviando Aula...
+                              </>
+                            ) : (
+                              <>
+                                <i className="fas fa-check-double"></i>
+                                Confirmar e Enviar Aula
+                              </>
+                            )}
+                          </button>
                         )}
-                      </button>
-                    </div>
-                  )}
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
             </div>

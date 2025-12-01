@@ -180,7 +180,7 @@ export async function PUT(
   }
 }
 
-// DELETE - Deletar aluno (soft delete)
+// DELETE - Deletar aluno (soft delete ou permanente)
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -189,6 +189,8 @@ export async function DELETE(
     await connectDB();
     
     const { id } = await params;
+    const { searchParams } = new URL(request.url);
+    const permanent = searchParams.get('permanent') === 'true';
 
     // Validar ObjectId
     if (!mongoose.isValidObjectId(id)) {
@@ -199,6 +201,43 @@ export async function DELETE(
         },
         { status: 400 }
       );
+    }
+
+    // Se permanent=true, fazer exclusão permanente do banco
+    if (permanent) {
+      const aluno = await Aluno.findByIdAndDelete(id);
+
+      if (!aluno) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Aluno não encontrado'
+          },
+          { status: 404 }
+        );
+      }
+
+      // Também remover matriculas e limpar horários
+      try {
+        const alunoObjectId = mongoose.Types.ObjectId.isValid(String(id)) ? new mongoose.Types.ObjectId(String(id)) : null;
+        if (alunoObjectId) {
+          // Deletar matriculas permanentemente
+          await Matricula.deleteMany({ alunoId: alunoObjectId });
+          
+          // Limpar referências em horários
+          await HorarioFixo.updateMany(
+            { alunoId: alunoObjectId },
+            { $unset: { alunoId: '' } }
+          );
+        }
+      } catch (e) {
+        console.warn('Erro ao limpar registros relacionados:', e);
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: 'Aluno excluído permanentemente'
+      });
     }
 
     // Soft delete - apenas marca como inativo

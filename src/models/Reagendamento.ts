@@ -17,6 +17,12 @@ export interface IReagendamento {
   aprovadoPor?: mongoose.Types.ObjectId;
   criadoEm?: Date;
   atualizadoEm?: Date;
+  // Reposição de falta - quando true, indica que é uma reposição por falta (não reagendamento preventivo)
+  isReposicao?: boolean;
+  // ID da aula realizada onde a falta foi registrada (para vincular a reposição à falta original)
+  aulaRealizadaId?: mongoose.Types.ObjectId;
+  // ID do aluno (para reposições, identificamos diretamente o aluno)
+  alunoId?: mongoose.Types.ObjectId;
 }
 
 // Schema do Reagendamento
@@ -72,6 +78,19 @@ const ReagendamentoSchema = new Schema<IReagendamento>({
     required: [true, 'Status é obrigatório'],
     enum: ['pendente', 'aprovado', 'rejeitado'],
     default: 'pendente'
+  },
+  isReposicao: { type: Boolean, default: false },
+  // ID da aula realizada onde a falta foi registrada
+  aulaRealizadaId: {
+    type: Schema.Types.ObjectId,
+    ref: 'AulaRealizada',
+    required: false
+  },
+  // ID do aluno (para reposições)
+  alunoId: {
+    type: Schema.Types.ObjectId,
+    ref: 'Aluno',
+    required: false
   },
   aprovadoPor: {
     type: Schema.Types.ObjectId,

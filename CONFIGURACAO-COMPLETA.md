@@ -26,7 +26,7 @@
 ```
 GET/POST     /api/alunos           - Listar/Criar alunos
 GET/PUT/DEL  /api/alunos/[id]      - CRUD por ID
-GET/POST     /api/professores      - Listar/Criar professores
+GET/POST     /api/usuarios         - Listar/Criar usuários (filtrar por tipo 'professor' quando aplicável)
 GET/POST     /api/horarios         - Listar/Criar horários
 GET/POST     /api/reagendamentos   - Listar/Criar reagendamentos
 ```

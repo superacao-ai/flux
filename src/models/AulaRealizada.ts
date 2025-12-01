@@ -120,7 +120,7 @@ const AulaRealizadaSchema = new Schema<IAulaRealizada>(
     professorId: {
       type: Schema.Types.ObjectId,
       ref: 'Professor',
-      required: true,
+      required: false,
     },
     data: {
       type: Date,

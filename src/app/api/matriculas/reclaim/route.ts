@@ -21,8 +21,8 @@ export async function POST(request: NextRequest) {
     const origId = new mongoose.Types.ObjectId(originalMatriculaId);
     const subId = new mongoose.Types.ObjectId(substituteMatriculaId);
 
-    const original = await Matricula.findById(origId).lean();
-    const substitute = await Matricula.findById(subId).lean();
+    const original = await Matricula.findById(origId).lean() as { _id: any; alunoId?: any; horarioFixoId?: any } | null;
+    const substitute = await Matricula.findById(subId).lean() as { _id: any; replacesMatriculaId?: any } | null;
 
     if (!original || !substitute) {
       return NextResponse.json({ success: false, error: 'Matricula original ou substituta não encontrada' }, { status: 404 });

@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useEffect, useState } from 'react';
+import Swal from 'sweetalert2';
+import { toast } from 'react-toastify';
 
 interface Props {
   isOpen: boolean;
@@ -96,7 +98,7 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
   const toggleAlunoCongelado = async () => {
     try {
       const aluno = horario.alunoId || horario.aluno;
-      if (!aluno || !aluno._id) { alert('Aluno não encontrado'); return; }
+      if (!aluno || !aluno._id) { toast.warning('Aluno não encontrado'); return; }
       const alunoId = String(aluno._id);
       const newValue = !alunoCongelado;
 
@@ -143,7 +145,7 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
       await fetchAndRefresh();
     } catch (err: any) {
       console.error('Erro ao atualizar congelado:', err);
-      alert('Erro ao atualizar informação do aluno: ' + (err?.message || 'erro'));
+      toast.error('Erro ao atualizar informação do aluno: ' + (err?.message || 'erro'));
     }
   };
 
@@ -151,7 +153,7 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
   const toggleAlunoAusente = async () => {
     try {
       const aluno = horario.alunoId || horario.aluno;
-      if (!aluno || !aluno._id) { alert('Aluno não encontrado'); return; }
+      if (!aluno || !aluno._id) { toast.warning('Aluno não encontrado'); return; }
       const alunoId = String(aluno._id);
       const newValue = !alunoAusente;
 
@@ -192,7 +194,7 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
       await fetchAndRefresh();
     } catch (err: any) {
       console.error('Erro ao atualizar ausente:', err);
-      alert('Erro ao atualizar informação do aluno: ' + (err?.message || 'erro'));
+      toast.error('Erro ao atualizar informação do aluno: ' + (err?.message || 'erro'));
     }
   };
 
@@ -200,7 +202,7 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
   const toggleAlunoEmEspera = async () => {
     try {
       const aluno = horario.alunoId || horario.aluno;
-      if (!aluno || !aluno._id) { alert('Aluno não encontrado'); return; }
+      if (!aluno || !aluno._id) { toast.warning('Aluno não encontrado'); return; }
       const alunoId = String(aluno._id);
       const newValue = !alunoEmEspera;
 
@@ -241,7 +243,7 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
       await fetchAndRefresh();
     } catch (err: any) {
       console.error('Erro ao atualizar emEspera:', err);
-      alert('Erro ao atualizar informação do aluno: ' + (err?.message || 'erro'));
+      toast.error('Erro ao atualizar informação do aluno: ' + (err?.message || 'erro'));
     }
   };
 
@@ -249,7 +251,7 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
   const handleForceUnfreeze = async () => {
     try {
       const aluno = horario.alunoId || horario.aluno;
-      if (!aluno || !aluno._id) { alert('Aluno não encontrado'); return; }
+      if (!aluno || !aluno._id) { toast.warning('Aluno não encontrado'); return; }
       setConflictLoading(true);
       const resp = await fetch(`/api/alunos/${aluno._id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ congelado: false, forceUnfreeze: true }) });
       const data = await resp.json();
@@ -263,7 +265,7 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
       await fetchAndRefresh();
     } catch (err: any) {
       console.error('Erro ao forçar descongelar:', err);
-      alert('Erro ao forçar descongelar: ' + (err?.message || 'erro'));
+      toast.error('Erro ao forçar descongelar: ' + (err?.message || 'erro'));
     } finally {
       setConflictLoading(false);
     }
@@ -272,8 +274,9 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
   // Handle reclaiming a vacancy by removing the substitute matricula and unfreezing original (server does both)
   const handleReclaim = async (sub: any) => {
     try {
-      if (!sub || !sub._id || !sub.replacesMatriculaId) { alert('Dados inválidos da substituição'); return; }
-      if (!confirm('Reaver esta vaga removerá o substituto e reativará o aluno original. Continuar?')) return;
+      if (!sub || !sub._id || !sub.replacesMatriculaId) { toast.warning('Dados inválidos da substituição'); return; }
+      const confirmResult = await Swal.fire({ title: 'Reaver vaga?', text: 'Isso removerá o substituto e reativará o aluno original.', icon: 'warning', showCancelButton: true, confirmButtonColor: '#3085d6', cancelButtonColor: '#d33', confirmButtonText: 'Sim, reaver', cancelButtonText: 'Cancelar' });
+      if (!confirmResult.isConfirmed) return;
       setConflictLoading(true);
       const resp = await fetch('/api/matriculas/reclaim', {
         method: 'POST',
@@ -282,13 +285,13 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
       });
       const data = await resp.json();
       if (!resp.ok || !data || !data.success) throw new Error(data?.error || 'Erro ao reaver vaga');
-      alert('Vaga reavida com sucesso. Aluno original reativado.');
+      toast.success('Vaga reavida com sucesso. Aluno original reativado.');
       setShowConflictModal(false);
       setConflictSubstitutes(null);
       await fetchAndRefresh();
     } catch (err: any) {
       console.error('Erro ao reaver vaga:', err);
-      alert('Erro ao reaver vaga: ' + (err?.message || 'erro'));
+      toast.error('Erro ao reaver vaga: ' + (err?.message || 'erro'));
     } finally {
       setConflictLoading(false);
     }
@@ -298,7 +301,7 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
     if (typeof newObservacoes === 'undefined') return;
     try {
       const aluno = horario.alunoId || horario.aluno;
-      if (!aluno || !aluno._id) { alert('Aluno não encontrado'); return; }
+      if (!aluno || !aluno._id) { toast.warning('Aluno não encontrado'); return; }
       
       const alunoId = String(aluno._id);
       const resp = await fetch(`/api/alunos/${alunoId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ observacoes: newObservacoes }) });
@@ -313,16 +316,17 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
         }
         await fetchAndRefresh();
       } else {
-        alert('Erro ao atualizar observações: ' + (data.error || 'erro'));
+        toast.error('Erro ao atualizar observações: ' + (data.error || 'erro'));
       }
     } catch (err) {
       console.error('Erro ao atualizar observações:', err);
-      alert('Erro ao atualizar observações');
+      toast.error('Erro ao atualizar observações');
     }
   };
 
   const deleteHorario = async (id: string) => {
-    if (!confirm('Tem certeza que deseja excluir este horário?')) return;
+    const confirmResult = await Swal.fire({ title: 'Excluir horário?', text: 'Tem certeza que deseja excluir este horário?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#d33', cancelButtonColor: '#6b7280', confirmButtonText: 'Sim, excluir', cancelButtonText: 'Cancelar' });
+    if (!confirmResult.isConfirmed) return;
     try {
       const response = await fetch(`/api/horarios/${id}`, {
         method: 'DELETE',
@@ -330,24 +334,25 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
 
       const data = await response.json();
       if (data.success) {
+        toast.success('Horário excluído com sucesso');
         await fetchAndRefresh();
         onClose();
       } else {
-        alert('Erro ao excluir horário');
+        toast.error('Erro ao excluir horário');
       }
     } catch (error) {
       console.error('Erro ao excluir horário:', error);
-      alert('Erro ao excluir horário');
+      toast.error('Erro ao excluir horário');
     }
   };
 
   const editAlunoName = async (horarioObj: any) => {
     try {
       const aluno = horarioObj?.alunoId;
-      if (!aluno || !aluno._id) { alert('Aluno não encontrado para este horário'); return; }
+      if (!aluno || !aluno._id) { toast.warning('Aluno não encontrado para este horário'); return; }
       const current = String(aluno.nome || '');
       const novo = modalEditName;
-      if (!novo || novo.trim() === '') { alert('Nome não pode ficar vazio'); return; }
+      if (!novo || novo.trim() === '') { toast.warning('Nome não pode ficar vazio'); return; }
       const resp = await fetch(`/api/alunos/${aluno._id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nome: novo.trim() }) });
       const data = await resp.json();
       if (data && data.success) {
@@ -360,11 +365,11 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
         }
         await fetchAndRefresh();
       } else {
-        alert('Erro ao atualizar aluno: ' + (data && data.error ? data.error : 'erro'));
+        toast.error('Erro ao atualizar aluno: ' + (data && data.error ? data.error : 'erro'));
       }
     } catch (err) {
       console.error('Erro ao editar aluno:', err);
-      alert('Erro ao editar aluno');
+      toast.error('Erro ao editar aluno');
     }
   };
 
@@ -380,7 +385,7 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
       }
     } catch (err) {
       console.error('Erro ao carregar alunos:', err);
-      alert('Erro ao carregar lista de alunos');
+      toast.error('Erro ao carregar lista de alunos');
     } finally {
       setLoadingAlunos(false);
     }
@@ -393,11 +398,12 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
 
   const mergeStudent = async () => {
     if (!selectedAlunoToMerge) {
-      alert('Selecione um aluno para vincular');
+      toast.warning('Selecione um aluno para vincular');
       return;
     }
 
-    if (!confirm(`Tem certeza que deseja vincular todos os horários deste aluno ao selecionado? Esta ação não pode ser desfeita.`)) {
+    const confirmResult = await Swal.fire({ title: 'Vincular aluno?', text: 'Tem certeza que deseja vincular todos os horários deste aluno ao selecionado? Esta ação não pode ser desfeita.', icon: 'warning', showCancelButton: true, confirmButtonColor: '#3085d6', cancelButtonColor: '#d33', confirmButtonText: 'Sim, vincular', cancelButtonText: 'Cancelar' });
+    if (!confirmResult.isConfirmed) {
       return;
     }
 
@@ -417,17 +423,17 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
 
       const data = await resp.json();
       if (data && data.success) {
-        alert(`Sucesso! ${data.data.updatedCount || 0} horário(s) vinculado(s).`);
+        toast.success(`Sucesso! ${data.data.updatedCount || 0} horário(s) vinculado(s).`);
         setShowMergeModal(false);
         setSelectedAlunoToMerge(null);
         await fetchAndRefresh();
         onClose();
       } else {
-        alert('Erro ao vincular alunos: ' + (data.error || 'erro'));
+        toast.error('Erro ao vincular alunos: ' + (data.error || 'erro'));
       }
     } catch (err) {
       console.error('Erro ao vincular alunos:', err);
-      alert('Erro ao vincular alunos');
+      toast.error('Erro ao vincular alunos');
     } finally {
       setLoadingAlunos(false);
     }
@@ -437,7 +443,7 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
   const toggleAlunoPeriodo = async () => {
     try {
       const aluno = horario.alunoId || horario.aluno;
-      if (!aluno || !aluno._id) { alert('Aluno não encontrado'); return; }
+      if (!aluno || !aluno._id) { toast.warning('Aluno não encontrado'); return; }
       const alunoId = String(aluno._id);
       const newValue = alunoPeriodo === '12/36' ? null : '12/36';
       
@@ -454,7 +460,7 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
       await fetchAndRefresh();
     } catch (err: any) {
       console.error('Erro ao atualizar periodoTreino:', err);
-      alert('Erro ao atualizar informação do aluno: ' + (err?.message || 'erro'));
+      toast.error('Erro ao atualizar informação do aluno: ' + (err?.message || 'erro'));
     }
   };
 
@@ -462,7 +468,7 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
   const toggleAlunoParceria = async () => {
     try {
       const aluno = horario.alunoId || horario.aluno;
-      if (!aluno || !aluno._id) { alert('Aluno não encontrado'); return; }
+      if (!aluno || !aluno._id) { toast.warning('Aluno não encontrado'); return; }
       const alunoId = String(aluno._id);
       const newValue = alunoParceria === 'TOTALPASS' ? null : 'TOTALPASS';
 
@@ -479,7 +485,7 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
       await fetchAndRefresh();
     } catch (err: any) {
       console.error('Erro ao atualizar parceria:', err);
-      alert('Erro ao atualizar informação do aluno: ' + (err?.message || 'erro'));
+      toast.error('Erro ao atualizar informação do aluno: ' + (err?.message || 'erro'));
     }
   };
 
@@ -639,7 +645,7 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
                     }
                     await updateAlunoObservacoes(modalEditObservacoes);
                     setModalEditing(false);
-                  } catch (e) { console.error(e); alert('Erro ao salvar edições'); }
+                  } catch (e) { console.error(e); toast.error('Erro ao salvar edições'); }
                 }} 
                 className="px-4 h-10 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 transition-colors text-sm font-medium flex items-center gap-2"
               >
@@ -665,7 +671,7 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
                 <span>Editar</span>
               </button>
               <button 
-                onClick={() => { if (confirm('Tem certeza que deseja remover este aluno da turma?')) { deleteHorario(horario._id); } }} 
+                onClick={() => { deleteHorario(horario._id); }} 
                 className="px-4 h-10 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors text-sm font-medium flex items-center gap-2"
               >
                 <i className="fas fa-trash" />

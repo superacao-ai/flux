@@ -9,6 +9,7 @@ export interface IPresenca extends Document {
   observacoes?: string;
   registradoEm: Date;
   registradoPor: mongoose.Types.ObjectId;
+  compensadaPor?: mongoose.Types.ObjectId;
 }
 
 const PresencaSchema = new Schema<IPresenca>(
@@ -48,6 +49,12 @@ const PresencaSchema = new Schema<IPresenca>(
       type: Schema.Types.ObjectId,
       ref: 'User',
       required: true,
+    },
+    // Se esta falta foi compensada por uma reposição (reagendamento) armazenar referência
+    compensadaPor: {
+      type: Schema.Types.ObjectId,
+      ref: 'Reagendamento',
+      default: null,
     },
   },
   {

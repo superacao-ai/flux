@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
       }
 
       const replacedId = new mongoose.Types.ObjectId(replacesMatriculaId);
-      const originalMat = await Matricula.findById(replacedId).lean();
+      const originalMat = await Matricula.findById(replacedId).lean() as { _id: any; horarioFixoId?: any; alunoId?: any } | null;
       if (!originalMat) {
         return NextResponse.json({ success: false, error: 'Matricula original não encontrada' }, { status: 404 });
       }
@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
       // Optional safety: ensure original aluno is congelado or inactive
       // We consider it safer to allow substitute only when original is congelado
       const AlunoModel = mongoose.model('Aluno');
-      const originalAluno = await AlunoModel.findById(originalMat.alunoId).lean();
+      const originalAluno = await AlunoModel.findById(originalMat.alunoId).lean() as { congelado?: boolean } | null;
       if (originalAluno && !originalAluno.congelado) {
         return NextResponse.json({ success: false, error: 'Aluno original não está congelado; não é permitido criar substituto' }, { status: 400 });
       }

@@ -6,8 +6,13 @@ export interface IUser {
   nome: string;
   email: string;
   senha: string;
-  tipo: 'admin' | 'professor';
+  tipo: 'admin' | 'professor' | 'root';
   ativo: boolean;
+  abas?: string[];
+  telefone?: string;
+  cor?: string;
+  especialidades?: string[];
+  modalidadeId?: string | null;
   criadoEm?: Date;
   atualizadoEm?: Date;
 }
@@ -36,12 +41,37 @@ const UserSchema = new Schema<IUser>({
   tipo: {
     type: String,
     required: [true, 'Tipo de usuário é obrigatório'],
-    enum: ['admin', 'professor'],
+    enum: ['admin', 'professor', 'root'],
     default: 'professor'
   },
   ativo: {
     type: Boolean,
     default: true
+  }
+  ,
+  abas: {
+    type: [String],
+    default: []
+  },
+  telefone: {
+    type: String,
+    trim: true,
+    default: ''
+  },
+  especialidades: [{
+    type: Schema.Types.ObjectId,
+    ref: 'Especialidade',
+    default: []
+  }],
+  modalidadeId: {
+    type: Schema.Types.ObjectId,
+    ref: 'Modalidade',
+    default: null
+  },
+  cor: {
+    type: String,
+    trim: true,
+    default: ''
   }
 }, {
   timestamps: { createdAt: 'criadoEm', updatedAt: 'atualizadoEm' }

@@ -68,7 +68,9 @@ export async function POST(request: NextRequest) {
       id: user._id,
       nome: user.nome,
       email: user.email,
-      tipo: user.tipo
+      tipo: user.tipo,
+      abas: user.abas || [],
+      cor: user.cor || '#3B82F6'
     };
 
     // Return token in an HttpOnly cookie (so middleware / server-side checks can use it)

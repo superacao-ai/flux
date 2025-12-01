@@ -61,14 +61,31 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 });
     }
 
-    let professor;
-    if (user.role !== 'ADM') {
-      professor = await Professor.findOne({ email: user.email });
-      if (!professor) {
-        return NextResponse.json(
-          { error: 'Apenas professores e administradores podem enviar aulas' },
-          { status: 403 }
-        );
+    // Verificar se é admin/root ou professor
+    const isAdmin = user.tipo === 'admin' || user.tipo === 'root';
+    const isProfessor = user.tipo === 'professor';
+    
+    if (!isAdmin && !isProfessor) {
+      return NextResponse.json(
+        { error: 'Apenas professores e administradores podem enviar aulas' },
+        { status: 403 }
+      );
+    }
+
+    // Se for professor, buscar o documento Professor pelo email
+    let professorId = null;
+    if (isProfessor && user.email) {
+      const professor = await Professor.findOne({ email: user.email, ativo: true });
+      if (professor) {
+        professorId = professor._id;
+        console.log('[POST /api/aulas-realizadas] Professor encontrado:', { 
+          email: user.email, 
+          nome: professor.nome, 
+          _id: professorId 
+        });
+      } else {
+        console.warn('[POST /api/aulas-realizadas] Professor não encontrado na collection Professor:', user.email);
+        console.warn('[POST /api/aulas-realizadas] A aula será registrada sem professorId. Cadastre o professor na aba Professores.');
       }
     }
 
@@ -78,9 +95,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Horário não encontrado' }, { status: 404 });
     }
 
-    // Normalizar data
+    // Normalizar data para UTC
     const dataNormalizada = new Date(data);
-    dataNormalizada.setHours(0, 0, 0, 0);
+    dataNormalizada.setUTCHours(0, 0, 0, 0);
 
     // Buscar alunos da aula (matriculas)
     const matriculas = await Matricula.find({
@@ -171,10 +188,17 @@ export async function POST(request: NextRequest) {
       todosAlunos_count: todosAlunos.length,
     });
 
+    // Remover qualquer aula pendente para o mesmo horário/data
+    await AulaRealizada.deleteMany({
+      horarioFixoId,
+      data: dataNormalizada,
+      status: 'pendente'
+    });
+
     // Criar AulaRealizada
     const aulaRealizada = await AulaRealizada.create({
       horarioFixoId,
-      professorId: professor?._id,
+      professorId: professorId,
       data: dataNormalizada,
       diaSemana: horario.diaSemana,
       modalidade: (horario.modalidadeId as any)?.nome || '',
@@ -262,9 +286,8 @@ export async function GET(request: NextRequest) {
     // Se pedir para listar todas (para relatórios)
     if (listarTodas === 'true') {
       const todasAulas = await AulaRealizada.find({})
-        .populate('professorId', 'nome email')
-        .sort({ data: -1 })
-        .lean();
+        .populate('professorId', 'nome email cor _id')
+        .sort({ data: -1 });
 
       return NextResponse.json(todasAulas);
     }
@@ -278,7 +301,7 @@ export async function GET(request: NextRequest) {
     }
 
     const dataNormalizada = new Date(data);
-    dataNormalizada.setHours(0, 0, 0, 0);
+    dataNormalizada.setUTCHours(0, 0, 0, 0);
 
     const aulaRealizada = await AulaRealizada.findOne({
       horarioFixoId,

@@ -17,7 +17,7 @@ export async function PUT(
     const { status } = body;
 
     // Validações
-    if (!status || !['aprovado', 'rejeitado'].includes(status)) {
+    if (!status || !['aprovado', 'rejeitado', 'pendente'].includes(status)) {
       return NextResponse.json(
         {
           success: false,
@@ -92,20 +92,9 @@ export async function PUT(
 
         if (!target) throw new Error('NO_TARGET_FOUND');
 
-        // Move a matrícula real do aluno para a turma destino
-        const matriculaId = (reagendamento as any).matriculaId;
-        const alunoId = reagendamento.horarioFixoId && reagendamento.horarioFixoId.alunoId ? reagendamento.horarioFixoId.alunoId._id || reagendamento.horarioFixoId.alunoId : null;
-        if (matriculaId && target && alunoId) {
-          const { Matricula } = await import('@/models/Matricula');
-          // Desativa a matrícula anterior
-          await Matricula.findByIdAndUpdate(matriculaId, { ativo: false });
-          // Cria nova matrícula na turma destino, se não existir
-          const exists = await Matricula.findOne({ horarioFixoId: target._id, alunoId: alunoId, ativo: true });
-          if (!exists) {
-            const novaMatricula = new Matricula({ horarioFixoId: target._id, alunoId: alunoId, ativo: true });
-            await novaMatricula.save();
-          }
-        }
+        // NOTA: Reagendamentos são temporários (para uma data específica)
+        // O aluno permanece na turma de origem e a lógica de exibição no calendário
+        // controla quando ele aparece cinza (origem) e quando aparece no destino
         reagendamento.status = 'aprovado';
         await reagendamento.save();
 
@@ -142,6 +131,12 @@ export async function PUT(
         }
         return NextResponse.json({ success: false, error: 'Erro interno ao aprovar reagendamento' }, { status: 500 });
       }
+    } else if (status === 'pendente') {
+      // Voltando para pendente (desaprovando)
+      // Reagendamentos são temporários, não há matrícula para reverter
+      reagendamento.status = 'pendente';
+      reagendamento.aprovadoPor = undefined;
+      await reagendamento.save();
     } else {
       // For 'rejeitado' we still update status
       reagendamento.status = status as any;
@@ -186,37 +181,8 @@ export async function DELETE(
       );
     }
 
-    // Se o reagendamento foi aprovado e houve movimentação de matrícula, reverter
-    if (reagendamento.status === 'aprovado') {
-      const matriculaId = (reagendamento as any).matriculaId;
-      const horarioOriginalId = (reagendamento as any).horarioFixoId;
-      
-      if (matriculaId && horarioOriginalId) {
-        const { Matricula } = await import('@/models/Matricula');
-        
-        // Buscar a matrícula original (desativada) e reativar
-        const matriculaOriginal = await Matricula.findById(matriculaId);
-        if (matriculaOriginal && !matriculaOriginal.ativo) {
-          matriculaOriginal.ativo = true;
-          await matriculaOriginal.save();
-        }
-        
-        // Buscar e desativar a matrícula criada na turma destino
-        const novoHorarioFixoId = (reagendamento as any).novoHorarioFixoId;
-        if (novoHorarioFixoId && matriculaOriginal) {
-          const matriculaDestino = await Matricula.findOne({
-            horarioFixoId: novoHorarioFixoId,
-            alunoId: matriculaOriginal.alunoId,
-            ativo: true
-          });
-          
-          if (matriculaDestino) {
-            matriculaDestino.ativo = false;
-            await matriculaDestino.save();
-          }
-        }
-      }
-    }
+    // NOTA: Reagendamentos são temporários, não há matrícula para reverter
+    // O aluno permanece na turma de origem
 
     // Excluir o reagendamento
     await Reagendamento.findByIdAndDelete(id);

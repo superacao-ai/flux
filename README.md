@@ -167,7 +167,7 @@ O projeto utiliza Tailwind CSS com uma paleta de cores personalizada:
 ### APIs Disponíveis:
 - `GET/POST /api/alunos` - CRUD de alunos
 - `GET/PUT/DELETE /api/alunos/[id]` - Operações por ID
-- `GET/POST /api/professores` - CRUD de professores
+- `GET/POST /api/usuarios` - CRUD de usuários (filtrar `tipo==='professor'` para obter professores)
 - `GET/POST /api/horarios` - CRUD de horários
 - `GET/POST /api/reagendamentos` - CRUD de reagendamentos
 

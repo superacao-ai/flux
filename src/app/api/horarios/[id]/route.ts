@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import { HorarioFixo } from '@/models/HorarioFixo';
+import { User } from '@/models/User';
 import { Aluno } from '@/models/Aluno';
 import mongoose from 'mongoose';
 
@@ -22,7 +23,8 @@ export async function GET(
 
     const horario = await HorarioFixo.findById(id)
       .populate('alunoId', 'nome email periodoTreino parceria observacoes congelado ausente emEspera')
-      .populate('professorId', 'nome especialidade');
+      .populate('professorId', 'nome especialidade')
+      .lean();
 
     if (!horario) {
       return NextResponse.json(
@@ -32,7 +34,21 @@ export async function GET(
     }
 
     // Garantir que os campos booleanos sempre existem - LENDO DO ALUNO
-    const horarioData = horario.toObject ? horario.toObject() : horario;
+    const horarioData: any = horario; // already .lean() above
+    // If professorId lacks nome, try resolving from User collection
+    try {
+      const p = horarioData && horarioData.professorId;
+      const pid = p && (p._id || p) ? String(p._id || p) : '';
+      if (pid && (!(p && typeof p === 'object' && (p.nome || p.nome === '')))) {
+        const u: any = await User.findById(pid).select('nome cor tipo').lean();
+        if (u) {
+          const ua: any = u;
+          horarioData.professorId = { _id: pid, nome: ua.nome, cor: ua.cor || '#3B82F6', tipo: ua.tipo };
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
     const alunoData = horarioData.alunoId || {};
     const enrichedHorario = {
       ...horarioData,
@@ -159,14 +175,14 @@ export async function PATCH(
       return NextResponse.json({ success: false, error: 'Horário não encontrado' }, { status: 404 });
     }
 
-  const horarioPop = await HorarioFixo.findById(horario._id).populate('alunoId', 'nome email periodoTreino parceria observacoes congelado ausente emEspera').populate('professorId', 'nome especialidade');
+  const horarioPop = await HorarioFixo.findById(horario._id).populate('alunoId', 'nome email periodoTreino parceria observacoes congelado ausente emEspera').populate('professorId', 'nome especialidade').lean();
 
   // Debug: verificar se os valores estão no banco
   console.log('PATCH /api/horarios/[id] - Após populate:', {
-    _id: horarioPop?._id,
-    congelado: horarioPop?.congelado,
-    ausente: horarioPop?.ausente,
-    emEspera: horarioPop?.emEspera
+    _id: (horarioPop as any)?._id,
+    congelado: (horarioPop as any)?.congelado,
+    ausente: (horarioPop as any)?.ausente,
+    emEspera: (horarioPop as any)?.emEspera
   });
 
   // Also fetch a plain JS object (lean) and the raw collection document to verify persistence
@@ -178,7 +194,23 @@ export async function PATCH(
   } catch (e) {}
 
   // Garantir que os campos booleanos sempre existem - LENDO DO ALUNO
-  const horarioData = horarioPop?.toObject ? horarioPop.toObject() : horarioPop;
+  let horarioData: any = horarioPop;
+  // horarioPop is lean() so it's a plain object
+  // If professorId lacks nome, try resolving from User collection
+  try {
+    const p = horarioData && horarioData.professorId;
+    const pid = p && (p._id || p) ? String(p._id || p) : '';
+    if (pid && (!(p && typeof p === 'object' && (p.nome || p.nome === '')))) {
+      const u: any = await User.findById(pid).select('nome cor tipo').lean();
+      if (u) {
+        const ua: any = u;
+        horarioData.professorId = { _id: pid, nome: ua.nome, cor: ua.cor || '#3B82F6', tipo: ua.tipo };
+      }
+    }
+  } catch (e) {
+    // ignore
+  }
+
   const alunoData = horarioData?.alunoId || {};
   const enrichedHorario = {
     ...horarioData,

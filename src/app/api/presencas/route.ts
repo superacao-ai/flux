@@ -60,6 +60,22 @@ export async function GET(request: NextRequest) {
       query.professorId = professorId;
     }
 
+    console.log('🔍 Presencas GET URL:', request.url);
+    console.log('🔍 Query usada:', JSON.stringify(query));
+    console.log('🔍 token userId:', payload && payload.userId ? payload.userId : 'no-user');
+
+    // Debug: count and sample raw documents before populate to understand why result might be empty
+    try {
+      const rawCount = await Presenca.countDocuments(query);
+      console.log('🔎 Presenca raw countDocuments:', rawCount);
+      if (rawCount > 0) {
+        const sample = await Presenca.find(query).limit(5).lean();
+        console.log('🔎 Presenca sample docs:', sample);
+      }
+    } catch (err) {
+      console.warn('Erro ao contar/amostrar presencas:', err);
+    }
+
     const presencas = await Presenca.find(query)
       .populate('alunoId', 'nome email')
       .populate('horarioFixoId', 'horarioInicio horarioFim diaSemana')
@@ -68,8 +84,7 @@ export async function GET(request: NextRequest) {
       .sort({ data: -1 })
       .lean();
 
-    console.log('🔍 Query usada:', JSON.stringify(query));
-    console.log('📊 Total de presenças encontradas:', presencas.length);
+    console.log('📊 Total de presenças encontradas (populated):', presencas.length);
 
     return NextResponse.json(presencas);
   } catch (error: any) {

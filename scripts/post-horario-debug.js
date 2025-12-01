@@ -4,8 +4,10 @@
     // pick an existing aluno and professor from the API lists
     const alunosRes = await fetch(base + '/api/alunos');
     const alunos = await alunosRes.json();
-    const professoresRes = await fetch(base + '/api/professores');
-    const professores = await professoresRes.json();
+    const professoresRes = await fetch(base + '/api/usuarios');
+    const usuarios = await professoresRes.json();
+    // pick first user with tipo === 'professor'
+    const professores = { data: (usuarios.data || []).filter(u => String(u.tipo || '').toLowerCase() === 'professor') };
     const aluno = (alunos.data || [])[0];
     const prof = (professores.data || [])[0];
     if(!aluno || !prof) { console.error('missing aluno or professor'); process.exit(1); }

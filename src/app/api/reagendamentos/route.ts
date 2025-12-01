@@ -40,8 +40,20 @@ export async function GET(request: NextRequest) {
         }
       })
       .populate('aprovadoPor', 'nome')
+      .populate('alunoId', 'nome email')
       .sort({ criadoEm: -1 })
       .select('-__v');
+    
+    // Debug: log reagendamentos com isReposicao
+    const reposicoes = reagendamentos.filter((r: any) => r.isReposicao === true);
+    if (reposicoes.length > 0) {
+      console.log('[API Reagendamentos] Reposições encontradas:', reposicoes.map((r: any) => ({
+        _id: r._id,
+        isReposicao: r.isReposicao,
+        alunoId: r.alunoId,
+        motivo: r.motivo?.substring(0, 50)
+      })));
+    }
     
     return NextResponse.json({
       success: true,
@@ -65,7 +77,22 @@ export async function POST(request: NextRequest) {
     await connectDB();
     
   const body = await request.json();
-  const { horarioFixoId, dataOriginal, novaData, novoHorarioInicio, novoHorarioFim, motivo, novoHorarioFixoId, matriculaId } = body;
+  const { 
+    horarioFixoId, 
+    dataOriginal, 
+    novaData, 
+    novoHorarioInicio, 
+    novoHorarioFim, 
+    motivo, 
+    novoHorarioFixoId, 
+    matriculaId,
+    // Campos de reposição
+    isReposicao,
+    aulaRealizadaId,
+    alunoId,
+    // Status pode ser passado para aprovar automaticamente (admin)
+    status: statusFromBody
+  } = body;
 
     // Validações básicas
     if (!horarioFixoId || !dataOriginal || !novaData || !novoHorarioInicio || !novoHorarioFim || !motivo) {
@@ -112,6 +139,54 @@ export async function POST(request: NextRequest) {
     };
     if (novoHorarioFixoId) novoReagendamentoData.novoHorarioFixoId = novoHorarioFixoId;
     if (matriculaId) novoReagendamentoData.matriculaId = matriculaId;
+    
+    // Campos de reposição de falta
+    if (isReposicao) {
+      novoReagendamentoData.isReposicao = true;
+      if (aulaRealizadaId) novoReagendamentoData.aulaRealizadaId = aulaRealizadaId;
+      if (alunoId) novoReagendamentoData.alunoId = alunoId;
+      
+      // Validar prazo de 7 dias para reposição
+      const dataFalta = new Date(dataOriginal);
+      dataFalta.setHours(0, 0, 0, 0);
+      const prazoFinal = new Date(dataFalta);
+      prazoFinal.setDate(prazoFinal.getDate() + 7);
+      
+      const dataReposicao = new Date(novaData);
+      dataReposicao.setHours(0, 0, 0, 0);
+      
+      if (dataReposicao > prazoFinal) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'O prazo de 7 dias para solicitar reposição expirou'
+          },
+          { status: 400 }
+        );
+      }
+      
+      // Verificar se já existe reposição pendente ou aprovada para esta aula/aluno
+      if (aulaRealizadaId && alunoId) {
+        const reposicaoExistente = await Reagendamento.findOne({
+          aulaRealizadaId,
+          alunoId,
+          isReposicao: true,
+          status: { $in: ['pendente', 'aprovado'] }
+        });
+        
+        if (reposicaoExistente) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: reposicaoExistente.status === 'aprovado' 
+                ? 'Esta falta já foi reposta' 
+                : 'Já existe uma solicitação de reposição pendente para esta falta'
+            },
+            { status: 400 }
+          );
+        }
+      }
+    }
 
     // populate professorOrigemId from HorarioFixo to keep origin audit
     try {
@@ -124,9 +199,19 @@ export async function POST(request: NextRequest) {
       console.warn('Não foi possível popular professorOrigemId ao criar reagendamento:', e && (e as any).message ? (e as any).message : e);
     }
 
+    // Reposições de falta são aprovadas automaticamente (feitas pelo admin/professor)
+    // Também aprovar automaticamente se o status 'aprovado' foi passado no body (admin criando reagendamento)
+    if (isReposicao || statusFromBody === 'aprovado') {
+      novoReagendamentoData.status = 'aprovado';
+    }
+
     const novoReagendamento = new Reagendamento(novoReagendamentoData);
 
     const reagendamentoSalvo = await novoReagendamento.save();
+
+    // NOTA: Reagendamentos são temporários (para uma data específica)
+    // O aluno permanece na turma de origem e a lógica de exibição no calendário
+    // controla quando ele aparece cinza (origem) e quando aparece no destino
     
     // Buscar com populate para retornar dados completos
     const reagendamentoCompleto = await Reagendamento.findById(reagendamentoSalvo._id)
@@ -157,7 +242,7 @@ export async function POST(request: NextRequest) {
       {
         success: true,
         data: reagendamentoCompleto,
-        message: 'Reagendamento solicitado com sucesso'
+        message: 'Reagendamento criado com sucesso'
       },
       { status: 201 }
     );

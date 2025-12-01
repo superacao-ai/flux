@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
-import AulaRealizada from '@/models/aularealizada';
-import ReagendamentoRealizado from '@/models/reagendamentorealizado';
+import AulaRealizada from '@/models/AulaRealizada';
+import ReagendamentoRealizado from '@/models/ReagendamentoRealizado';
 import mongoose from 'mongoose';
 
 // GET /api/alunos/reposicoes?ids=<comma-separated-alunoIds>

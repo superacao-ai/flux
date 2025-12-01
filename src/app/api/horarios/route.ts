@@ -3,6 +3,7 @@ import connectDB from '@/lib/mongodb';
 import { HorarioFixo } from '@/models/HorarioFixo';
 import { Matricula } from '@/models/Matricula';
 import { Modalidade } from '@/models/Modalidade';
+import { User } from '@/models/User';
 import mongoose from 'mongoose';
 import fs from 'fs';
 import path from 'path';
@@ -32,10 +33,52 @@ export async function GET(request: NextRequest) {
         },
         options: { strictPopulate: false }
       })
-      .populate('professorId', 'nome especialidade cor')
+      // NÃO popular professorId aqui - o ref aponta para 'Professor' mas o ID é de User
+      // Vamos resolver manualmente depois
       .populate('modalidadeId', 'nome cor limiteAlunos')
       .sort({ diaSemana: 1, horarioInicio: 1 })
       .lean();
+
+    // Resolver professorId manualmente via User collection (já que os IDs são de users, não de professors)
+    try {
+      const allProfIds = new Set<string>();
+      for (const h of horarios as any[]) {
+        if (h.professorId) {
+          const pid = typeof h.professorId === 'string' ? h.professorId : String(h.professorId);
+          if (pid && pid !== 'null' && pid !== 'undefined') {
+            allProfIds.add(pid);
+          }
+        }
+      }
+      
+      if (allProfIds.size > 0) {
+        const profUsers = await User.find({ _id: { $in: Array.from(allProfIds) } })
+          .select('nome especialidade cor email')
+          .lean();
+        
+        const profMap = new Map<string, any>();
+        for (const u of profUsers) {
+          profMap.set(String(u._id), u);
+        }
+        
+        console.log(`[/api/horarios] Resolvendo ${allProfIds.size} professor(es) via User:`, 
+          profUsers.map(u => ({ _id: u._id, nome: u.nome })));
+        
+        // Substituir professorId pelo objeto populado
+        horarios = (horarios as any[]).map(h => {
+          if (h.professorId) {
+            const pid = typeof h.professorId === 'string' ? h.professorId : String(h.professorId);
+            const prof = profMap.get(pid);
+            if (prof) {
+              h.professorId = prof;
+            }
+          }
+          return h;
+        });
+      }
+    } catch (profErr: any) {
+      console.warn('[/api/horarios] Erro ao resolver professores via User:', String(profErr?.message || profErr));
+    }
 
     // Debug: log primeiro horário para verificar campos
     if (horarios.length > 0) {
@@ -48,6 +91,13 @@ export async function GET(request: NextRequest) {
         'aluno.emEspera': firstH.alunoId?.emEspera,
         periodoTreino: firstH.alunoId?.periodoTreino,
         parceria: firstH.alunoId?.parceria
+      });
+      console.log('[/api/horarios] professorId do primeiro horário:', {
+        raw: firstH.professorId,
+        type: typeof firstH.professorId,
+        isObject: firstH.professorId && typeof firstH.professorId === 'object',
+        nome: firstH.professorId?.nome,
+        _id: firstH.professorId?._id
       });
       
       // Log de TODOS os horários com flags ativas DO ALUNO
@@ -452,6 +502,16 @@ export async function POST(request: NextRequest) {
 
     const novoHorario = new HorarioFixo(payload);
 
+    console.log('🔍 Payload antes de salvar:', JSON.stringify({
+      professorId: payload.professorId,
+      diaSemana: payload.diaSemana,
+      horarioInicio: payload.horarioInicio,
+      horarioFim: payload.horarioFim,
+      modalidadeId: payload.modalidadeId,
+      alunoId: payload.alunoId
+    }));
+    console.log('🔍 novoHorario.professorId antes de save:', novoHorario.professorId);
+
     // Diagnostic logging: if a HorarioFixo is being created with an alunoId, log caller info
     try {
       if (payload.alunoId) {
@@ -540,10 +600,26 @@ export async function POST(request: NextRequest) {
     }
     
     // Buscar com populate para retornar dados completos
-    const horarioCompleto = await HorarioFixo.findById(horarioSalvo._id)
+    let horarioCompleto: any = await HorarioFixo.findById(horarioSalvo._id)
       .populate('alunoId', 'nome email periodoTreino parceria observacoes')
       .populate('professorId', 'nome especialidade cor')
-      .select('-__v');
+      .select('-__v')
+      .lean();
+
+    // If professorId was not populated via Professor model, try resolving from User
+    try {
+      const p = horarioCompleto && horarioCompleto.professorId;
+      const pid = p && (p._id || p) ? String(p._id || p) : '';
+      if (pid && (!(p && typeof p === 'object' && (p.nome || p.nome === '')))) {
+        const u: any = await User.findById(pid).select('nome cor tipo').lean();
+        if (u) {
+          const ua: any = u;
+          horarioCompleto.professorId = { _id: pid, nome: ua.nome, cor: ua.cor || '#3B82F6', tipo: ua.tipo };
+        }
+      }
+    } catch (e) {
+      // ignore resolution errors
+    }
 
     return NextResponse.json(
       {

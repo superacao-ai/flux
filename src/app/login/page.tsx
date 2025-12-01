@@ -10,6 +10,7 @@ export default function LoginPage() {
   const [erro, setErro] = useState('');
   const [carregando, setCarregando] = useState(false);
   const [remember, setRemember] = useState(false);
+  const [mostrarSenha, setMostrarSenha] = useState(false);
   const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -38,87 +39,206 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-700 via-primary-900 to-gray-900 flex items-center justify-center p-0">
-      {/* Esquerda: Informativo profissional, sem logo */}
-      <div className="hidden lg:flex w-1/2 flex-col justify-center items-center px-12 py-16 from-primary-800 to-primary-950 text-white fade-in-1">
-        <div className="max-w-md w-full text-left">
-          <div className="mb-6 fade-in-2">
-            <Logo size="lg" noLink useLogo2 className="mb-2" />
-          </div>
-          <h2 className="text-3xl font-bold mb-4 tracking-tight fade-in-3">Bem-vindo ao Superação Flux</h2>
-          <p className="text-lg text-primary-100 mb-6 fade-in-4">Sistema de gestão do Studio Superação. Gerencie horários, alunos e professores com agilidade e segurança.</p>
-          <ul className="space-y-3 text-base fade-in-5">
-            <li className="flex items-center gap-2"><i className="fas fa-calendar-check text-primary-300" /> Horários flexíveis e reagendamentos</li>
-            <li className="flex items-center gap-2"><i className="fas fa-user-graduate text-primary-300" /> Cadastro de alunos e professores</li>
-            <li className="flex items-center gap-2"><i className="fas fa-chart-line text-primary-300" /> Relatórios gerenciais</li>
-          </ul>
-          <div className="mt-8 bg-white bg-opacity-10 p-4 rounded-lg border border-white/10 shadow-lg fade-in-6">
-            <p className="text-sm text-primary-100">Dica: Não marque &apos;Lembrar-me&apos; em dispositivos públicos.</p>
+    <div className="min-h-screen flex">
+      {/* Lado esquerdo - Hero com informações */}
+      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-green-600 via-green-700 to-green-900 relative overflow-hidden">
+        {/* Elementos decorativos de fundo */}
+        <div className="absolute inset-0 opacity-10">
+          <div className="absolute top-10 left-10 w-48 h-48 bg-white rounded-full blur-3xl"></div>
+          <div className="absolute bottom-10 right-10 w-64 h-64 bg-green-300 rounded-full blur-3xl"></div>
+        </div>
+        
+        {/* Conteúdo */}
+        <div className="relative z-10 flex flex-col justify-center items-center px-8 xl:px-12 py-8 w-full">
+          <div className="max-w-md text-left">
+            {/* Logo */}
+            <div className="mb-6">
+              <Logo size="md" noLink useLogo2 className="brightness-0 invert" />
+            </div>
+            
+            {/* Título e descrição */}
+            <h1 className="text-2xl xl:text-3xl font-bold text-white mb-3 leading-tight">
+              Gerencie seu studio com <span className="text-green-300">eficiência</span>
+            </h1>
+            <p className="text-sm text-green-100 mb-6 leading-relaxed">
+              Sistema completo de gestão para o Studio Superação.
+            </p>
+            
+            {/* Features */}
+            <div className="space-y-2.5">
+              <div className="flex items-center gap-3 bg-white/10 backdrop-blur-sm rounded-lg p-3 border border-white/10">
+                <div className="flex-shrink-0 w-9 h-9 bg-white/20 rounded-lg flex items-center justify-center">
+                  <i className="fas fa-calendar-check text-white text-sm"></i>
+                </div>
+                <div>
+                  <h3 className="text-white font-medium text-sm">Agenda Inteligente</h3>
+                  <p className="text-green-200 text-xs">Reagendamentos e horários flexíveis</p>
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-3 bg-white/10 backdrop-blur-sm rounded-lg p-3 border border-white/10">
+                <div className="flex-shrink-0 w-9 h-9 bg-white/20 rounded-lg flex items-center justify-center">
+                  <i className="fas fa-users text-white text-sm"></i>
+                </div>
+                <div>
+                  <h3 className="text-white font-medium text-sm">Gestão de Pessoas</h3>
+                  <p className="text-green-200 text-xs">Alunos e professores integrados</p>
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-3 bg-white/10 backdrop-blur-sm rounded-lg p-3 border border-white/10">
+                <div className="flex-shrink-0 w-9 h-9 bg-white/20 rounded-lg flex items-center justify-center">
+                  <i className="fas fa-chart-line text-white text-sm"></i>
+                </div>
+                <div>
+                  <h3 className="text-white font-medium text-sm">Relatórios Completos</h3>
+                  <p className="text-green-200 text-xs">Métricas e insights do seu negócio</p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Direita: Login form */}
-      <div className="flex-1 flex items-center justify-center p-6 backdrop-blur-md">
-        <div className="max-w-md w-full rounded-xl shadow-2xl bg-white p-8 border border-gray-100 fade-in-1">
-          <div className="mb-6 text-center fade-in-2">
-            <h1 className=" text-2xl font-bold text-gray-900 mb-2">Entrar na sua conta</h1>
-            <p className="text-sm text-gray-500">Informe seu email e senha para acessar o painel.</p>
+      {/* Lado direito - Formulário de login */}
+      <div className="flex-1 flex items-center justify-center p-4 sm:p-8 bg-gray-50">
+        <div className="w-full max-w-sm">
+          {/* Logo mobile */}
+          <div className="lg:hidden mb-6 text-center">
+            <Logo size="sm" noLink className="mx-auto" />
           </div>
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {erro && <div className="text-sm text-red-600 bg-red-50 border border-red-100 px-3 py-2 rounded fade-in-5">{erro}</div>}
-
-            <div className="fade-in-6">
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700">Email</label>
-              <input
-                id="email"
-                name="email"
-                type="email"
-                autoComplete="email"
-                required
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
-                placeholder="seu@email.com"
-              />
+          
+          {/* Card de login */}
+          <div className="bg-white rounded-xl shadow-lg p-6 sm:p-8 border border-gray-100">
+            {/* Header */}
+            <div className="text-center mb-6">
+              <div className="inline-flex items-center justify-center w-12 h-12 bg-green-100 rounded-xl mb-3">
+                <i className="fas fa-lock text-green-600 text-lg"></i>
+              </div>
+              <h2 className="text-xl font-bold text-gray-900">Bem-vindo de volta!</h2>
+              <p className="text-gray-500 text-sm mt-1">Entre com suas credenciais</p>
             </div>
 
-            <div className="fade-in-7">
-              <label htmlFor="senha" className="block text-sm font-medium text-gray-700">Senha</label>
-              <input
-                id="senha"
-                name="senha"
-                type="password"
-                autoComplete="current-password"
-                required
-                value={senha}
-                onChange={e => setSenha(e.target.value)}
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
-                placeholder="Sua senha"
-              />
-            </div>
+            {/* Erro */}
+            {erro && (
+              <div className="mb-4 flex items-center gap-2 text-xs text-red-600 bg-red-50 border border-red-100 px-3 py-2 rounded-lg">
+                <i className="fas fa-exclamation-circle"></i>
+                <span>{erro}</span>
+              </div>
+            )}
 
-            <div className="flex items-center justify-between fade-in-8">
-              <label className="flex items-center text-sm">
-                <input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} className="h-4 w-4 text-primary-600 border-gray-300 rounded" />
-                <span className="ml-2 text-gray-700">Lembrar-me</span>
-              </label>
-              <a href="#" className="text-sm text-primary-600 hover:underline">Esqueceu a senha?</a>
-            </div>
+            {/* Formulário */}
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label htmlFor="email" className="block text-xs font-medium text-gray-700 mb-1.5">
+                  Email
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <i className="fas fa-envelope text-gray-400 text-sm"></i>
+                  </div>
+                  <input
+                    id="email"
+                    name="email"
+                    type="email"
+                    autoComplete="email"
+                    required
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
+                    className="block w-full pl-9 pr-3 py-2.5 text-sm border border-gray-200 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all"
+                    placeholder="seu@email.com"
+                  />
+                </div>
+              </div>
 
-            <div className="fade-in-8">
-              <button type="submit" disabled={carregando} className=" w-full inline-flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50 fade-in-10">
-                {carregando ? 'Entrando...' : 'Entrar'}
+              <div>
+                <label htmlFor="senha" className="block text-xs font-medium text-gray-700 mb-1.5">
+                  Senha
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <i className="fas fa-key text-gray-400 text-sm"></i>
+                  </div>
+                  <input
+                    id="senha"
+                    name="senha"
+                    type={mostrarSenha ? 'text' : 'password'}
+                    autoComplete="current-password"
+                    required
+                    value={senha}
+                    onChange={e => setSenha(e.target.value)}
+                    className="block w-full pl-9 pr-10 py-2.5 text-sm border border-gray-200 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all"
+                    placeholder="••••••••"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setMostrarSenha(!mostrarSenha)}
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    <i className={`fas ${mostrarSenha ? 'fa-eye-slash' : 'fa-eye'} text-sm`}></i>
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <label className="flex items-center cursor-pointer group">
+                  <input 
+                    type="checkbox" 
+                    checked={remember} 
+                    onChange={e => setRemember(e.target.checked)} 
+                    className="w-3.5 h-3.5 text-green-600 border-gray-300 rounded focus:ring-green-500 cursor-pointer" 
+                  />
+                  <span className="ml-2 text-xs text-gray-600 group-hover:text-gray-800 transition-colors">Lembrar-me</span>
+                </label>
+                <a href="#" className="text-xs text-green-600 hover:text-green-700 font-medium transition-colors">
+                  Esqueceu a senha?
+                </a>
+              </div>
+
+              <button 
+                type="submit" 
+                disabled={carregando} 
+                className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white text-sm font-semibold rounded-lg shadow-md shadow-green-500/25 hover:shadow-green-500/35 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+              >
+                {carregando ? (
+                  <>
+                    <i className="fas fa-circle-notch fa-spin text-sm"></i>
+                    <span>Entrando...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Entrar</span>
+                    <i className="fas fa-arrow-right text-sm"></i>
+                  </>
+                )}
               </button>
-            </div>
-          </form>
+            </form>
 
-          <div className="mt-6 text-center text-sm text-gray-500">
-            <div className="fade-in-8">
-              <span>Não tem uma conta? </span><a href="#" className="text-primary-600 hover:underline">Peça acesso ao administrador</a>
+            {/* Divider */}
+            <div className="relative my-5">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-gray-200"></div>
+              </div>
+              <div className="relative flex justify-center text-xs">
+                <span className="px-3 bg-white text-gray-400">ou</span>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="text-center">
+              <p className="text-xs text-gray-500">
+                Não tem uma conta?{' '}
+                <a href="#" className="text-green-600 hover:text-green-700 font-medium transition-colors">
+                  Solicite acesso
+                </a>
+              </p>
             </div>
           </div>
+
+          {/* Copyright */}
+          <p className="text-center text-xs text-gray-400 mt-6">
+            © 2025 Studio Superação
+          </p>
         </div>
       </div>
     </div>

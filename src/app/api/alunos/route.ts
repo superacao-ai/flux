@@ -3,11 +3,24 @@ import connectDB from '@/lib/mongodb';
 import { Aluno, IAluno } from '@/models/Aluno';
 
 // GET - Listar todos os alunos
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     await connectDB();
     
-    const alunos = await Aluno.find({ ativo: true })
+    const { searchParams } = new URL(request.url);
+    const includeInactive = searchParams.get('includeInactive') === 'true';
+    const onlyInactive = searchParams.get('onlyInactive') === 'true';
+    
+    // Definir filtro baseado nos parâmetros
+    let filter: any = {};
+    if (onlyInactive) {
+      filter.ativo = false;
+    } else if (!includeInactive) {
+      filter.ativo = true;
+    }
+    // Se includeInactive=true, não filtra por ativo (retorna todos)
+    
+    const alunos = await Aluno.find(filter)
       .populate('modalidadeId', 'nome cor')
       .sort({ nome: 1 })
       .select('-__v');

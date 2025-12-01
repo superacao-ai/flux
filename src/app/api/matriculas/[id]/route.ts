@@ -3,10 +3,10 @@ import connectDB from '@/lib/mongodb';
 import mongoose from 'mongoose';
 import { Matricula } from '@/models/Matricula';
 
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     await connectDB();
-    const { id } = params || {};
+    const { id } = await params;
     if (!id || !mongoose.Types.ObjectId.isValid(id)) {
       return NextResponse.json({ success: false, error: 'ID inválido' }, { status: 400 });
     }

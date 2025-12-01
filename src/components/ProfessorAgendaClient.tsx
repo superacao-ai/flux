@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useMemo } from 'react';
+import { toast } from 'react-toastify';
 
 type Horario = {
   _id: string;
@@ -150,9 +151,9 @@ export default function ProfessorAgendaClient() {
       const json = await res.json();
       if (!json.success) throw new Error(json.error || 'Erro ao salvar aula');
       setOpenKey(null);
-      alert('Aula registrada com sucesso');
+      toast.success('Aula registrada com sucesso');
     } catch (err: any) {
-      alert(err?.message || 'Erro ao salvar');
+      toast.error(err?.message || 'Erro ao salvar');
     } finally {
       setSubmitting(false);
     }

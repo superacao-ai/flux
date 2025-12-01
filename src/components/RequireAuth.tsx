@@ -7,9 +7,10 @@ import AccessDenied from '@/components/AccessDenied';
 export default function RequireAuth({ children, roles, showLoginRedirect = true }: { children: React.ReactNode; roles?: string[]; showLoginRedirect?: boolean }) {
   const router = useRouter();
   const [status, setStatus] = useState<'checking' | 'ok' | 'denied'>('checking');
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    // Check auth state from localStorage; if missing, either redirect to login or show access denied depending on prop
+    setMounted(true);
     try {
       const token = localStorage.getItem('token');
       const raw = localStorage.getItem('user');
@@ -42,7 +43,11 @@ export default function RequireAuth({ children, roles, showLoginRedirect = true 
     }
   }, [router, roles, showLoginRedirect]);
 
-  if (status === 'checking') return <>{/* loading placeholder */}</>;
+  // Sempre renderizar children durante SSR e antes da montagem para evitar hydration mismatch
+  if (!mounted || status === 'checking') {
+    return <>{children}</>;
+  }
+  
   if (status === 'denied') return <AccessDenied />;
 
   return <>{children}</>;
