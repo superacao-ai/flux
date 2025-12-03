@@ -66,11 +66,17 @@ export default function ReagendamentosPage() {
   });
   const [loading, setLoading] = useState(false);
   const [clearing, setClearing] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
 
   const diasSemana = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 
+  // Marcar como montado imediatamente
   useEffect(() => {
     setMounted(true);
+  }, []);
+
+  // Fetch data
+  useEffect(() => {
     fetchReagendamentos();
     fetchHorarios();
   }, []);
@@ -80,10 +86,19 @@ export default function ReagendamentosPage() {
       const response = await fetch('/api/reagendamentos');
       const data = await response.json();
       if (data.success) {
+        console.log('[Reagendamentos] Dados recebidos:', data.data.map((r: any) => ({
+          _id: r._id,
+          horarioFixoId: r.horarioFixoId,
+          professorOrigem: r.horarioFixoId?.professorId,
+          novoHorarioFixoId: r.novoHorarioFixoId,
+          professorDestino: r.novoHorarioFixoId?.professorId
+        })));
         setReagendamentos(data.data);
       }
     } catch (error) {
       console.error('Erro ao buscar reagendamentos:', error);
+    } finally {
+      setInitialLoading(false);
     }
   };
 
@@ -276,40 +291,105 @@ export default function ReagendamentosPage() {
     }
   };
 
-  // Skeleton loading enquanto não está montado
-  if (!mounted) {
+  // Skeleton loading enquanto não está montado ou carregando dados iniciais
+  if (!mounted || initialLoading) {
     return (
-      <ProtectedPage tab="reagendamentos" title="Reagendamentos - Superação Flux" fullWidth>
-        <div className="px-4 py-6 sm:px-0">
-          {/* Header skeleton */}
-          <div className="flex items-center justify-between gap-4 mb-6">
+      <ProtectedPage tab="reagendamentos" title="Reagendamentos - Superação Flux" fullWidth customLoading>
+        <div className="w-full px-4 py-6 sm:px-6 lg:px-8">
+          {/* Header skeleton - Desktop */}
+          <div className="hidden md:flex items-center justify-between gap-4 mb-6">
             <div>
-              <div className="h-5 bg-gray-200 rounded w-36 mb-2 animate-pulse" />
-              <div className="h-4 bg-gray-200 rounded w-64 animate-pulse" />
+              <div className="h-6 bg-gray-200 rounded w-40 mb-2 animate-pulse" />
+              <div className="h-4 bg-gray-200 rounded w-72 animate-pulse" />
             </div>
-            <div className="h-10 w-36 bg-gray-200 rounded-full animate-pulse" />
+            <div className="h-10 w-40 bg-gray-200 rounded-full animate-pulse" />
           </div>
           
-          {/* Tabs skeleton */}
-          <div className="mb-6 border-b border-gray-200 pb-2">
+          {/* Header skeleton - Mobile */}
+          <div className="md:hidden flex items-center justify-between mb-4">
+            <div className="h-5 bg-gray-200 rounded w-32 animate-pulse" />
+            <div className="w-9 h-9 bg-gray-200 rounded-full animate-pulse" />
+          </div>
+          
+          {/* Tabs skeleton - Desktop */}
+          <div className="hidden md:block mb-6 border-b border-gray-200 pb-2">
             <div className="flex gap-6">
               {[1, 2, 3].map(i => (
-                <div key={i} className="h-6 bg-gray-200 rounded w-20 animate-pulse" />
+                <div key={i} className="h-6 bg-gray-200 rounded w-24 animate-pulse" />
               ))}
             </div>
           </div>
           
-          {/* Cards skeleton */}
-          <div className="space-y-4">
+          {/* Tabs skeleton - Mobile */}
+          <div className="md:hidden mb-4">
+            <div className="flex gap-2">
+              {[1, 2, 3].map(i => (
+                <div key={i} className="flex-1 h-9 bg-gray-200 rounded-lg animate-pulse" />
+              ))}
+            </div>
+          </div>
+          
+          {/* Cards skeleton - Desktop */}
+          <div className="hidden md:block space-y-4">
             {[1, 2, 3, 4].map(i => (
               <div key={i} className="bg-white rounded-lg border border-gray-200 p-4">
-                <div className="flex justify-between items-start">
-                  <div className="space-y-2">
-                    <div className="h-5 bg-gray-200 rounded w-40 animate-pulse" />
-                    <div className="h-4 bg-gray-200 rounded w-56 animate-pulse" />
-                    <div className="h-4 bg-gray-200 rounded w-48 animate-pulse" />
+                <div className="flex items-center gap-6">
+                  <div className="w-64 space-y-2">
+                    <div className="flex gap-2">
+                      <div className="h-5 bg-gray-200 rounded w-20 animate-pulse" />
+                      <div className="h-5 bg-gray-200 rounded-full w-16 animate-pulse" />
+                    </div>
+                    <div className="h-5 bg-gray-200 rounded w-32 animate-pulse" />
+                    <div className="h-3 bg-gray-100 rounded w-24 animate-pulse" />
                   </div>
-                  <div className="h-6 bg-gray-200 rounded-full w-20 animate-pulse" />
+                  <div className="flex-1 grid grid-cols-2 gap-4">
+                    <div className="bg-gray-50 rounded p-3 space-y-2">
+                      <div className="h-3 bg-gray-200 rounded w-16 animate-pulse" />
+                      <div className="h-4 bg-gray-200 rounded w-24 animate-pulse" />
+                    </div>
+                    <div className="bg-gray-50 rounded p-3 space-y-2">
+                      <div className="h-3 bg-gray-200 rounded w-16 animate-pulse" />
+                      <div className="h-4 bg-gray-200 rounded w-24 animate-pulse" />
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <div className="w-9 h-9 bg-gray-200 rounded-lg animate-pulse" />
+                    <div className="w-9 h-9 bg-gray-200 rounded-lg animate-pulse" />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          
+          {/* Cards skeleton - Mobile */}
+          <div className="md:hidden space-y-3">
+            {[1, 2, 3, 4].map(i => (
+              <div key={i} className="bg-white rounded-xl border border-gray-200 p-3 animate-pulse">
+                <div className="flex items-start justify-between mb-2">
+                  <div>
+                    <div className="h-4 bg-gray-200 rounded w-28 mb-1" />
+                    <div className="h-3 bg-gray-100 rounded w-20" />
+                  </div>
+                  <div className="flex gap-1">
+                    <div className="h-5 bg-gray-200 rounded w-10" />
+                    <div className="h-5 bg-gray-200 rounded-full w-12" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-1.5 mb-2">
+                  <div className="bg-gray-50 rounded p-2 text-center">
+                    <div className="h-2 bg-gray-200 rounded w-6 mx-auto mb-1" />
+                    <div className="h-3 bg-gray-200 rounded w-16 mx-auto mb-1" />
+                    <div className="h-2 bg-gray-100 rounded w-10 mx-auto" />
+                  </div>
+                  <div className="bg-gray-50 rounded p-2 text-center">
+                    <div className="h-2 bg-gray-200 rounded w-8 mx-auto mb-1" />
+                    <div className="h-3 bg-gray-200 rounded w-16 mx-auto mb-1" />
+                    <div className="h-2 bg-gray-100 rounded w-10 mx-auto" />
+                  </div>
+                </div>
+                <div className="flex justify-end gap-1 pt-2 border-t border-gray-100">
+                  <div className="w-8 h-8 bg-gray-200 rounded-lg" />
+                  <div className="w-8 h-8 bg-gray-200 rounded-lg" />
                 </div>
               </div>
             ))}
@@ -321,22 +401,23 @@ export default function ReagendamentosPage() {
 
   return (
     <ProtectedPage tab="reagendamentos" title="Reagendamentos - Superação Flux" fullWidth>
-      <div className="px-4 py-6 sm:px-0">
-        <div className="sm:flex sm:items-center mb-6 fade-in-1">
-          <div className="sm:flex-auto">
-            <h1 className="text-base font-semibold text-gray-900 flex items-center gap-2">
-              <i className="fas fa-exchange-alt text-primary-600"></i>
+      <div className="w-full px-4 py-6 sm:px-6 lg:px-8">
+        {/* Header Desktop */}
+        <div className="hidden md:flex items-center justify-between gap-4 mb-6 fade-in-1">
+          <div>
+            <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+              <i className="fas fa-exchange-alt text-green-600"></i>
               Reagendamentos
             </h1>
-            <p className="mt-2 text-sm text-gray-700">
-              Gerencie as solicitações de reagendamento de aulas.
+            <p className="text-sm text-gray-600 mt-1">
+              Gerencie as solicitações de reagendamento de aulas
             </p>
           </div>
-          <div className="mt-4 sm:mt-0 sm:ml-16 sm:flex-none flex gap-3">
+          <div className="flex gap-3">
             <button
               type="button"
               onClick={() => setShowClearModal(true)}
-              className="inline-flex transition-colors duration-200 items-center justify-center rounded-full border border-red-300 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 shadow-sm hover:bg-red-100 focus:outline-none  focus:ring-offset-2 sm:w-auto"
+              className="inline-flex transition-colors duration-200 items-center justify-center rounded-full border border-red-300 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 shadow-sm hover:bg-red-100 focus:outline-none focus:ring-offset-2 sm:w-auto"
               title="Limpar todo o histórico de reagendamentos"
             >
               <i className="fas fa-trash-alt mr-2"></i>
@@ -345,8 +426,53 @@ export default function ReagendamentosPage() {
           </div>
         </div>
 
-        {/* Tabs para filtrar por status */}
-        <div className="mb-6 fade-in-2">
+        {/* Header Mobile */}
+        <div className="md:hidden flex items-center justify-between mb-4 fade-in-1">
+          <h1 className="text-lg font-semibold text-gray-900">Reagendamentos</h1>
+          <button
+            type="button"
+            onClick={() => setShowClearModal(true)}
+            className="w-9 h-9 flex items-center justify-center rounded-full border border-red-300 bg-red-50 text-red-600"
+          >
+            <i className="fas fa-trash-alt text-sm"></i>
+          </button>
+        </div>
+
+        {/* Tabs Mobile */}
+        <div className="md:hidden mb-4 fade-in-2">
+          <div className="flex gap-2">
+            <button 
+              onClick={() => setFilterStatus('todos')}
+              className={`flex-1 py-2 px-3 rounded-lg text-xs font-medium transition-colors ${
+                filterStatus === 'todos' 
+                  ? 'bg-green-600 text-white' 
+                  : 'bg-gray-100 text-gray-600'
+              }`}>
+              Todos ({reagendamentos.length})
+            </button>
+            <button 
+              onClick={() => setFilterStatus('pendente')}
+              className={`flex-1 py-2 px-3 rounded-lg text-xs font-medium transition-colors ${
+                filterStatus === 'pendente' 
+                  ? 'bg-yellow-500 text-white' 
+                  : 'bg-gray-100 text-gray-600'
+              }`}>
+              Pend. ({reagendamentos.filter(r => r.status === 'pendente').length})
+            </button>
+            <button 
+              onClick={() => setFilterStatus('aprovado')}
+              className={`flex-1 py-2 px-3 rounded-lg text-xs font-medium transition-colors ${
+                filterStatus === 'aprovado' 
+                  ? 'bg-green-500 text-white' 
+                  : 'bg-gray-100 text-gray-600'
+              }`}>
+              Aprov. ({reagendamentos.filter(r => r.status === 'aprovado').length})
+            </button>
+          </div>
+        </div>
+
+        {/* Tabs Desktop */}
+        <div className="hidden md:block mb-6 fade-in-2">
           <div className="border-b border-gray-200">
             <nav className="-mb-px flex space-x-8">
               <button 
@@ -369,9 +495,9 @@ export default function ReagendamentosPage() {
         </div>
 
         {/* Lista de reagendamentos */}
-        <div className="bg-white shadow rounded-lg fade-in-3">
-          <div className="px-4 py-5 sm:p-6">
-            <div className="space-y-4">
+        <div className="md:bg-white md:shadow md:rounded-lg fade-in-3">
+          <div className="md:px-4 md:py-5 md:p-6">
+            <div className="space-y-3 md:space-y-4">
               {reagendamentos
                 .filter((r) => {
                   if (filterStatus === 'todos') return true;
@@ -387,14 +513,134 @@ export default function ReagendamentosPage() {
                 const professorDestino = (reagendamento as any).novoHorarioFixoId?.professorId?.nome || 'N/A';
                 
                 return (
-                  <div key={reagendamento._id} className={`border rounded-lg p-5 transition-colors ${
+                  <div key={reagendamento._id} className={`border rounded-xl md:rounded-lg shadow-sm md:shadow-none p-3 md:p-5 transition-colors ${
                     reagendamento.status === 'aprovado'
-                      ? 'bg-gray-100 border-gray-300'
-                      : (isReposicao ? 'border-blue-300 bg-blue-50' : 'border-orange-300 bg-orange-50')
+                      ? 'bg-white md:bg-gray-100 border-gray-200 md:border-gray-300'
+                      : (isReposicao ? 'border-blue-200 md:border-blue-300 bg-white md:bg-blue-50' : 'border-orange-200 md:border-orange-300 bg-white md:bg-orange-50')
                   }`}>
                     
+                    {/* Layout Mobile: Cards compactos */}
+                    <div className="block lg:hidden">
+                      {/* Header com nome e badges */}
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-bold text-gray-900 truncate">{alunoNome}</p>
+                          <p className="text-[10px] text-gray-500">{formatarData(reagendamento.criadoEm)}</p>
+                        </div>
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                            reagendamento.status === 'aprovado'
+                              ? 'bg-gray-200 text-gray-600'
+                              : (isReposicao 
+                                ? 'bg-blue-100 text-blue-700' 
+                                : 'bg-orange-100 text-orange-700')
+                          }`}>
+                            {isReposicao ? 'REP' : 'REA'}
+                          </span>
+                          <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+                            reagendamento.status === 'aprovado'
+                              ? 'bg-green-100 text-green-700'
+                              : reagendamento.status === 'pendente'
+                              ? 'bg-yellow-100 text-yellow-700'
+                              : 'bg-red-100 text-red-700'
+                          }`}>
+                            {reagendamento.status === 'pendente' ? 'PEND' : reagendamento.status === 'aprovado' ? 'APROV' : 'REJ'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Cards de horários compactos */}
+                      <div className="grid grid-cols-2 gap-1.5 mb-2">
+                        {/* Horário Original */}
+                        <div className={`rounded p-2 text-center ${
+                          reagendamento.status === 'aprovado' ? 'bg-gray-100' : 'bg-red-50 border border-red-200'
+                        }`}>
+                          <div className="text-[10px] text-gray-500 mb-0.5">De</div>
+                          <div className="text-xs font-semibold text-gray-800">{formatarData(reagendamento.dataOriginal)}</div>
+                          <div className="text-[10px] text-gray-600">{reagendamento.horarioFixoId?.horarioInicio}</div>
+                          {professorOrigem !== 'N/A' && (
+                            <div className="text-[10px] text-gray-500 mt-0.5">
+                              <i className="fas fa-user-tie text-[8px] mr-0.5"></i>{professorOrigem}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Novo Horário */}
+                        <div className={`rounded p-2 text-center ${
+                          reagendamento.status === 'aprovado' ? 'bg-gray-100' : 'bg-green-50 border border-green-300'
+                        }`}>
+                          <div className="text-[10px] text-gray-500 mb-0.5">Para</div>
+                          <div className="text-xs font-semibold text-gray-800">{formatarData(reagendamento.novaData)}</div>
+                          <div className="text-[10px] text-gray-600">{reagendamento.novoHorarioInicio}</div>
+                          {professorDestino !== 'N/A' && (
+                            <div className="text-[10px] text-gray-500 mt-0.5">
+                              <i className="fas fa-user-tie text-[8px] mr-0.5"></i>{professorDestino}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Botões de ação compactos */}
+                      <div className="flex items-center justify-end gap-1 pt-2 border-t border-gray-100">
+                        {reagendamento.status === 'pendente' && (
+                          <>
+                            <button
+                              onClick={() => aprovarReagendamento(reagendamento._id)}
+                              className="w-8 h-8 inline-flex items-center justify-center bg-green-500 text-white rounded-lg text-sm"
+                            >
+                              <i className="fas fa-check"></i>
+                            </button>
+                            <button
+                              onClick={() => rejeitarReagendamento(reagendamento._id)}
+                              className="w-8 h-8 inline-flex items-center justify-center bg-red-500 text-white rounded-lg text-sm"
+                            >
+                              <i className="fas fa-times"></i>
+                            </button>
+                            <button
+                              onClick={() => excluirReagendamento(reagendamento._id)}
+                              className="w-8 h-8 inline-flex items-center justify-center text-gray-400 hover:text-red-600 rounded-lg text-sm"
+                            >
+                              <i className="fas fa-trash"></i>
+                            </button>
+                          </>
+                        )}
+                        {reagendamento.status === 'aprovado' && (
+                          <>
+                            <button
+                              onClick={() => voltarParaPendente(reagendamento._id)}
+                              className="w-8 h-8 inline-flex items-center justify-center bg-yellow-500 text-white rounded-lg text-sm"
+                            >
+                              <i className="fas fa-undo"></i>
+                            </button>
+                            <button
+                              onClick={() => excluirReagendamento(reagendamento._id)}
+                              className="w-8 h-8 inline-flex items-center justify-center text-gray-400 hover:text-red-600 rounded-lg text-sm"
+                            >
+                              <i className="fas fa-trash"></i>
+                            </button>
+                          </>
+                        )}
+                        {reagendamento.status === 'rejeitado' && (
+                          <>
+                            <button
+                              onClick={() => voltarParaPendente(reagendamento._id)}
+                              className="w-8 h-8 inline-flex items-center justify-center bg-yellow-500 text-white rounded-lg text-sm"
+                            >
+                              <i className="fas fa-undo"></i>
+                            </button>
+                            <button
+                              onClick={() => excluirReagendamento(reagendamento._id)}
+                              className="w-8 h-8 inline-flex items-center justify-center text-gray-400 hover:text-red-600 rounded-lg text-sm"
+                            >
+                              <i className="fas fa-trash"></i>
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
                     {/* Layout Desktop: Tudo em linha */}
-                    <div className="flex items-center gap-6">
+                    <div className="hidden lg:flex items-center gap-6">
                       
                       {/* Coluna 1: Informações do Aluno e Tipo */}
                       <div className="flex-shrink-0 w-64">
@@ -581,8 +827,8 @@ export default function ReagendamentosPage() {
 
       {/* Modal para novo reagendamento */}
       {showModal && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white fade-in-4">
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
+          <div className="relative mx-auto p-4 sm:p-5 border w-full max-w-sm shadow-lg rounded-md bg-white fade-in-4 max-h-[90vh] overflow-y-auto">
             <div className="mt-3">
               <h3 className="text-lg font-medium text-gray-900 mb-4">Solicitar Reagendamento</h3>
               <form onSubmit={handleSubmit} className="space-y-4">
@@ -649,8 +895,8 @@ export default function ReagendamentosPage() {
 
       {/* Modal de confirmação para limpar histórico */}
       {showClearModal && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
-          <div className="relative mx-auto p-6 border w-96 shadow-lg rounded-md bg-white">
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
+          <div className="relative mx-auto p-4 sm:p-6 border w-full max-w-sm shadow-lg rounded-md bg-white max-h-[90vh] overflow-y-auto">
             <div className="text-center">
               <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 mb-4">
                 <i className="fas fa-exclamation-triangle text-red-600 text-lg"></i>

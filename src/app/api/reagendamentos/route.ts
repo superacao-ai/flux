@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import { Reagendamento } from '@/models/Reagendamento';
+import { User } from '@/models/User';
 import fs from 'fs';
 import path from 'path';
 
@@ -22,7 +23,7 @@ export async function GET(request: NextRequest) {
         path: 'horarioFixoId',
         populate: [
           { path: 'alunoId', select: 'nome email' },
-          { path: 'professorId', select: 'nome especialidade cor' }
+          { path: 'professorId', model: 'User', select: 'nome email cor' }
         ]
       })
       .populate({
@@ -36,7 +37,8 @@ export async function GET(request: NextRequest) {
         path: 'novoHorarioFixoId',
         populate: {
           path: 'professorId',
-          select: 'nome especialidade cor'
+          model: 'User',
+          select: 'nome email cor'
         }
       })
       .populate('aprovadoPor', 'nome')

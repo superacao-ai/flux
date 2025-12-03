@@ -65,8 +65,8 @@ export default function ModalNovoHorario({ open, onClose, modalidadeId, initial 
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-white rounded-lg p-4 w-full max-w-md">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3 sm:p-4">
+      <div className="bg-white rounded-lg p-4 sm:p-5 w-full max-w-md max-h-[90vh] overflow-y-auto">
         <h3 className="text-lg font-semibold mb-2">Novo horário</h3>
         <form onSubmit={handleSubmit} className="space-y-3">
           <div>
@@ -92,9 +92,9 @@ export default function ModalNovoHorario({ open, onClose, modalidadeId, initial 
               ))}
             </div>
           </div>
-          <div className="flex justify-end gap-2">
-            <button type="button" onClick={onClose} className="px-3 py-1 border rounded">Cancelar</button>
-            <button type="submit" disabled={loading} className="px-3 py-1 bg-blue-600 text-white rounded">{loading ? 'Salvando...' : 'Salvar'}</button>
+          <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+            <button type="button" onClick={onClose} className="w-full sm:w-auto px-4 py-2 border rounded-md text-sm hover:bg-gray-50">Cancelar</button>
+            <button type="submit" disabled={loading} className="w-full sm:w-auto px-4 py-2 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700 disabled:opacity-50">{loading ? 'Salvando...' : 'Salvar'}</button>
           </div>
         </form>
       </div>

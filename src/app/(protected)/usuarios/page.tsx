@@ -54,7 +54,7 @@ export default function UsuariosPage() {
 
   const professorTabs = ['professor:minhaagenda', 'professor:alunos', 'professor:aulas'];
   const allTabs = [
-    'calendario', 'horarios', 'alunos', 'usuarios', 'modalidades', 'aulas', 'reagendamentos', 'relatorios', 'backup',
+    'calendario', 'horarios', 'alunos', 'usuarios', 'modalidades', 'aulas', 'aulas-experimentais', 'reagendamentos', 'relatorios', 'backup',
     ...professorTabs
   ];
   const adminExcludedTabs = ['relatorios', 'backup', 'usuarios'];
@@ -138,6 +138,18 @@ export default function UsuariosPage() {
     carregarEspecialidades();
   }, []);
 
+  // Fechar modal com ESC
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && showModal) {
+        setShowModal(false);
+        setEditingUsuario(null);
+      }
+    };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [showModal]);
+
   const handleEspecialidadeChange = useCallback((especialidadeId: string, checked: boolean) => {
     setFormData(prev => ({
       ...prev,
@@ -198,12 +210,12 @@ export default function UsuariosPage() {
   const handleTipoChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
     const tipo = e.target.value as any;
     setFormData(prev => {
-      // when selecting professor, pre-select professor tabs
+      // when selecting professor, pre-select professor tabs + aulas-experimentais + calendario
       if (tipo === 'professor') {
-        return { ...prev, tipo, abas: professorTabs };
+        return { ...prev, tipo, abas: [...professorTabs, 'aulas-experimentais', 'calendario'] };
       }
       if (tipo === 'admin') {
-        // select default admin tabs but exclude sensitive tabs (reports, backups, usuarios)
+        // select default admin tabs but exclude sensitive tabs (reports, backups, usuarios) + add aulas-experimentais
         const adminTabs = allTabs.filter(t => !professorTabs.includes(t) && !adminExcludedTabs.includes(t));
         return { ...prev, tipo, abas: adminTabs };
       }
@@ -518,14 +530,17 @@ export default function UsuariosPage() {
 
   return (
     <ProtectedPage tab="usuarios" title="Usuários - Superação Flux" fullWidth>
-        <div className="px-4 py-6 sm:px-0">
-          <div className="flex items-center justify-between gap-4 fade-in-1">
+        <div className="w-full px-4 py-6 sm:px-6 lg:px-8">
+          {/* Header Desktop */}
+          <div className="hidden md:flex items-center justify-between gap-4 mb-6 fade-in-1">
             <div>
-              <h1 className="text-base font-semibold text-gray-900 flex items-center gap-2">
-                <i className="fas fa-users-cog text-primary-600"></i>
+              <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                <i className="fas fa-users-cog text-green-600"></i>
                 Usuários
               </h1>
-              <p className="mt-2 text-sm text-gray-600 max-w-xl">Gerencie os usuários administradores do sistema — adicione, edite e defina senhas.</p>
+              <p className="text-sm text-gray-600 mt-1">
+                Gerencie os usuários administradores do sistema
+              </p>
             </div>
 
             <div className="flex items-center gap-3">
@@ -538,16 +553,37 @@ export default function UsuariosPage() {
             </div>
           </div>
 
-          <div className="mt-4 sm:mt-6 fade-in-2">
-            <div className="flex items-center justify-between gap-4">
-              <div className="relative w-full sm:w-1/2">
-                <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 w-4 text-gray-400" aria-hidden="true" />
-                <input type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Pesquisar por nome, email ou telefone..." className="block w-full pl-10 pr-3 border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 bg-white" />
-              </div>
-              <div className="hidden sm:flex items-center text-sm text-gray-600">
-                <div>Resultados: {filteredUsuarios.length}</div>
-              </div>
+          {/* Header Mobile */}
+          <div className="md:hidden mb-4 fade-in-1">
+            <div className="flex items-center justify-between">
+              <h1 className="text-lg font-semibold text-gray-900">Usuários</h1>
+              <button 
+                type="button" 
+                onClick={abrirModalNovo} 
+                className="h-8 w-8 inline-flex items-center justify-center rounded-full bg-green-600 text-white"
+              >
+                <i className="fas fa-plus text-xs"></i>
+              </button>
             </div>
+          </div>
+
+          {/* Busca */}
+          <div className="mb-4 fade-in-2">
+            <div className="relative w-full">
+              <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden="true" />
+              <input 
+                type="text" 
+                value={query} 
+                onChange={(e) => setQuery(e.target.value)} 
+                placeholder="Pesquisar usuário..." 
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm" 
+              />
+            </div>
+          </div>
+
+          {/* Contador Mobile */}
+          <div className="md:hidden mb-4 text-xs text-gray-500 fade-in-2">
+            {filteredUsuarios.length} {filteredUsuarios.length === 1 ? 'usuário' : 'usuários'}
           </div>
 
           {filteredUsuarios.length === 0 ? (
@@ -564,7 +600,123 @@ export default function UsuariosPage() {
               </button>
             </div>
           ) : (
-            <div className="mt-8 flex flex-col fade-in-3">
+            <>
+            {/* Versão Mobile - Cards */}
+            <div className="md:hidden space-y-3 fade-in-3">
+              {filteredUsuarios.map((usuario, idx) => {
+                const isRoot = usuario.tipo === 'root';
+                const isProfessor = usuario.tipo === 'professor';
+                const fadeClass = `fade-in-${Math.min((idx % 8) + 1, 8)}`;
+                
+                return (
+                  <div 
+                    key={usuario._id} 
+                    className={`bg-white rounded-xl border shadow-sm overflow-hidden ${fadeClass} ${isRoot ? 'border-amber-300' : 'border-gray-200'} ${!usuario.ativo ? 'opacity-60' : ''}`}
+                  >
+                    {/* Header do Card */}
+                    <div className={`px-4 py-3 ${isRoot ? 'bg-gradient-to-r from-amber-50 to-white' : isProfessor ? 'bg-gradient-to-r from-blue-50 to-white' : 'bg-gradient-to-r from-gray-50 to-white'}`}>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          {isRoot ? (
+                            <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center">
+                              <i className="fas fa-shield text-amber-500"></i>
+                            </div>
+                          ) : (
+                            <div 
+                              className="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold text-sm border-2 border-white shadow-sm" 
+                              style={{ backgroundColor: usuario.ativo ? (usuario.cor || '#3B82F6') : '#9CA3AF' }}
+                            >
+                              {usuario.nome.charAt(0).toUpperCase()}
+                            </div>
+                          )}
+                          <div>
+                            <div className={`font-semibold text-sm ${!usuario.ativo ? 'text-gray-500' : isRoot ? 'text-amber-800' : 'text-gray-900'}`}>
+                              {usuario.nome}
+                              {currentUserId && usuario._id === currentUserId && (
+                                <span className="ml-1 text-[10px] font-bold text-green-600">(VOCÊ)</span>
+                              )}
+                            </div>
+                            <div className="text-xs text-gray-500 truncate max-w-[180px]">
+                              {usuario.email || 'Sem email'}
+                            </div>
+                          </div>
+                        </div>
+                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide ${
+                          !usuario.ativo 
+                            ? 'bg-gray-200 text-gray-600' 
+                            : 'bg-green-100 text-green-700'
+                        }`}>
+                          {usuario.ativo ? 'Ativo' : 'Inativo'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Conteúdo do Card */}
+                    <div className="px-4 py-3 space-y-3">
+                      {/* Tipo Badge */}
+                      <div className="flex flex-wrap gap-1.5">
+                        {isRoot ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                            <i className="fas fa-shield-alt"></i> ROOT
+                          </span>
+                        ) : (
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${isProfessor ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'}`}>
+                            <i className={`fas ${isProfessor ? 'fa-chalkboard-teacher' : 'fa-user-shield'} text-[9px]`}></i>
+                            {isProfessor ? 'Professor' : 'Admin'}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Especialidades (se professor) */}
+                      {isProfessor && usuario.especialidades && usuario.especialidades.length > 0 && (
+                        <div className="space-y-1">
+                          <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Especialidades</div>
+                          <div className="flex flex-wrap gap-1">
+                            {usuario.especialidades.map((esp) => (
+                              <span key={esp._id} className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-50 text-blue-700">
+                                {esp.nome}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Telefone */}
+                      {usuario.telefone && (
+                        <div className="flex items-center gap-2 text-xs text-gray-500">
+                          <i className="fas fa-phone text-[10px] text-gray-400"></i>
+                          {usuario.telefone}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Footer - Ações */}
+                    {!(isRoot && currentUserTipo !== 'root') && (
+                      <div className="px-4 py-3 bg-gray-50 border-t border-gray-100">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button 
+                            onClick={() => abrirModalEditar(usuario)} 
+                            className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-white border border-gray-200 text-green-600 hover:bg-green-50 transition-colors"
+                          >
+                            <i className="fas fa-edit text-xs"></i>
+                          </button>
+                          <button 
+                            onClick={() => excluirUsuario(usuario._id)} 
+                            disabled={!usuario.ativo}
+                            className={`inline-flex items-center justify-center w-8 h-8 rounded-lg transition-colors ${usuario.ativo ? 'bg-white border border-gray-200 text-red-500 hover:bg-red-50' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}
+                          >
+                            <i className="fas fa-trash text-xs"></i>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Versão Desktop - Tabela */}
+            <div className="mt-6 hidden md:flex flex-col fade-in-3">
               <div className="-my-2 -mx-4 overflow-x-auto sm:-mx-6 lg:-mx-8">
                 <div className="inline-block min-w-full py-2 align-middle md:px-6 lg:px-8">
                   <div className="overflow-hidden rounded-md border border-gray-200">
@@ -661,12 +813,13 @@ export default function UsuariosPage() {
                 </div>
               </div>
             </div>
+            </>
           )}
 
           {/* Modal de Cadastro/Edição */}
           {showModal && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-700 bg-opacity-50">
-              <div className="relative w-full max-w-lg mx-auto bg-white rounded-lg shadow-lg border border-gray-200 p-6">
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-700 bg-opacity-50 p-3 sm:p-4">
+              <div className="relative w-full max-w-lg mx-auto bg-white rounded-lg shadow-lg border border-gray-200 p-4 sm:p-6 max-h-[90vh] overflow-y-auto">
                 <div className="mb-2 border-b pb-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -797,6 +950,7 @@ export default function UsuariosPage() {
                         { key: 'usuarios', label: 'Usuários' },
                         { key: 'modalidades', label: 'Modalidades' },
                         { key: 'aulas', label: 'Aulas' },
+                        { key: 'aulas-experimentais', label: 'Experimentais' },
                         { key: 'reagendamentos', label: 'Reagendamentos' },
                         { key: 'relatorios', label: 'Relatórios' },
                         { key: 'backup', label: 'Backups' },

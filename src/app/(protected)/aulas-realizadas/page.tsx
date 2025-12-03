@@ -34,6 +34,7 @@ export default function AulasRealizadasPage() {
   const [mounted, setMounted] = useState(false);
   const [aulas, setAulas] = useState<AulaRealizada[]>([]);
   const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [filtros, setFiltros] = useState({
     dataInicio: '',
     dataFim: '',
@@ -399,6 +400,7 @@ export default function AulasRealizadasPage() {
       console.error('Erro ao carregar aulas:', error);
     } finally {
       setLoading(false);
+      setInitialLoading(false);
     }
   };
 
@@ -469,6 +471,22 @@ export default function AulasRealizadasPage() {
       setSalvando(false);
     }
   };
+
+  // Fechar modais com ESC
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (aulaEditarEnriquecida) {
+          setAulaParaEditar(null);
+          setAulaEditarEnriquecida(null);
+        } else if (aulaParaExcluir) {
+          setAulaParaExcluir(null);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [aulaEditarEnriquecida, aulaParaExcluir]);
 
   const togglePresenca = (alunoIndex: number) => {
     if (!aulaEditarEnriquecida) return;
@@ -617,27 +635,30 @@ export default function AulasRealizadasPage() {
   const pendentesParaExibir = pendentesFiltradas.slice((pendentesPage - 1) * ITENS_POR_PAGINA, pendentesPage * ITENS_POR_PAGINA);
   const realizadasParaExibir = aulasParaExibir.slice((realizadasPage - 1) * ITENS_POR_PAGINA, realizadasPage * ITENS_POR_PAGINA);
 
-  // Skeleton loading enquanto não está montado
-  if (!mounted) {
+  // Skeleton loading enquanto não está montado ou carregando dados iniciais
+  if (!mounted || initialLoading) {
     return (
-      <ProtectedPage tab="aulas" title="Aulas - Superação Flux">
-        <div className="px-4 py-6 sm:px-0">
-          {/* Header skeleton */}
-          <div className="flex items-center justify-between gap-4 mb-6">
-            <div>
-              <div className="h-5 bg-gray-200 rounded w-24 mb-2 animate-pulse" />
-              <div className="h-4 bg-gray-200 rounded w-64 animate-pulse" />
-            </div>
+      <ProtectedPage tab="aulas" title="Aulas - Superação Flux" customLoading>
+        <div className="w-full px-4 py-6 sm:px-6 lg:px-8">
+          {/* Header skeleton - Desktop */}
+          <div className="hidden md:block mb-6">
+            <div className="h-6 bg-gray-200 rounded w-24 mb-2 animate-pulse" />
+            <div className="h-4 bg-gray-200 rounded w-64 animate-pulse" />
           </div>
           
-          {/* Filtros skeleton */}
-          <div className="bg-white rounded-md border border-gray-200 p-4 mb-6">
+          {/* Header skeleton - Mobile */}
+          <div className="md:hidden mb-4">
+            <div className="h-5 bg-gray-200 rounded w-16 animate-pulse" />
+          </div>
+          
+          {/* Filtros skeleton - Desktop */}
+          <div className="hidden md:block bg-white rounded-md border border-gray-200 p-4 mb-6">
             <div className="flex gap-2 mb-4 pb-4 border-b border-gray-200">
               {[1, 2, 3].map(i => (
-                <div key={i} className="h-10 bg-gray-200 rounded-full w-24 animate-pulse" />
+                <div key={i} className="h-10 bg-gray-200 rounded-full w-28 animate-pulse" />
               ))}
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-4 gap-4">
               {[1, 2, 3, 4].map(i => (
                 <div key={i}>
                   <div className="h-4 bg-gray-200 rounded w-16 mb-2 animate-pulse" />
@@ -647,17 +668,79 @@ export default function AulasRealizadasPage() {
             </div>
           </div>
           
-          {/* Cards skeleton */}
-          <div className="space-y-4">
+          {/* Filtros skeleton - Mobile (tabs) */}
+          <div className="md:hidden mb-4">
+            <div className="flex gap-1 overflow-x-auto pb-2">
+              {[1, 2, 3].map(i => (
+                <div key={i} className="h-8 bg-gray-200 rounded-full w-20 animate-pulse flex-shrink-0" />
+              ))}
+            </div>
+          </div>
+          
+          {/* Tabela skeleton - Desktop */}
+          <div className="hidden md:block bg-white rounded-md border border-gray-200 overflow-hidden">
+            <div className="bg-yellow-50 px-4 py-3 border-b border-yellow-200">
+              <div className="h-4 bg-yellow-200 rounded w-36 animate-pulse" />
+            </div>
+            <table className="min-w-full">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-3"><div className="h-3 bg-gray-200 rounded w-32 animate-pulse" /></th>
+                  <th className="px-4 py-3"><div className="h-3 bg-gray-200 rounded w-24 animate-pulse" /></th>
+                  <th className="px-4 py-3"><div className="h-3 bg-gray-200 rounded w-24 animate-pulse" /></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {[1, 2, 3, 4].map(i => (
+                  <tr key={i}>
+                    <td className="px-4 py-3">
+                      <div className="h-4 bg-gray-200 rounded w-24 mb-1 animate-pulse" />
+                      <div className="h-3 bg-gray-100 rounded w-32 animate-pulse" />
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 bg-gray-200 rounded-full animate-pulse" />
+                        <div className="h-4 bg-gray-200 rounded w-20 animate-pulse" />
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 bg-gray-200 rounded-full animate-pulse" />
+                        <div className="h-4 bg-gray-200 rounded w-24 animate-pulse" />
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          
+          {/* Cards skeleton - Mobile */}
+          <div className="md:hidden space-y-3">
+            <div className="flex items-center gap-2 text-sm font-semibold text-yellow-800 mb-2">
+              <div className="h-4 bg-yellow-200 rounded w-28 animate-pulse" />
+            </div>
             {[1, 2, 3, 4].map(i => (
-              <div key={i} className="bg-white rounded-lg border border-gray-200 p-4">
-                <div className="flex justify-between items-start">
-                  <div className="space-y-2 flex-1">
-                    <div className="h-5 bg-gray-200 rounded w-32 animate-pulse" />
-                    <div className="h-4 bg-gray-200 rounded w-48 animate-pulse" />
-                    <div className="h-4 bg-gray-200 rounded w-40 animate-pulse" />
+              <div key={i} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden animate-pulse">
+                <div className="h-1 bg-gray-300" />
+                <div className="p-3">
+                  <div className="flex items-start justify-between mb-2">
+                    <div>
+                      <div className="h-4 bg-gray-200 rounded w-24 mb-1" />
+                      <div className="h-3 bg-gray-100 rounded w-32" />
+                    </div>
+                    <div className="h-5 bg-yellow-100 rounded-full w-16" />
                   </div>
-                  <div className="h-6 bg-gray-200 rounded-full w-20 animate-pulse" />
+                  <div className="flex flex-wrap gap-2">
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2 h-2 bg-gray-200 rounded-full" />
+                      <div className="h-3 bg-gray-200 rounded w-16" />
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2 h-2 bg-gray-200 rounded-full" />
+                      <div className="h-3 bg-gray-200 rounded w-20" />
+                    </div>
+                  </div>
                 </div>
               </div>
             ))}
@@ -669,20 +752,83 @@ export default function AulasRealizadasPage() {
 
   return (
     <ProtectedPage tab="aulas" title="Aulas - Superação Flux">
-      <div className="px-4 py-6 sm:px-0">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6 fade-in-1">
-          <div>
-            <h1 className="text-base font-semibold text-gray-900 flex items-center gap-2">
-              <i className="fas fa-clipboard-check text-primary-600"></i>
-              Aulas
-            </h1>
-            <p className="mt-2 text-sm text-gray-600">Gerencie as aulas realizadas e pendentes do sistema</p>
+      <div className="w-full px-4 py-6 sm:px-6 lg:px-8">
+        {/* Header Desktop */}
+        <div className="hidden md:block mb-6 fade-in-1">
+          <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+            <i className="fas fa-clipboard-check text-green-600"></i>
+            Aulas
+          </h1>
+          <p className="text-sm text-gray-600 mt-1">
+            Gerencie as aulas realizadas e pendentes do sistema
+          </p>
+        </div>
+
+        {/* Header Mobile */}
+        <div className="md:hidden mb-4 fade-in-1">
+          <h1 className="text-lg font-semibold text-gray-900">Aulas</h1>
+        </div>
+
+        {/* Filtros Mobile - Tabs */}
+        <div className="md:hidden mb-4 fade-in-2">
+          <div className="flex gap-1 overflow-x-auto pb-2">
+            <button
+              onClick={() => setFiltros({ ...filtros, tipoAula: 'todas' })}
+              className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                filtros.tipoAula === 'todas' 
+                  ? 'bg-green-600 text-white' 
+                  : 'bg-gray-100 text-gray-700'
+              }`}
+            >
+              Todas
+            </button>
+            <button
+              onClick={() => setFiltros({ ...filtros, tipoAula: 'realizadas' })}
+              className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                filtros.tipoAula === 'realizadas' 
+                  ? 'bg-green-600 text-white' 
+                  : 'bg-gray-100 text-gray-700'
+              }`}
+            >
+              <i className="fas fa-check mr-1"></i>{aulas.length}
+            </button>
+            <button
+              onClick={() => setFiltros({ ...filtros, tipoAula: 'pendentes' })}
+              className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                filtros.tipoAula === 'pendentes' 
+                  ? 'bg-yellow-600 text-white' 
+                  : 'bg-gray-100 text-gray-700'
+              }`}
+            >
+              <i className="fas fa-clock mr-1"></i>{aulasPendentes.length}
+            </button>
+          </div>
+          <div className="flex gap-2 mt-2">
+            <select
+              value={filtros.professor}
+              onChange={(e) => setFiltros({ ...filtros, professor: e.target.value })}
+              className="flex-1 px-2 py-1.5 border border-gray-300 rounded-lg text-xs bg-white"
+            >
+              <option value="">Professor</option>
+              {professores.map((prof) => (
+                <option key={prof._id} value={prof._id}>{prof.nome}</option>
+              ))}
+            </select>
+            <select
+              value={filtros.modalidade}
+              onChange={(e) => setFiltros({ ...filtros, modalidade: e.target.value })}
+              className="flex-1 px-2 py-1.5 border border-gray-300 rounded-lg text-xs bg-white"
+            >
+              <option value="">Modalidade</option>
+              {modalidades.map((mod) => (
+                <option key={mod._id} value={mod.nome}>{mod.nome}</option>
+              ))}
+            </select>
           </div>
         </div>
 
-        {/* Filtros */}
-        <div className="bg-white rounded-md border border-gray-200 p-4 mb-6 fade-in-2">
+        {/* Filtros Desktop */}
+        <div className="hidden md:block bg-white rounded-md border border-gray-200 p-4 mb-6 fade-in-2">
           {/* Filtro de Tipo de Aula - Botões de Tab */}
           <div className="flex gap-2 mb-4 pb-4 border-b border-gray-200">
             <button
@@ -853,9 +999,68 @@ export default function AulasRealizadasPage() {
           </div>
         ) : (
           <div className="space-y-4">
-            {/* Tabela de Aulas Pendentes */}
+            {/* Aulas Pendentes */}
             {(filtros.tipoAula === 'pendentes' || filtros.tipoAula === 'todas') && pendentesFiltradas.length > 0 && (
-              <div className="bg-white rounded-md border border-gray-200 overflow-hidden fade-in-3">
+              <>
+              {/* Cards Mobile - Pendentes */}
+              <div className="md:hidden space-y-3 fade-in-3">
+                <div className="flex items-center gap-2 text-sm font-semibold text-yellow-800 mb-2">
+                  <i className="fas fa-clock"></i>
+                  Pendentes ({pendentesFiltradas.length})
+                </div>
+                {pendentesParaExibir.map((aula, index) => {
+                  const fadeClass = `fade-in-${Math.min((index % 8) + 1, 8)}`;
+                  return (
+                    <div key={`${aula.horarioFixoId}-${aula.data}`} className={`bg-white rounded-xl border border-yellow-200 shadow-sm overflow-hidden ${fadeClass}`}>
+                      <div className="h-1 bg-yellow-400"></div>
+                      <div className="p-3">
+                        <div className="flex items-start justify-between mb-2">
+                          <div>
+                            <div className="text-sm font-semibold text-gray-900">
+                              {parseLocalDate(aula.data).toLocaleDateString('pt-BR')}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {(() => {
+                                try {
+                                  const d = parseLocalDate(aula.data);
+                                  const wd = d.toLocaleDateString('pt-BR', { weekday: 'long' });
+                                  return wd ? wd.charAt(0).toUpperCase() + wd.slice(1) : '';
+                                } catch (e) { return ''; }
+                              })()} • {aula.horario || '—'}
+                            </div>
+                          </div>
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-yellow-100 text-yellow-700">
+                            Pendente
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <span className="inline-flex items-center gap-1.5 text-xs text-gray-600">
+                            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: getModalidadeColor(aula.modalidade) }}></span>
+                            {aula.modalidade}
+                          </span>
+                          <span className="inline-flex items-center gap-1.5 text-xs text-gray-600">
+                            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: getProfessorColor(aula.professor) }}></span>
+                            {aula.professor}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+                {/* Paginação Mobile Pendentes */}
+                {pendentesFiltradas.length > ITENS_POR_PAGINA && (
+                  <div className="flex items-center justify-between text-xs text-gray-600 pt-2">
+                    <span>{pendentesPage}/{totalPendentesPages}</span>
+                    <div className="flex gap-2">
+                      <button disabled={pendentesPage === 1} onClick={() => setPendentesPage(p => Math.max(1, p - 1))} className="px-2 py-1 border rounded bg-white disabled:opacity-50">Ant</button>
+                      <button disabled={pendentesPage >= totalPendentesPages} onClick={() => setPendentesPage(p => Math.min(totalPendentesPages, p + 1))} className="px-2 py-1 border rounded bg-white disabled:opacity-50">Próx</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Tabela Desktop - Pendentes */}
+              <div className="hidden md:block bg-white rounded-md border border-gray-200 overflow-hidden fade-in-3">
                 <div className="bg-yellow-50 px-4 py-3 border-b border-yellow-200">
                   <h3 className="text-sm font-semibold text-yellow-800 flex items-center gap-2">
                     <i className="fas fa-clock"></i>
@@ -905,7 +1110,7 @@ export default function AulasRealizadasPage() {
                     </tbody>
                   </table>
                 </div>
-                {/* Paginação Pendentes */}
+                {/* Paginação Pendentes Desktop */}
                 {pendentesFiltradas.length > ITENS_POR_PAGINA && (
                   <div className="px-4 py-3 bg-white border-t border-gray-200 flex items-center justify-between text-sm">
                     <div className="text-gray-600">Mostrando {Math.min(ITENS_POR_PAGINA, pendentesFiltradas.length - (pendentesPage - 1) * ITENS_POR_PAGINA)} de {pendentesFiltradas.length}</div>
@@ -917,11 +1122,93 @@ export default function AulasRealizadasPage() {
                   </div>
                 )}
               </div>
+              </>
             )}
 
-            {/* Tabela de Aulas Realizadas */}
+            {/* Aulas Realizadas */}
             {(filtros.tipoAula === 'realizadas' || filtros.tipoAula === 'todas') && aulasParaExibir.length > 0 && (
-              <div className="bg-white rounded-md border border-gray-200 overflow-hidden fade-in-3">
+              <>
+              {/* Cards Mobile - Realizadas */}
+              <div className="md:hidden space-y-3 fade-in-3">
+                {filtros.tipoAula === 'todas' && (
+                  <div className="flex items-center gap-2 text-sm font-semibold text-green-800 mb-2">
+                    <i className="fas fa-check-circle"></i>
+                    Realizadas ({aulasParaExibir.length})
+                  </div>
+                )}
+                {realizadasParaExibir.map((aula, index) => {
+                  const fadeClass = `fade-in-${Math.min((index % 8) + 1, 8)}`;
+                  return (
+                    <div 
+                      key={aula._id} 
+                      onClick={() => setAulaParaEditar(aula)}
+                      className={`bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden cursor-pointer ${fadeClass}`}
+                    >
+                      <div className="h-1" style={{ backgroundColor: getModalidadeColor(aula.modalidade || '') }}></div>
+                      <div className="p-3">
+                        <div className="flex items-start justify-between mb-2">
+                          <div>
+                            <div className="text-sm font-semibold text-gray-900">
+                              {parseLocalDate(aula.data).toLocaleDateString('pt-BR')}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {(() => {
+                                try {
+                                  const d = parseLocalDate(aula.data);
+                                  const wd = d.toLocaleDateString('pt-BR', { weekday: 'long' });
+                                  const hi = (aula as any).horarioInicio || '';
+                                  const hf = (aula as any).horarioFim || '';
+                                  const horarioStr = (hi && hf) ? `${hi} - ${hf}` : (hi || hf || '—');
+                                  return `${wd ? wd.charAt(0).toUpperCase() + wd.slice(1) : ''} • ${horarioStr}`;
+                                } catch (e) { return ''; }
+                              })()}
+                            </div>
+                          </div>
+                          <div className="flex gap-1">
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 text-[10px] font-semibold">
+                              <i className="fas fa-check"></i>{aula.total_presentes || 0}
+                            </span>
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 text-[10px] font-semibold">
+                              <i className="fas fa-times"></i>{aula.total_faltas || 0}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap gap-2 mb-2">
+                          <span className="inline-flex items-center gap-1.5 text-xs text-gray-600">
+                            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: getModalidadeColor(aula.modalidade || '') }}></span>
+                            {aula.modalidade || 'Não informada'}
+                          </span>
+                          <span className="inline-flex items-center gap-1.5 text-xs text-gray-600">
+                            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: getProfessorColor(getProfessorLookupKey(aula)) }}></span>
+                            {getProfessorName(aula)}
+                          </span>
+                        </div>
+                        <div className="flex justify-end">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setAulaParaExcluir(aula); }}
+                            className="inline-flex items-center gap-1 px-2 py-1 text-[10px] rounded-lg bg-yellow-50 text-yellow-700 font-medium"
+                          >
+                            <i className="fas fa-undo"></i> Devolver
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+                {/* Paginação Mobile Realizadas */}
+                {aulasParaExibir.length > ITENS_POR_PAGINA && (
+                  <div className="flex items-center justify-between text-xs text-gray-600 pt-2">
+                    <span>{realizadasPage}/{totalRealizadasPages}</span>
+                    <div className="flex gap-2">
+                      <button disabled={realizadasPage === 1} onClick={() => setRealizadasPage(p => Math.max(1, p - 1))} className="px-2 py-1 border rounded bg-white disabled:opacity-50">Ant</button>
+                      <button disabled={realizadasPage >= totalRealizadasPages} onClick={() => setRealizadasPage(p => Math.min(totalRealizadasPages, p + 1))} className="px-2 py-1 border rounded bg-white disabled:opacity-50">Próx</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Tabela Desktop - Realizadas */}
+              <div className="hidden md:block bg-white rounded-md border border-gray-200 overflow-hidden fade-in-3">
                 {filtros.tipoAula === 'todas' && (
                   <div className="bg-green-50 px-4 py-3 border-b border-green-200">
                     <h3 className="text-sm font-semibold text-green-800 flex items-center gap-2">
@@ -1006,7 +1293,7 @@ export default function AulasRealizadasPage() {
                     </tbody>
                   </table>
                 </div>
-                {/* Paginação Realizadas */}
+                {/* Paginação Realizadas Desktop */}
                 {aulasParaExibir.length > ITENS_POR_PAGINA && (
                   <div className="px-4 py-3 bg-white border-t border-gray-200 flex items-center justify-between text-sm">
                     <div className="text-gray-600">Mostrando {Math.min(ITENS_POR_PAGINA, aulasParaExibir.length - (realizadasPage - 1) * ITENS_POR_PAGINA)} de {aulasParaExibir.length}</div>
@@ -1018,14 +1305,15 @@ export default function AulasRealizadasPage() {
                   </div>
                 )}
               </div>
+              </>
             )}
           </div>
         )}
 
         {/* Modal de Edição */}
         {aulaParaEditar && (
-          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg shadow-lg border p-6 max-w-3xl w-full max-h-[90vh] overflow-hidden">
+          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
+            <div className="bg-white rounded-lg shadow-lg border p-4 sm:p-6 max-w-3xl w-full max-h-[90vh] overflow-y-auto">
               <div className="flex items-start justify-between">
                 <div>
                   <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
@@ -1050,9 +1338,15 @@ export default function AulasRealizadasPage() {
               </div>
 
               {carregandoDetalhe ? (
-                <div className="p-12 text-center">
-                  <i className="fas fa-spinner fa-spin text-3xl text-primary-600 mb-3"></i>
-                  <p className="text-sm text-gray-600">Carregando detalhes da aula...</p>
+                <div className="p-6">
+                  <div className="space-y-4">
+                    {[1, 2, 3].map(i => (
+                      <div key={i} className="animate-pulse">
+                        <div className="h-4 bg-gray-200 rounded w-1/4 mb-2"></div>
+                        <div className="h-10 bg-gray-200 rounded w-full"></div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ) : aulaEditarEnriquecida ? (
                 <>
@@ -1171,8 +1465,8 @@ export default function AulasRealizadasPage() {
 
         {/* Modal de Confirmação de Exclusão */}
         {aulaParaExcluir && (
-          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg shadow-lg border p-6 max-w-md w-full">
+          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
+            <div className="bg-white rounded-lg shadow-lg border p-4 sm:p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
               <div className="flex items-start justify-between">
                       <div>
                         <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">

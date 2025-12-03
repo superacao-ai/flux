@@ -328,10 +328,10 @@ const AlunoRowModal: React.FC<Props> = ({ isOpen, onClose, alunoId, onRefresh })
   const isMuted = !!(aluno?.congelado || aluno?.ausente);
 
   return (
-    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center" onClick={onClose}>
-      <div className="relative mx-auto w-full max-w-4xl bg-white rounded-lg shadow-lg border" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="relative mx-auto w-full max-w-4xl bg-white rounded-2xl shadow-lg border max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+        <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-gray-200 flex-shrink-0">
           <div className="flex items-center gap-2">
             <i className="fas fa-user text-lg text-primary-600" aria-hidden="true" />
             <h3 className="text-base font-semibold text-gray-900">Detalhes do Aluno</h3>
@@ -342,13 +342,119 @@ const AlunoRowModal: React.FC<Props> = ({ isOpen, onClose, alunoId, onRefresh })
         </div>
 
         {/* Content */}
-        <div className="p-4">
+        <div className="p-4 overflow-y-auto flex-1">
           {loading ? (
             <div className="flex items-center justify-center py-12">
               <i className="fas fa-spinner fa-spin text-2xl text-primary-600" />
             </div>
           ) : aluno ? (
-            <div className="overflow-x-auto">
+            <>
+            {/* Versão Mobile - Card */}
+            <div className="block lg:hidden space-y-4">
+              {/* Info principal */}
+              <div className={`p-4 rounded-lg border ${isMuted ? 'bg-gray-50 border-gray-200' : 'bg-white border-gray-200'}`}>
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center gap-3">
+                    {typeof aluno.frequencia !== 'undefined' && (
+                      <span className="inline-flex items-center justify-center px-2 py-0.5 text-[11px] font-semibold rounded-md bg-gray-100 text-gray-800">
+                        {aluno.frequencia}%
+                      </span>
+                    )}
+                    <div className={`font-medium text-lg ${isMuted ? 'text-gray-500' : 'text-gray-900'}`}>{aluno.nome}</div>
+                  </div>
+                  <button onClick={abrirEdicao} className="p-2 rounded-md bg-white border border-gray-100 hover:bg-gray-50 text-primary-600" title="Editar aluno">
+                    <i className="fas fa-edit" aria-hidden="true" />
+                  </button>
+                </div>
+
+                {aluno.observacoes && (
+                  <div className={`mb-3 px-3 py-2 rounded-lg text-sm ${isMuted ? 'bg-gray-100 text-gray-500' : 'bg-yellow-50 text-yellow-800 border border-yellow-200'}`}>
+                    <i className="fas fa-sticky-note mr-2" />
+                    {aluno.observacoes}
+                  </div>
+                )}
+
+                {aluno.telefone && (
+                  <div className="text-sm text-gray-600 mb-3">
+                    <i className="fas fa-phone mr-2 text-gray-400" />
+                    {aluno.telefone}
+                  </div>
+                )}
+
+                {/* Modalidades e Horários */}
+                <div className="border-t border-gray-100 pt-3">
+                  <div className="text-xs font-medium text-gray-500 uppercase mb-2">Modalidades / Horários</div>
+                  {(aluno.modalidades && aluno.modalidades.length > 0) ? (
+                    aluno.modalidades.map(m => {
+                      const hs = (aluno.horarios || []).filter(h => String(h.modalidadeNome || '').toLowerCase() === String(m.nome || '').toLowerCase());
+                      return (
+                        <div key={(m._id || m.nome)} className="mb-2">
+                          <div className={`inline-flex items-center gap-2 px-2 py-1 rounded-full text-xs font-medium ${isMuted ? 'bg-gray-100 text-gray-500' : 'bg-gray-100 text-gray-700'}`}>
+                            <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: isMuted ? '#D1D5DB' : getModalidadeColor(m) }} />
+                            {m.nome}
+                          </div>
+                          {hs && hs.length > 0 && (
+                            <div className="ml-4 mt-1 space-y-0.5">
+                              {hs.map((h, i) => (
+                                <div key={i} className="text-xs text-gray-500">
+                                  {diasSemana[h.diaSemana]} {h.horarioInicio}–{h.horarioFim}
+                                  {h.professorNome && <span className="text-gray-400"> — {h.professorNome}</span>}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="text-xs text-gray-400">—</div>
+                  )}
+                </div>
+
+                {/* Características */}
+                <div className="border-t border-gray-100 pt-3 mt-3">
+                  <div className="text-xs font-medium text-gray-500 uppercase mb-2">Características</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {aluno.congelado && (
+                      <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold ${isMuted ? 'bg-gray-100 text-gray-400' : 'bg-sky-50 text-sky-700'}`}>
+                        <i className="fas fa-snowflake" /> Congelado
+                      </span>
+                    )}
+                    {aluno.ausente && (
+                      <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold ${isMuted ? 'bg-gray-100 text-gray-400' : 'bg-rose-50 text-rose-700'}`}>
+                        <i className="fas fa-user-clock" /> Parou de Vir
+                      </span>
+                    )}
+                    {aluno.periodoTreino === '12/36' && (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-green-50 text-green-700">
+                        <i className="fas fa-clock" /> 12/36
+                      </span>
+                    )}
+                    {aluno.parceria === 'TOTALPASS' && (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-purple-50 text-purple-700">
+                        TOTALPASS
+                      </span>
+                    )}
+                    {(!aluno.congelado && !aluno.ausente && aluno.periodoTreino !== '12/36' && !aluno.parceria) && (
+                      <span className="text-xs text-gray-400">—</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Botão Ver Faltas */}
+                <div className="border-t border-gray-100 pt-3 mt-3">
+                  <button
+                    className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-md bg-yellow-50 text-yellow-700 text-sm font-medium border border-yellow-200 hover:bg-yellow-100"
+                    onClick={abrirModalFaltas}
+                  >
+                    <i className="fas fa-history"></i> Ver Faltas
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Versão Desktop - Tabela */}
+            <div className="hidden lg:block overflow-x-auto">
               <table className="min-w-full">
                 <thead>
                   <tr className="bg-gray-50">
@@ -501,6 +607,7 @@ const AlunoRowModal: React.FC<Props> = ({ isOpen, onClose, alunoId, onRefresh })
                 </tbody>
               </table>
             </div>
+            </>
           ) : (
             <div className="text-center py-8 text-gray-500">
               Aluno não encontrado
@@ -511,8 +618,8 @@ const AlunoRowModal: React.FC<Props> = ({ isOpen, onClose, alunoId, onRefresh })
 
       {/* Modal de Faltas */}
       {showModalFaltas && aluno && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center" style={{ zIndex: 10000 }} onClick={() => setShowModalFaltas(false)}>
-          <div className="relative mx-auto w-full max-w-2xl bg-white rounded-lg shadow-lg border p-6" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 z-50 flex items-center justify-center p-4" style={{ zIndex: 10000 }} onClick={() => setShowModalFaltas(false)}>
+          <div className="relative mx-auto w-full max-w-2xl bg-white rounded-2xl shadow-lg border p-4 sm:p-6 max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
@@ -642,8 +749,8 @@ const AlunoRowModal: React.FC<Props> = ({ isOpen, onClose, alunoId, onRefresh })
             )}
             
             {/* Footer com legenda */}
-            <div className="mt-4 pt-3 border-t border-gray-200">
-              <div className="flex flex-wrap gap-3 text-xs text-gray-500">
+            <div className="mt-4 pt-3 border-t border-gray-200 flex-shrink-0">
+              <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 sm:gap-3 text-xs text-gray-500">
                 <span className="flex items-center gap-1">
                   <span className="w-2 h-2 rounded-full bg-orange-400" /> Disponível para repor
                 </span>
@@ -664,8 +771,8 @@ const AlunoRowModal: React.FC<Props> = ({ isOpen, onClose, alunoId, onRefresh })
 
       {/* Modal de Edição */}
       {showEditModal && aluno && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-600 bg-opacity-50" style={{ zIndex: 10000 }}>
-          <div className="relative w-full max-w-lg mx-auto bg-white rounded-lg shadow-lg border border-gray-200 p-6" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-600 bg-opacity-50 p-4" style={{ zIndex: 10000 }}>
+          <div className="relative w-full max-w-lg mx-auto bg-white rounded-2xl shadow-lg border border-gray-200 p-4 sm:p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             {/* Header + Info */}
             <div className="mb-2 border-b pb-4">
               <div className="flex items-center justify-between">
@@ -696,8 +803,8 @@ const AlunoRowModal: React.FC<Props> = ({ isOpen, onClose, alunoId, onRefresh })
                 salvarEdicao();
               }}
             >
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 items-end">
-                <div className="sm:col-span-2">
+              <div className="grid grid-cols-1 gap-3 sm:gap-4">
+                <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Nome *</label>
                   <input
                     type="text"
@@ -708,8 +815,8 @@ const AlunoRowModal: React.FC<Props> = ({ isOpen, onClose, alunoId, onRefresh })
                     required
                   />
                 </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Telefone <span className="text-gray-400 text-xs">(pode ser &quot;Não informado&quot;)</span></label>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Telefone</label>
                   <input
                     type="tel"
                     value={editFormData.telefone}
@@ -765,19 +872,19 @@ const AlunoRowModal: React.FC<Props> = ({ isOpen, onClose, alunoId, onRefresh })
                 )}
               </div>
               {/* Action Buttons */}
-              <div className="flex justify-end gap-2 pt-3 border-t mt-2">
+              <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-3 border-t mt-2">
                 <button
                   type="button"
                   onClick={() => setShowEditModal(false)}
-                  className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 flex items-center gap-2"
+                  className="w-full sm:w-auto px-4 py-2.5 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 flex items-center justify-center gap-2"
                 >
                   <i className="fas fa-times text-black" aria-hidden="true" /> Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 flex items-center gap-2"
+                  className="w-full sm:w-auto px-4 py-2.5 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 flex items-center justify-center gap-2"
                 >
-                  <i className="fas fa-save text-white mr-2" aria-hidden="true" /> Atualizar
+                  <i className="fas fa-save text-white" aria-hidden="true" /> Atualizar
                 </button>
               </div>
             </form>

@@ -786,6 +786,28 @@ export default function AlunosPage() {
     return Array.from(s).sort();
   }, [alunos]);
 
+  // Fechar modais com ESC
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (showEditModal) {
+          setShowEditModal(false);
+          setEditingAluno(null);
+        } else if (showModalFaltas) {
+          setShowModalFaltas(false);
+          setAlunoSelecionado(null);
+          setFaltasAlunoSelecionado([]);
+        } else if (showReporModal) {
+          setShowReporModal(false);
+          setFaltaSelecionada(null);
+          setAlunoReposicao(null);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [showEditModal, showModalFaltas, showReporModal]);
+
   // Pagination: slice the filtered list
   const totalPages = Math.max(1, Math.ceil(filteredAlunos.length / pageSize));
   const pagedAlunos = filteredAlunos.slice((currentPage - 1) * pageSize, currentPage * pageSize);
@@ -939,16 +961,17 @@ export default function AlunosPage() {
 
   return (
   <ProtectedPage tab="alunos" title="Alunos - Superação Flux" fullWidth>
-      <div className="px-4 py-6 sm:px-0">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 fade-in-1">
-            <div className="sm:flex sm:items-center sm:space-x-6">
-            <div>
-                <h1 className="text-base font-semibold text-gray-900 flex items-center gap-2">
-                  <i className="fas fa-users text-primary-600"></i>
-                  Alunos
-                </h1>
-                <p className="mt-2 text-sm text-gray-600 max-w-xl">Gerencie o cadastro de alunos do studio — pesquise, edite e organize seus alunos.</p>
-            </div>
+      <div className="w-full px-4 py-6 sm:px-6 lg:px-8">
+        {/* Desktop Header - mantido original */}
+        <div className="hidden md:flex items-center justify-between gap-4 mb-6 fade-in-1">
+          <div>
+            <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+              <i className="fas fa-user-graduate text-green-600"></i>
+              Alunos
+            </h1>
+            <p className="text-sm text-gray-600 mt-1">
+              Gerencie o cadastro de alunos do studio
+            </p>
           </div>
 
           <div className="flex items-center gap-3">
@@ -989,69 +1012,168 @@ export default function AlunosPage() {
           </div>
         </div>
 
+        {/* Mobile Header - minimalista */}
+        <div className="md:hidden mb-4 fade-in-1">
+          <div className="flex items-center justify-between">
+            <h1 className="text-lg font-semibold text-gray-900">Alunos</h1>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (appliedFilterStatus === 'inativo') {
+                    setAppliedFilterStatus('ativo');
+                  } else {
+                    setAppliedFilterStatus('inativo');
+                  }
+                  setCurrentPage(1);
+                }}
+                className={`h-8 w-8 inline-flex items-center justify-center rounded-full transition-colors ${
+                  appliedFilterStatus === 'inativo'
+                    ? 'bg-gray-700 text-white'
+                    : 'bg-gray-100 text-gray-600'
+                }`}
+              >
+                <i className={`fas ${appliedFilterStatus === 'inativo' ? 'fa-arrow-left' : 'fa-trash'} text-xs`}></i>
+              </button>
+              <button 
+                type="button" 
+                onClick={abrirNovoAluno} 
+                className="h-8 w-8 inline-flex items-center justify-center rounded-full bg-green-600 text-white"
+              >
+                <i className="fas fa-plus text-xs"></i>
+              </button>
+            </div>
+          </div>
+          {selectedAlunos.length > 0 && (
+            <button
+              type="button"
+              onClick={excluirSelecionados}
+              className="mt-2 w-full h-9 inline-flex items-center justify-center rounded-lg bg-red-50 text-red-700 text-sm font-medium border border-red-200"
+            >
+              <i className="fas fa-trash mr-2 text-xs"></i>
+              Excluir selecionados ({selectedAlunos.length})
+            </button>
+          )}
+        </div>
+
         {/* Search row placed above the table for clearer layout */}
-        <div className="mt-4 sm:mt-6 fade-in-2">
-          <div className="flex items-center justify-between gap-4">
-            <div className="relative w-full sm:w-1/2">
-              <svg className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z" /></svg>
-              <input
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Pesquisar por nome, email, telefone, modalidade ou plano..."
-                className="block w-full pl-10 pr-3 border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 bg-white"
-              />
-            </div>
-            <div className="hidden sm:flex items-center text-sm text-gray-600">
-              <div>Resultados: {filteredAlunos.length}</div>
-            </div>
+        {/* Busca */}
+        <div className="mb-4 fade-in-2">
+          <div className="relative w-full">
+            <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Pesquisar aluno..."
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm"
+            />
           </div>
         </div>
 
-        {/* Filters row: modalidade, características (single select), status, professor, and apply button */}
-        <div className="mt-4 mb-4 bg-white rounded-md p-3 border border-gray-200 fade-in-2">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:gap-3">
-            <div className="flex flex-wrap items-center gap-3 flex-1">
-              <div className="flex items-center gap-2">
-                <label className="text-sm text-gray-600 mr-2">Modalidade:</label>
-                <select value={uiFilterModalidade} onChange={(e) => { setUiFilterModalidade(e.target.value); setAppliedFilterModalidade(e.target.value); setCurrentPage(1); }} className="border border-gray-200 rounded-md px-2 py-1 text-sm">
-                  <option value="">Todas</option>
-                  {modalidades.map(m => (
-                    <option key={m._id} value={m.nome}>{m.nome}</option>
-                  ))}
-                </select>
-              </div>
+        {/* Filtros Compactos - Mobile */}
+        <div className="md:hidden mb-4 fade-in-2">
+          <div className="flex flex-wrap gap-2">
+            <select 
+              value={uiFilterModalidade} 
+              onChange={(e) => { setUiFilterModalidade(e.target.value); setAppliedFilterModalidade(e.target.value); setCurrentPage(1); }} 
+              className="flex-1 min-w-0 px-2 py-1.5 border border-gray-300 rounded-lg text-xs bg-white"
+            >
+              <option value="">Modalidade</option>
+              {modalidades.map(m => (
+                <option key={m._id} value={m.nome}>{m.nome}</option>
+              ))}
+            </select>
+            <select 
+              value={uiFilterProfessor} 
+              onChange={(e) => { setUiFilterProfessor(e.target.value); setAppliedFilterProfessor(e.target.value); setCurrentPage(1); }} 
+              className="flex-1 min-w-0 px-2 py-1.5 border border-gray-300 rounded-lg text-xs bg-white"
+            >
+              <option value="">Professor</option>
+              {availableProfessores.map(prof => (
+                <option key={prof} value={prof}>{prof}</option>
+              ))}
+            </select>
+            <select 
+              value={uiFilterCaracteristica} 
+              onChange={(e) => { setUiFilterCaracteristica(e.target.value); setAppliedFilterCaracteristica(e.target.value); setCurrentPage(1); }} 
+              className="flex-1 min-w-0 px-2 py-1.5 border border-gray-300 rounded-lg text-xs bg-white"
+            >
+              <option value="">Status</option>
+              <option value="congelado">Congelado</option>
+              <option value="ausente">Ausente</option>
+              <option value="reposicao">Com Reposição</option>
+            </select>
+            {(appliedFilterModalidade || appliedFilterProfessor || appliedFilterCaracteristica) && (
+              <button
+                type="button"
+                onClick={() => { 
+                  setUiFilterModalidade(''); 
+                  setUiFilterCaracteristica(''); 
+                  setUiFilterProfessor('');
+                  setAppliedFilterModalidade('');
+                  setAppliedFilterCaracteristica('');
+                  setAppliedFilterProfessor('');
+                  setCurrentPage(1); 
+                }}
+                className="px-2 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs"
+              >
+                <i className="fas fa-times"></i>
+              </button>
+            )}
+          </div>
+          <div className="text-xs text-gray-500 mt-1">
+            {filteredAlunos.length} {filteredAlunos.length === 1 ? 'resultado' : 'resultados'}
+          </div>
+        </div>
 
-              <div className="flex items-center gap-2">
-                <label className="text-sm text-gray-600 mr-2">Professor:</label>
-                <select value={uiFilterProfessor} onChange={(e) => { setUiFilterProfessor(e.target.value); setAppliedFilterProfessor(e.target.value); setCurrentPage(1); }} className="border border-gray-200 rounded-md px-2 py-1 text-sm">
-                  <option value="">Todos</option>
-                  {availableProfessores.map(prof => (
-                    <option key={prof} value={prof}>{prof}</option>
-                  ))}
-                </select>
-              </div>
+        {/* Filtros - Desktop */}
+        <div className="hidden md:block bg-white rounded-lg border border-gray-200 p-4 mb-6 fade-in-3">
+          <div className="flex flex-col md:flex-row gap-3">
+            <div className="flex-1 flex flex-wrap items-center gap-3">
+              <select 
+                value={uiFilterModalidade} 
+                onChange={(e) => { setUiFilterModalidade(e.target.value); setAppliedFilterModalidade(e.target.value); setCurrentPage(1); }} 
+                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm"
+              >
+                <option value="">Todas as modalidades</option>
+                {modalidades.map(m => (
+                  <option key={m._id} value={m.nome}>{m.nome}</option>
+                ))}
+              </select>
 
-              <div className="flex items-center gap-2">
-                <label className="text-sm text-gray-600 mr-2">Características:</label>
-                <select value={uiFilterCaracteristica} onChange={(e) => { setUiFilterCaracteristica(e.target.value); setAppliedFilterCaracteristica(e.target.value); setCurrentPage(1); }} className="border border-gray-200 rounded-md px-2 py-1 text-sm">
-                  <option value="">Todas</option>
-                  <option value="congelado">Congelado</option>
-                  <option value="ausente">Parou de Vir</option>
-                  <option value="12/36">12/36</option>
-                  <option value="TOTALPASS">TOTALPASS</option>
-                  {availableCaracteristicas.length > 0 && (
-                    <optgroup label="Personalizadas">
-                      {availableCaracteristicas.map(c => (
-                        <option key={c} value={c}>{c}</option>
-                      ))}
-                    </optgroup>
-                  )}
-                </select>
-              </div>
+              <select 
+                value={uiFilterProfessor} 
+                onChange={(e) => { setUiFilterProfessor(e.target.value); setAppliedFilterProfessor(e.target.value); setCurrentPage(1); }} 
+                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm"
+              >
+                <option value="">Todos os professores</option>
+                {availableProfessores.map(prof => (
+                  <option key={prof} value={prof}>{prof}</option>
+                ))}
+              </select>
+
+              <select 
+                value={uiFilterCaracteristica} 
+                onChange={(e) => { setUiFilterCaracteristica(e.target.value); setAppliedFilterCaracteristica(e.target.value); setCurrentPage(1); }} 
+                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm"
+              >
+                <option value="">Todas as características</option>
+                <option value="congelado">Congelado</option>
+                <option value="ausente">Parou de Vir</option>
+                <option value="12/36">12/36</option>
+                <option value="TOTALPASS">TOTALPASS</option>
+                {availableCaracteristicas.length > 0 && (
+                  <optgroup label="Personalizadas">
+                    {availableCaracteristicas.map(c => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </optgroup>
+                )}
+              </select>
             </div>
 
-            <div className="mt-3 sm:mt-0 sm:ml-auto flex items-center gap-2">
+            <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => { 
@@ -1064,19 +1186,21 @@ export default function AlunosPage() {
                   setSelectedAlunos([]); 
                   setCurrentPage(1); 
                 }}
-                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-full border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 shadow-sm focus:outline-none"
+                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 transition-colors"
                 title="Limpar filtros">
                 <i className="fas fa-eraser text-xs" aria-hidden="true" />
                 <span>Limpar</span>
               </button>
-
-              {/* Filters apply automatically on change */}
+              <div className="text-sm text-gray-600">
+                {filteredAlunos.length} {filteredAlunos.length === 1 ? 'resultado' : 'resultados'}
+              </div>
             </div>
           </div>
         </div>
 
         <div className="mt-6 flex flex-col">
-          <div className="-my-2 -mx-4 overflow-x-auto sm:-mx-6 lg:-mx-8 fade-in-3">
+          {/* Versão Desktop - Tabela */}
+          <div className="hidden md:block -my-2 -mx-4 overflow-x-auto sm:-mx-6 lg:-mx-8 fade-in-3">
             <div className="inline-block min-w-full py-2 align-middle md:px-6 lg:px-8">
               <div className="overflow-hidden rounded-md border border-gray-200">
                 <table className="w-full table-fixed text-sm border-collapse text-center">
@@ -1115,11 +1239,21 @@ export default function AlunosPage() {
                   </thead>
                   <tbody className="bg-white">
                     {loading && (
-                      <tr>
-                        <td colSpan={9} className="px-3 py-4 text-center text-sm text-gray-500 border-b border-gray-200">
-                          Carregando alunos...
-                        </td>
-                      </tr>
+                      <>
+                        {[1, 2, 3, 4, 5].map(i => (
+                          <tr key={i} className="animate-pulse">
+                            <td colSpan={9} className="px-3 py-3 border-b border-gray-200">
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-gray-200 rounded-full"></div>
+                                <div className="flex-1 space-y-2">
+                                  <div className="h-4 bg-gray-200 rounded w-1/4"></div>
+                                  <div className="h-3 bg-gray-200 rounded w-1/3"></div>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </>
                     )}
 
                     {!loading && filteredAlunos.length > 0 && (
@@ -1309,6 +1443,209 @@ export default function AlunosPage() {
               </div>
             </div>
           </div>
+
+          {/* Versão Mobile - Cards */}
+          <div className="md:hidden space-y-3 fade-in-3">
+            {loading && (
+              <div className="space-y-3">
+                {[1, 2, 3].map(i => (
+                  <div key={i} className="bg-white rounded-lg border border-gray-200 p-4 animate-pulse">
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="w-12 h-12 bg-gray-200 rounded-full"></div>
+                      <div className="flex-1">
+                        <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
+                        <div className="h-3 bg-gray-200 rounded w-1/2"></div>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="h-3 bg-gray-200 rounded w-full"></div>
+                      <div className="h-3 bg-gray-200 rounded w-5/6"></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {!loading && filteredAlunos.length === 0 && (
+              <div className="text-center py-8 text-gray-500">
+                <i className="fas fa-users text-3xl mb-2 text-gray-300"></i>
+                <p>Nenhum aluno encontrado</p>
+              </div>
+            )}
+
+            {!loading && pagedAlunos.map((aluno, idx) => {
+              const isMuted = !!(aluno.congelado || aluno.ausente);
+              const isInativo = !aluno.ativo;
+              const fadeClass = `fade-in-${Math.min((idx % 8) + 1, 8)}`;
+              
+              return (
+                <div 
+                  key={aluno._id} 
+                  className={`bg-white rounded-xl border shadow-sm overflow-hidden ${fadeClass} ${isInativo ? 'border-gray-300 bg-gray-50' : isMuted ? 'border-gray-200' : 'border-gray-200'}`}
+                >
+                  {/* Header do Card */}
+                  <div className={`px-4 py-3 ${isInativo ? 'bg-gray-100' : isMuted ? 'bg-gray-50' : 'bg-gradient-to-r from-green-50 to-white'}`}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500"
+                          checked={selectedAlunos.includes(aluno._id)}
+                          onChange={() => toggleSelectAluno(aluno._id)}
+                        />
+                        <div>
+                          <div className={`font-semibold text-sm ${isMuted || isInativo ? 'text-gray-500' : 'text-gray-900'}`}>
+                            {aluno.nome}
+                          </div>
+                          {aluno.telefone && (
+                            <div className="text-xs text-gray-500 flex items-center gap-1">
+                              <i className="fas fa-phone text-[10px]"></i>
+                              {aluno.telefone}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide ${
+                        isInativo 
+                          ? 'bg-gray-200 text-gray-600' 
+                          : 'bg-green-100 text-green-700'
+                      }`}>
+                        {isInativo ? 'Inativo' : 'Ativo'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Conteúdo do Card */}
+                  <div className="px-4 py-3 space-y-3">
+                    {/* Status Tags */}
+                    {(aluno.congelado || aluno.ausente || aluno.periodoTreino === '12/36' || aluno.parceria === 'TOTALPASS' || (aluno.caracteristicas && aluno.caracteristicas.length > 0)) && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {aluno.congelado && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-sky-100 text-sky-700">
+                            <i className="fas fa-snowflake"></i> Congelado
+                          </span>
+                        )}
+                        {aluno.ausente && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-100 text-rose-700">
+                            <i className="fas fa-user-clock"></i> Parou
+                          </span>
+                        )}
+                        {aluno.periodoTreino === '12/36' && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-700">
+                            <i className="fas fa-clock"></i> 12/36
+                          </span>
+                        )}
+                        {aluno.parceria === 'TOTALPASS' && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-purple-100 text-purple-700">
+                            TOTALPASS
+                          </span>
+                        )}
+                        {Array.isArray(aluno.caracteristicas) && aluno.caracteristicas.map((c, i) => (
+                          <span key={i} className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-gray-100 text-gray-600">
+                            {c}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Observações */}
+                    {aluno.observacoes && (
+                      <div className={`text-xs p-2 rounded-lg border-l-3 ${isMuted ? 'bg-gray-50 border-gray-300 text-gray-500' : 'bg-yellow-50 border-yellow-400 text-yellow-800'}`}>
+                        <i className="fas fa-sticky-note mr-1.5 text-yellow-500"></i>
+                        {aluno.observacoes}
+                      </div>
+                    )}
+
+                    {/* Modalidades e Horários */}
+                    {(aluno.modalidades && aluno.modalidades.length > 0) && (
+                      <div className="space-y-2">
+                        <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Modalidades</div>
+                        {aluno.modalidades.map(m => {
+                          const hs = (aluno.horarios || []).filter(h => String(h.modalidadeNome || '').toLowerCase() === String(m.nome || '').toLowerCase());
+                          return (
+                            <div key={(m._id || m.nome)} className="bg-gray-50 rounded-lg p-2.5 border border-gray-100">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: isMuted ? '#9CA3AF' : getModalidadeColor(m) }} />
+                                <span className={`text-xs font-medium ${isMuted ? 'text-gray-500' : 'text-gray-800'}`}>{m.nome}</span>
+                              </div>
+                              {hs && hs.length > 0 && (
+                                <div className="ml-4 space-y-0.5">
+                                  {hs.map((h, i) => (
+                                    <div key={`${h.diaSemana}-${h.horarioInicio}-${i}`} className="text-[11px] text-gray-500 flex items-center gap-1">
+                                      <i className="fas fa-calendar-day text-[9px] text-gray-400"></i>
+                                      <span className="font-medium">{['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'][h.diaSemana]}</span>
+                                      <span>{h.horarioInicio}–{h.horarioFim}</span>
+                                      {h.professorNome && <span className="text-gray-400">• {h.professorNome}</span>}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Frequência */}
+                    {typeof (aluno as any).frequencia !== 'undefined' && (
+                      <div className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
+                        <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Frequência</span>
+                        <span className={`text-sm font-bold ${(aluno as any).frequencia >= 80 ? 'text-green-600' : (aluno as any).frequencia >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>
+                          {(aluno as any).frequencia}%
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Footer - Ações */}
+                  <div className="px-4 py-3 bg-gray-50 border-t border-gray-100">
+                    <div className="flex items-center justify-between">
+                      <button
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-600 hover:bg-gray-100 transition-colors"
+                        onClick={() => abrirModalFaltas(aluno)}
+                      >
+                        <i className="fas fa-history text-gray-400"></i> Faltas
+                      </button>
+                      
+                      <div className="flex items-center gap-1.5">
+                        {isInativo ? (
+                          <>
+                            <button 
+                              onClick={() => reativarAluno(aluno._id, aluno.nome)} 
+                              className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-green-100 text-green-700 hover:bg-green-200 transition-colors"
+                            >
+                              <i className="fas fa-undo text-[10px]"></i> Reativar
+                            </button>
+                            <button 
+                              onClick={() => excluirAluno(aluno._id, aluno.nome, aluno.ativo)} 
+                              className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-red-100 text-red-600 hover:bg-red-200 transition-colors"
+                            >
+                              <i className="fas fa-trash text-xs"></i>
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button 
+                              onClick={() => abrirEdicao(aluno)} 
+                              className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-white border border-gray-200 text-green-600 hover:bg-green-50 transition-colors"
+                            >
+                              <i className="fas fa-edit text-xs"></i>
+                            </button>
+                            <button 
+                              onClick={() => excluirAluno(aluno._id, aluno.nome, aluno.ativo)} 
+                              className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-white border border-gray-200 text-red-500 hover:bg-red-50 transition-colors"
+                            >
+                              <i className="fas fa-trash text-xs"></i>
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
 
@@ -1330,8 +1667,8 @@ export default function AlunosPage() {
 
       {/* Modal de Edição */}
       {showEditModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-600 bg-opacity-50">
-          <div className="relative w-full max-w-lg mx-auto bg-white rounded-lg shadow-lg border border-gray-200 p-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-600 bg-opacity-50 p-3 sm:p-4">
+          <div className="relative w-full max-w-lg mx-auto bg-white rounded-lg shadow-lg border border-gray-200 p-4 sm:p-6 max-h-[90vh] overflow-y-auto">
             {/* Header + Info */}
             <div className="mb-2 border-b pb-4">
               <div className="flex items-center justify-between">
@@ -1454,11 +1791,11 @@ export default function AlunosPage() {
       {/* Modal de faltas do aluno */}
       {showModalFaltas && alunoModalFaltas && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4"
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-3 sm:p-4"
           onClick={() => setShowModalFaltas(false)}
         >
           <div
-            className="bg-white rounded-lg shadow-lg border border-gray-200 max-w-2xl w-full p-6 max-h-[85vh] overflow-hidden"
+            className="bg-white rounded-lg shadow-lg border border-gray-200 max-w-2xl w-full p-4 sm:p-6 max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
@@ -1485,8 +1822,18 @@ export default function AlunosPage() {
 
             {/* Content */}
             {loadingFaltas ? (
-              <div className="flex items-center justify-center py-8">
-                <i className="fas fa-spinner fa-spin text-primary-600 text-xl"></i>
+              <div className="space-y-3">
+                {[1, 2, 3].map(i => (
+                  <div key={i} className="p-4 bg-gray-50 rounded-lg border border-gray-200 animate-pulse">
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="w-10 h-10 bg-gray-200 rounded-full"></div>
+                      <div className="flex-1">
+                        <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
+                        <div className="h-3 bg-gray-200 rounded w-1/2"></div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             ) : faltasAlunoSelecionado.length === 0 ? (
               <div className="text-center py-8">

@@ -6,6 +6,7 @@ import Swal from 'sweetalert2';
 import ProtectedPage from '@/components/ProtectedPage';
 import ReporFaltaModal from '@/components/ReporFaltaModal';
 import { usePermission } from '@/hooks/usePermission';
+import { getFeriadosPeriodo, getNomeFeriado, isFeriado, type Feriado } from '@/lib/feriados';
 
 interface Modalidade {
   _id: string;
@@ -79,6 +80,8 @@ export default function CalendarioPage() {
   const [aulasRealizadas, setAulasRealizadas] = useState<any[]>([]);
   // Flag para saber se o componente foi montado no cliente
   const [mounted, setMounted] = useState<boolean>(false);
+  // Flag para saber se os dados iniciais foram carregados
+  const [initialLoading, setInitialLoading] = useState<boolean>(true);
   // Estado para alternar entre visualização calendário e lista
   const [viewMode, setViewMode] = useState<'calendar' | 'list'>('calendar');
   // Estado do usuário logado
@@ -89,6 +92,19 @@ export default function CalendarioPage() {
   const [showReporModal, setShowReporModal] = useState(false);
   const [faltaSelecionada, setFaltaSelecionada] = useState<any>(null);
   const [alunoReposicao, setAlunoReposicao] = useState<any>(null);
+  // Estado para armazenar feriados do mês
+  const [feriadosDoMes, setFeriadosDoMes] = useState<Feriado[]>([]);
+  // Estados para aula experimental
+  const [showAulaExperimentalModal, setShowAulaExperimentalModal] = useState(false);
+  const [dadosExperimental, setDadosExperimental] = useState({
+    nome: '',
+    telefone: '',
+    email: '',
+    observacoes: ''
+  });
+  const [salvandoExperimental, setSalvandoExperimental] = useState(false);
+  // Estado para armazenar aulas experimentais
+  const [aulasExperimentais, setAulasExperimentais] = useState<any[]>([]);
 
   const diasSemana = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
 
@@ -166,14 +182,17 @@ export default function CalendarioPage() {
     }
   };
 
-  // Fade transition when modalidadeSelecionada changes
+  // Fade transition when modalidadeSelecionada changes (only after initial load)
   useEffect(() => {
+    // Não aplicar transição durante o carregamento inicial
+    if (initialLoading) return;
+    
     setIsTransitioning(true);
     const timer = setTimeout(() => {
       setIsTransitioning(false);
-    }, 500);
+    }, 300);
     return () => clearTimeout(timer);
-  }, [modalidadeSelecionada]);
+  }, [modalidadeSelecionada, initialLoading]);
 
   // Debug: log horarios state changes
   useEffect(() => {
@@ -193,6 +212,42 @@ export default function CalendarioPage() {
       setModalidadeSelecionada(savedModalidade);
     }
   }, []);
+
+  // Carregar feriados quando o mês mudar
+  useEffect(() => {
+    if (mounted) {
+      const inicio = new Date(year, month, 1);
+      const fim = new Date(year, month + 1, 0);
+      const feriados = getFeriadosPeriodo(
+        inicio.toISOString().split('T')[0],
+        fim.toISOString().split('T')[0]
+      );
+      setFeriadosDoMes(feriados);
+    }
+  }, [year, month, mounted]);
+
+  // Fechar modais com ESC
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (showAulaExperimentalModal) {
+          setShowAulaExperimentalModal(false);
+          setDadosExperimental({ nome: '', telefone: '', email: '', observacoes: '' });
+        } else if (reagendamentoModal) {
+          setReagendamentoModal(null);
+        } else if (horarioSelecionado) {
+          setHorarioSelecionado(null);
+          setDataClicada(null);
+        } else if (showReporModal) {
+          setShowReporModal(false);
+          setFaltaSelecionada(null);
+          setAlunoReposicao(null);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [showAulaExperimentalModal, reagendamentoModal, horarioSelecionado, showReporModal]);
 
   // Resetar paginação de dias quando o modal de reagendamento abrir/fechar
   useEffect(() => {
@@ -258,6 +313,9 @@ export default function CalendarioPage() {
         }
       } catch (e) {
         // Erro ao buscar modalidades
+      } finally {
+        // Marcar loading inicial como concluído após carregar modalidades
+        setInitialLoading(false);
       }
     };
     
@@ -339,10 +397,29 @@ export default function CalendarioPage() {
         console.error('[Calendario] Erro ao buscar aulas realizadas:', e);
       }
     };
+
+    // Buscar aulas experimentais
+    const fetchAulasExperimentais = async () => {
+      try {
+        console.log('[Calendario] Buscando aulas experimentais...');
+        const res = await fetch('/api/aulas-experimentais');
+        const data = await res.json();
+        
+        if (data.success) {
+          // Filtrar apenas aulas ativas (não canceladas)
+          const aulasAtivas = (data.data || []).filter((a: any) => a.status !== 'cancelada' && a.ativo !== false);
+          setAulasExperimentais(aulasAtivas);
+          console.log('[Calendario] Aulas experimentais carregadas:', aulasAtivas.length);
+        }
+      } catch (e) {
+        console.error('[Calendario] Erro ao buscar aulas experimentais:', e);
+      }
+    };
     
     fetchHorarios();
     fetchReagendamentos();
     fetchAulasRealizadas();
+    fetchAulasExperimentais();
   }, [modalidadeSelecionada]);
 
   // Pegar horários para uma data específica (baseado no dia da semana)
@@ -368,6 +445,17 @@ export default function CalendarioPage() {
     );
     
     return { origem: reagendamentosOrigem, destino: reagendamentosDestino };
+  };
+
+  // Buscar aulas experimentais para uma data e horário específicos (aprovadas e pendentes)
+  const getAulasExperimentaisForDate = (date: Date, horarioFixoId: string) => {
+    const dataStr = formatDateToISO(date);
+    return aulasExperimentais.filter(a => {
+      const aulaData = a.data?.split('T')[0];
+      return aulaData === dataStr && 
+             String(a.horarioFixoId) === String(horarioFixoId) &&
+             (a.status === 'aprovada' || a.status === 'agendada');
+    });
   };
 
   // Verificar se a aula já foi registrada para este horário e data
@@ -726,6 +814,63 @@ export default function CalendarioPage() {
     }
   };
 
+  const criarAulaExperimental = async () => {
+    if (!dadosExperimental.nome.trim()) {
+      toast.error('Por favor, informe o nome');
+      return;
+    }
+
+    if (!dadosExperimental.telefone.trim()) {
+      toast.error('Por favor, informe o telefone');
+      return;
+    }
+
+    if (!horarioSelecionado || !dataClicada) {
+      toast.error('Horário ou data não selecionados');
+      return;
+    }
+
+    setSalvandoExperimental(true);
+
+    try {
+      const dataStr = formatDateToISO(dataClicada);
+      
+      const body = {
+        horarioFixoId: horarioSelecionado._id,
+        data: dataStr,
+        nomeExperimental: dadosExperimental.nome.trim(),
+        telefoneExperimental: dadosExperimental.telefone.trim(),
+        emailExperimental: dadosExperimental.email.trim() || undefined,
+        observacoesExperimental: dadosExperimental.observacoes.trim() || undefined
+      };
+
+      console.log('[Aula Experimental] Criando:', body);
+
+      const res = await fetch('/api/aulas-experimentais', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        toast.success('Aula experimental agendada com sucesso!');
+        setShowAulaExperimentalModal(false);
+        setDadosExperimental({ nome: '', telefone: '', email: '', observacoes: '' });
+        // Recarregar a página para atualizar os dados
+        window.location.reload();
+      } else {
+        toast.error(`Erro: ${data.error || 'Não foi possível agendar a aula experimental'}`);
+      }
+    } catch (e) {
+      console.error('[Aula Experimental] Erro ao criar:', e);
+      toast.error('Erro ao agendar aula experimental');
+    } finally {
+      setSalvandoExperimental(false);
+    }
+  };
+
   const monthData = useMemo(() => {
     const first = new Date(year, month, 1);
     const last = new Date(year, month + 1, 0);
@@ -803,60 +948,140 @@ export default function CalendarioPage() {
       return novoHorarioFixoId === horarioSelecionado._id && novaDataNormalizada === dataStr && r.status === 'aprovado';
     }).length;
 
-    return totalMatriculados - alunosFaltarao + alunosVirao;
-  }, [horarios, reagendamentos, dataClicada, year, month]);
+    // Contar alunos experimentais aprovados para este horário e data
+    const experimentaisCount = aulasExperimentais.filter((a: any) => {
+      const aulaData = a.data?.split('T')[0];
+      return aulaData === dataStr && 
+             String(a.horarioFixoId) === String(horarioSelecionado._id) &&
+             a.status === 'aprovada';
+    }).length;
+
+    return totalMatriculados - alunosFaltarao + alunosVirao + experimentaisCount;
+  }, [horarios, reagendamentos, aulasExperimentais, dataClicada, year, month]);
 
   const headerDateStr = useMemo(() => {
     const dt = dataClicada || new Date();
     return dt.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
   }, [dataClicada, year, month]);
 
-  // Skeleton loading enquanto não está montado no cliente
-  if (!mounted) {
+  // Skeleton loading enquanto não está montado no cliente ou dados carregando
+  if (!mounted || initialLoading) {
     return (
-      <ProtectedPage tab="calendario" title="Calendário - Superação Flux" fullWidth>
-        <div className="w-full px-4 py-6 sm:px-0">
-          {/* Header skeleton */}
-          <div className="mb-6">
-            <div className="h-5 bg-gray-200 rounded w-32 mb-2 animate-pulse" />
+      <ProtectedPage tab="calendario" title="Calendário - Superação Flux" fullWidth customLoading>
+        <div className="w-full px-4 py-4 md:py-6 sm:px-6 lg:px-8 overflow-x-hidden">
+          {/* Header skeleton - Desktop */}
+          <div className="hidden md:block mb-6">
+            <div className="h-6 bg-gray-200 rounded w-32 mb-2 animate-pulse" />
             <div className="h-4 bg-gray-200 rounded w-64 animate-pulse" />
           </div>
           
-          {/* Filtros skeleton */}
-          <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-3">
-            <div className="h-4 bg-gray-200 rounded w-40 animate-pulse hidden md:block" />
+          {/* Header skeleton - Mobile */}
+          <div className="md:hidden mb-3">
+            <div className="h-5 bg-gray-200 rounded w-28 animate-pulse" />
+          </div>
+          
+          {/* Navegação skeleton - Desktop */}
+          <div className="hidden md:flex md:items-center justify-between mb-4 md:mb-6">
+            <div className="h-4 bg-gray-200 rounded w-40 animate-pulse" />
             <div className="flex items-center gap-2">
               <div className="h-9 w-9 bg-gray-200 rounded-full animate-pulse" />
               <div className="h-9 w-32 bg-gray-200 rounded-md animate-pulse" />
               <div className="h-9 w-9 bg-gray-200 rounded-full animate-pulse" />
+              <div className="h-9 w-16 bg-gray-200 rounded-full animate-pulse" />
+              <div className="h-9 w-20 bg-gray-200 rounded-full animate-pulse" />
             </div>
           </div>
           
-          {/* Modalidades skeleton */}
-          <div className="mb-6 flex flex-wrap gap-2">
+          {/* Navegação skeleton - Mobile */}
+          <div className="md:hidden mb-3 space-y-2">
+            <div className="flex items-center justify-center gap-2">
+              <div className="w-8 h-8 bg-gray-200 rounded-full animate-pulse" />
+              <div className="h-8 w-28 bg-gray-200 rounded-lg animate-pulse" />
+              <div className="w-8 h-8 bg-gray-200 rounded-full animate-pulse" />
+              <div className="h-7 w-12 bg-gray-200 rounded-lg animate-pulse" />
+            </div>
+          </div>
+          
+          {/* Modalidades skeleton - Desktop */}
+          <div className="hidden md:flex flex-wrap gap-3 mb-4">
             {[1, 2, 3, 4, 5].map(i => (
-              <div key={i} className="h-9 bg-gray-200 rounded-full w-20 animate-pulse" />
+              <div key={i} className="h-8 bg-gray-200 rounded-full w-20 animate-pulse" />
             ))}
           </div>
           
-          {/* Calendário skeleton */}
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
+          {/* Modalidades skeleton - Mobile */}
+          <div className="md:hidden flex flex-wrap gap-1.5 mb-3">
+            {[1, 2, 3, 4].map(i => (
+              <div key={i} className="h-6 bg-gray-200 rounded-full w-16 animate-pulse" />
+            ))}
+          </div>
+          
+          {/* Calendário skeleton - Desktop */}
+          <div className="hidden md:block bg-white rounded-lg border border-gray-200 p-4">
             {/* Dias da semana header */}
-            <div className="grid grid-cols-7 gap-1 mb-2">
-              {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((dia, i) => (
-                <div key={i} className="h-8 bg-gray-100 rounded flex items-center justify-center">
+            <div className="grid grid-cols-7 gap-2 mb-2">
+              {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((dia, i) => (
+                <div key={i} className="h-8 flex items-center justify-center">
                   <span className="text-xs text-gray-400 font-medium">{dia}</span>
                 </div>
               ))}
             </div>
             {/* Células do calendário */}
-            <div className="grid grid-cols-7 gap-1">
+            <div className="grid grid-cols-7 gap-2">
               {Array.from({ length: 35 }).map((_, i) => (
-                <div key={i} className="h-16 md:h-20 bg-gray-50 rounded border border-gray-100 p-1 animate-pulse">
-                  <div className="h-4 w-4 bg-gray-200 rounded mb-1" />
-                  <div className="hidden md:block h-2 bg-gray-200 rounded w-full mt-1" />
+                <div key={i} className="h-44 bg-gray-50 rounded border border-gray-100 p-2 animate-pulse">
+                  <div className="h-5 w-5 bg-gray-200 rounded mb-2" />
+                  <div className="space-y-1.5">
+                    <div className="h-3 bg-gray-200 rounded w-full" />
+                    <div className="h-3 bg-gray-200 rounded w-4/5" />
+                    <div className="h-3 bg-gray-200 rounded w-3/5" />
+                  </div>
                 </div>
               ))}
+            </div>
+          </div>
+          
+          {/* Calendário skeleton - Mobile (formato lista/accordion) */}
+          <div className="md:hidden">
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+              {/* Lista de dias da semana como accordion */}
+              <div className="divide-y divide-gray-200">
+                {['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta'].map((dia, i) => (
+                  <div key={i}>
+                    {/* Cabeçalho do dia */}
+                    <div className="px-3 py-2.5 flex items-center justify-between bg-gray-50/80">
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-lg bg-gray-200 animate-pulse" />
+                        <div className="flex flex-col gap-0.5">
+                          <div className="h-3.5 bg-gray-200 rounded w-16 animate-pulse" />
+                          <div className="h-2.5 bg-gray-200 rounded w-10 animate-pulse" />
+                        </div>
+                        <div className="h-4 w-5 bg-gray-200 rounded-full animate-pulse" />
+                      </div>
+                      <div className="h-3 w-3 bg-gray-200 rounded animate-pulse" />
+                    </div>
+                    {/* Conteúdo expandido (primeiro item) */}
+                    {i === 0 && (
+                      <div className="p-3 pt-0">
+                        <div className="space-y-2 mt-2">
+                          {[1, 2, 3].map(j => (
+                            <div key={j} className="p-2.5 bg-gray-50 rounded-lg border border-gray-100 animate-pulse">
+                              <div className="flex items-center justify-between mb-1.5">
+                                <div className="h-4 bg-gray-200 rounded w-20" />
+                                <div className="h-3 bg-gray-200 rounded w-12" />
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                <div className="w-2 h-2 bg-gray-200 rounded-full" />
+                                <div className="h-3 bg-gray-200 rounded w-24" />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
@@ -866,55 +1091,51 @@ export default function CalendarioPage() {
 
   return (
     <ProtectedPage tab="calendario" title="Calendário - Superação Flux" fullWidth>
-        <div className="w-full px-4 py-6 sm:px-0">
-          <div className="sm:flex sm:items-center mb-6 fade-in-1">
-            <div className="sm:flex-auto">
-              <h1 className="text-base font-semibold text-gray-900 flex items-center gap-2">
-                <i className="fas fa-calendar-alt text-primary-600"></i>
-                Calendário
-              </h1>
-              <p className="mt-2 text-sm text-gray-600">
-                Visualize os horários por modalidade de forma organizada.
-              </p>
-              
-            </div>
+        <div className="w-full px-4 py-4 md:py-6 sm:px-6 lg:px-8 overflow-x-hidden">
+          {/* Header Desktop */}
+          <div className="hidden md:block mb-6">
+            <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+              <i className="fas fa-calendar-alt text-green-600"></i>
+              Calendário
+            </h1>
+            <p className="text-sm text-gray-600 mt-1">
+              Visualize os horários por modalidade de forma organizada
+            </p>
+          </div>
+          
+          {/* Header Mobile - Compacto */}
+          <div className="md:hidden mb-3">
+            <h1 className="text-lg font-bold text-gray-900">
+              <i className="fas fa-calendar-alt text-green-600 mr-1.5"></i>
+              Calendário
+            </h1>
           </div>
 
           {/* Seletor de Modalidade + Navegação de mês */}
-          <div className="mb-6 fade-in-2">
-            <div className="flex flex-col md:flex-row md:items-center justify-between mb-3 gap-3">
-              <label className="text-sm font-semibold text-gray-700 hidden md:block">
+          <div className="mb-4 md:mb-6">
+            {/* Desktop: Navegação completa */}
+            <div className="hidden md:flex md:items-center justify-between mb-3 gap-3">
+              <label className="text-sm font-semibold text-gray-700">
                 <i className="fas fa-filter mr-2 text-primary-600"></i>
                 Selecione a Modalidade
               </label>
-              {/* Navegação de mês - compacta */}
-              <div className="flex items-center gap-1 md:gap-2 md:ml-auto overflow-x-auto pb-1">
+              {/* Navegação de mês - desktop */}
+              <div className="flex items-center gap-2 ml-auto">
                 <button 
                   onClick={prevMonth}
-                  className="px-2 md:px-3 py-1.5 md:py-2 rounded-full text-sm font-medium border border-gray-300 bg-white hover:bg-gray-100 transition-all flex-shrink-0"
+                  className="px-3 py-2 rounded-full text-sm font-medium border border-gray-300 bg-white hover:bg-gray-100 transition-all"
                   aria-label="Mês anterior"
                   title="Mês anterior"
                 >
-                  <svg 
-                    xmlns="http://www.w3.org/2000/svg" 
-                    className="h-4 w-4" 
-                    fill="none" 
-                    viewBox="0 0 24 24" 
-                    stroke="currentColor"
-                  >
-                    <path 
-                      strokeLinecap="round" 
-                      strokeLinejoin="round" 
-                      strokeWidth={2} 
-                      d="M15 19l-7-7 7-7" 
-                    />
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                   </svg>
                 </button>
-                <div className="flex items-center gap-1 md:gap-1.5 border border-gray-300 rounded-md px-2 md:px-3 py-1.5 md:py-2 bg-white text-xs md:text-sm flex-shrink-0">
+                <div className="flex items-center gap-1.5 border border-gray-300 rounded-md px-3 py-2 bg-white text-sm">
                   <select
                     value={month}
                     onChange={(e) => setMonth(parseInt(e.target.value))}
-                    className="bg-transparent text-xs md:text-sm font-medium outline-none cursor-pointer"
+                    className="bg-transparent text-sm font-medium outline-none cursor-pointer"
                   >
                     {Array.from({ length: 12 }).map((_, i) => (
                       <option key={i} value={i}>
@@ -927,28 +1148,17 @@ export default function CalendarioPage() {
                     type="number"
                     value={year}
                     onChange={(e) => setYear(Math.max(1970, Math.min(2099, parseInt(e.target.value || '2025'))))}
-                    className="w-12 md:w-14 text-xs md:text-sm font-medium text-right outline-none"
+                    className="w-14 text-sm font-medium text-right outline-none"
                   />
                 </div>
                 <button 
                   onClick={nextMonth}
-                  className="px-2 md:px-3 py-1.5 md:py-2 rounded-full text-sm font-medium border border-gray-300 bg-white hover:bg-gray-100 transition-all flex-shrink-0"
+                  className="px-3 py-2 rounded-full text-sm font-medium border border-gray-300 bg-white hover:bg-gray-100 transition-all"
                   aria-label="Próximo mês"
                   title="Próximo mês"
                 >
-                  <svg 
-                    xmlns="http://www.w3.org/2000/svg" 
-                    className="h-4 w-4" 
-                    fill="none" 
-                    viewBox="0 0 24 24" 
-                    stroke="currentColor"
-                  >
-                    <path 
-                      strokeLinecap="round" 
-                      strokeLinejoin="round" 
-                      strokeWidth={2} 
-                      d="M9 5l7 7-7 7" 
-                    />
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                   </svg>
                 </button>
                 <button
@@ -957,16 +1167,16 @@ export default function CalendarioPage() {
                     setYear(today.getFullYear());
                     setMonth(today.getMonth());
                   }}
-                  className="px-2 md:px-3 py-1.5 md:py-2 rounded-full text-xs md:text-sm font-medium border border-primary-600 bg-primary-600 text-white hover:bg-primary-700 transition-all flex-shrink-0"
+                  className="px-3 py-2 rounded-full text-sm font-medium border border-primary-600 bg-primary-600 text-white hover:bg-primary-700 transition-all"
                   title="Ir para hoje"
                 >
                   Hoje
                 </button>
-                {/* Toggle Calendário/Lista - oculto no mobile */}
-                <div className="hidden md:flex items-center border border-gray-300 rounded-full bg-white overflow-hidden flex-shrink-0">
+                {/* Toggle Calendário/Lista */}
+                <div className="flex items-center border border-gray-300 rounded-full bg-white overflow-hidden">
                   <button
                     onClick={() => setViewMode('calendar')}
-                    className={`px-2 md:px-3 py-1.5 md:py-2 text-sm font-medium transition-all flex items-center gap-1 ${
+                    className={`px-3 py-2 text-sm font-medium transition-all flex items-center gap-1 ${
                       viewMode === 'calendar' 
                         ? 'bg-primary-600 text-white' 
                         : 'text-gray-600 hover:bg-gray-100'
@@ -977,7 +1187,7 @@ export default function CalendarioPage() {
                   </button>
                   <button
                     onClick={() => setViewMode('list')}
-                    className={`px-2 md:px-3 py-1.5 md:py-2 text-sm font-medium transition-all flex items-center gap-1 ${
+                    className={`px-3 py-2 text-sm font-medium transition-all flex items-center gap-1 ${
                       viewMode === 'list' 
                         ? 'bg-primary-600 text-white' 
                         : 'text-gray-600 hover:bg-gray-100'
@@ -989,7 +1199,54 @@ export default function CalendarioPage() {
                 </div>
               </div>
             </div>
-            <div className="flex flex-wrap gap-2 md:gap-3 fade-in-3">
+            
+            {/* Mobile: Navegação compacta em 2 linhas */}
+            <div className="md:hidden mb-3 space-y-2">
+              {/* Linha 1: Navegação de mês */}
+              <div className="flex items-center justify-center gap-2">
+                <button 
+                  onClick={prevMonth}
+                  className="w-8 h-8 rounded-full border border-gray-300 bg-white flex items-center justify-center"
+                  aria-label="Mês anterior"
+                >
+                  <i className="fas fa-chevron-left text-xs text-gray-600"></i>
+                </button>
+                <div className="flex items-center gap-1.5 border border-gray-300 rounded-lg px-3 py-1.5 bg-white">
+                  <select
+                    value={month}
+                    onChange={(e) => setMonth(parseInt(e.target.value))}
+                    className="bg-transparent text-sm font-semibold outline-none cursor-pointer"
+                  >
+                    {Array.from({ length: 12 }).map((_, i) => (
+                      <option key={i} value={i}>
+                        {new Date(2000, i).toLocaleString('pt-BR', { month: 'long' })}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="text-gray-300">/</span>
+                  <span className="text-sm font-semibold">{year}</span>
+                </div>
+                <button 
+                  onClick={nextMonth}
+                  className="w-8 h-8 rounded-full border border-gray-300 bg-white flex items-center justify-center"
+                  aria-label="Próximo mês"
+                >
+                  <i className="fas fa-chevron-right text-xs text-gray-600"></i>
+                </button>
+                <button
+                  onClick={() => {
+                    const today = new Date();
+                    setYear(today.getFullYear());
+                    setMonth(today.getMonth());
+                  }}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-primary-600 text-white"
+                >
+                  Hoje
+                </button>
+              </div>
+            </div>
+            {/* Desktop: Lista de modalidades horizontal */}
+            <div className="hidden md:flex flex-wrap gap-3">
               {modalidades.length > 0 ? (
                 modalidades.map((m, index) => {
                   const selecionado = String(m._id) === String(modalidadeSelecionada);
@@ -1002,22 +1259,58 @@ export default function CalendarioPage() {
                         borderColor: selecionado ? m.cor || '#16a34a' : '#E5E7EB',
                         color: selecionado ? 'white' : '#374151'
                       }}
-                      className={`flex items-center gap-1 md:gap-1.5 px-2 md:px-3 py-1 md:py-1.5 rounded-full text-[10px] md:text-xs font-medium border transition-all`}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all"
                     >
-                      <span className="w-2 md:w-2.5 h-2 md:h-2.5 rounded-full border border-white" style={{ backgroundColor: m.cor || '#3B82F6', filter: 'none' }} />
+                      <span className="w-2.5 h-2.5 rounded-full border border-white" style={{ backgroundColor: m.cor || '#3B82F6', filter: 'none' }} />
                       <span>{m.nome || 'Sem nome'}</span>
                     </button>
                   );
                 })
               ) : (
-                <span className="text-sm text-gray-400">Carregando modalidades...</span>
+                <div className="flex gap-3">
+                  {[1, 2, 3, 4, 5].map(i => (
+                    <div key={i} className="h-8 bg-gray-200 rounded-full w-20 animate-pulse" />
+                  ))}
+                </div>
               )}
+            </div>
+            
+            {/* Mobile: Modalidades com flex-wrap */}
+            <div className="md:hidden">
+              <div className="flex flex-wrap gap-1.5">
+                {modalidades.length > 0 ? (
+                  modalidades.map((m, index) => {
+                    const selecionado = String(m._id) === String(modalidadeSelecionada);
+                    return (
+                      <button
+                        key={m._id || `modalidade-mobile-${index}`}
+                        onClick={() => setModalidadeSelecionada(String(m._id))}
+                        style={{
+                          backgroundColor: selecionado ? m.cor || '#16a34a' : 'white',
+                          borderColor: selecionado ? m.cor || '#16a34a' : '#E5E7EB',
+                          color: selecionado ? 'white' : '#374151'
+                        }}
+                        className="flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-semibold border transition-all"
+                      >
+                        <span className="w-2 h-2 rounded-full border border-white/50" style={{ backgroundColor: m.cor || '#3B82F6' }} />
+                        <span>{m.nome || 'Sem nome'}</span>
+                      </button>
+                    );
+                  })
+                ) : (
+                  <div className="flex gap-1.5">
+                    {[1, 2, 3, 4].map(i => (
+                      <div key={i} className="h-6 bg-gray-200 rounded-full w-16 animate-pulse" />
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
           {/* Grid do calendário */}
           {viewMode === 'calendar' && (
-          <div className={`grid grid-cols-7 gap-2 text-xs fade-in-4 transition-opacity duration-500 ${isTransitioning ? 'opacity-50' : 'opacity-100'}`}>
+          <div className={`grid grid-cols-7 gap-2 text-xs transition-opacity duration-300 ${isTransitioning ? 'opacity-50' : 'opacity-100'}`}>
             {/* Cabeçalho dos dias da semana */}
             {diasSemana.map((d, idx) => (
               <div key={`header-${d}-${idx}`} className="text-center font-medium py-2 text-gray-600">
@@ -1065,11 +1358,30 @@ export default function CalendarioPage() {
                     <span className={`font-medium text-sm ${dayTextCls}`}>
                       {dObj.day}
                     </span>
-                    {isToday && (
-                      <span className="inline-block text-[10px] bg-primary-600 text-white px-2 py-0.5 rounded-md">
-                        Hoje
-                      </span>
-                    )}
+                    <div className="flex items-center gap-1">
+                      {isToday && (
+                        <span className="inline-block text-[10px] bg-primary-600 text-white px-2 py-0.5 rounded-md">
+                          Hoje
+                        </span>
+                      )}
+                      {(() => {
+                        const dataStr = formatDateToISO(dObj.date);
+                        const feriado = feriadosDoMes.find(f => f.data === dataStr);
+                        if (feriado && inCurrentMonth) {
+                          const corFeriado = feriado.tipo === 'nacional' ? 'bg-blue-600' : 
+                                           feriado.tipo === 'municipal' ? 'bg-purple-600' : 'bg-green-600';
+                          return (
+                            <span 
+                              className={`inline-block text-[9px] ${corFeriado} text-white px-1.5 py-0.5 rounded-md font-medium`}
+                              title={feriado.nome}
+                            >
+                              <i className="fas fa-calendar-day"></i>
+                            </span>
+                          );
+                        }
+                        return null;
+                      })()}
+                    </div>
                   </div>
 
                   {/* Horários do dia */}
@@ -1266,6 +1578,27 @@ export default function CalendarioPage() {
                       );
                     })}
                     
+                    {/* Exibir feriado se houver */}
+                    {(() => {
+                      const dataStr = formatDateToISO(dObj.date);
+                      const feriado = feriadosDoMes.find(f => f.data === dataStr);
+                      if (feriado && inCurrentMonth) {
+                        const corFeriado = feriado.tipo === 'nacional' ? 'bg-blue-500 border-blue-600' : 
+                                         feriado.tipo === 'municipal' ? 'bg-purple-500 border-purple-600' : 'bg-green-500 border-green-600';
+                        const icone = feriado.tipo === 'nacional' ? 'fa-flag' : 
+                                     feriado.tipo === 'municipal' ? 'fa-building' : 'fa-star';
+                        return (
+                          <div className={`w-full border rounded-md px-2 py-1.5 text-xs text-white ${corFeriado} shadow-sm`}>
+                            <div className="flex items-center gap-1.5">
+                              <i className={`fas ${icone} text-[10px]`}></i>
+                              <span className="font-medium text-[10px] leading-tight">{feriado.nome}</span>
+                            </div>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
+                    
                     {/* Exibir reagendamentos de destino (alunos que virão neste dia) */}
                     {inCurrentMonth && getReagendamentosForDate(dObj.date).destino.map((reag, rIdx) => {
                       const matriculaId = reag.matriculaId;
@@ -1351,11 +1684,11 @@ export default function CalendarioPage() {
 
           {/* Visualização em Lista */}
           {viewMode === 'list' && (
-            <div className={`fade-in-4 transition-opacity duration-500 ${isTransitioning ? 'opacity-50' : 'opacity-100'}`}>
-              <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-                {/* Cabeçalho da lista */}
-                <div className="bg-gray-50 border-b border-gray-200 px-3 md:px-4 py-2 md:py-3">
-                  <h3 className="text-xs md:text-sm font-semibold text-gray-900">
+            <div className={`transition-opacity duration-300 ${isTransitioning ? 'opacity-50' : 'opacity-100'}`}>
+              <div className="bg-white rounded-xl md:rounded-lg border border-gray-200 overflow-hidden shadow-sm">
+                {/* Cabeçalho da lista - apenas desktop */}
+                <div className="hidden md:block bg-gray-50 border-b border-gray-200 px-4 py-3">
+                  <h3 className="text-sm font-semibold text-gray-900">
                     Horários de {new Date(year, month).toLocaleString('pt-BR', { month: 'long', year: 'numeric' })}
                   </h3>
                 </div>
@@ -1388,21 +1721,21 @@ export default function CalendarioPage() {
                               : [diaIndex]; // Fechar outros e abrir apenas este
                             setDiasExpandidos(newState);
                           }}
-                          className="md:hidden w-full p-3 flex items-center justify-between bg-gray-50 hover:bg-gray-100 transition-colors"
+                          className="md:hidden w-full px-3 py-2.5 flex items-center justify-between bg-gray-50/80 hover:bg-gray-100 transition-colors"
                         >
                           <div className="flex items-center gap-2">
-                            <span className="w-8 h-8 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center text-sm font-bold">
+                            <span className="w-7 h-7 rounded-lg bg-primary-100 text-primary-700 flex items-center justify-center text-xs font-bold">
                               {diaNome.charAt(0)}
                             </span>
-                            <span className="text-base font-semibold text-gray-900">{diaNome}</span>
-                            <span className="text-sm font-medium text-primary-600 bg-primary-50 px-2 py-1 rounded-full">
-                              {dataFormatada}
-                            </span>
-                            <span className="text-sm font-medium text-gray-600">
-                              ({horariosNoDia.length})
+                            <div className="flex flex-col items-start">
+                              <span className="text-sm font-semibold text-gray-900">{diaNome}</span>
+                              <span className="text-[10px] font-medium text-primary-600">{dataFormatada}</span>
+                            </div>
+                            <span className="text-[10px] font-semibold text-gray-500 bg-gray-200 px-1.5 py-0.5 rounded-full">
+                              {horariosNoDia.length}
                             </span>
                           </div>
-                          <i className={`fas fa-chevron-down text-gray-400 transition-transform duration-200 ${isExpandido ? 'rotate-180' : ''}`}></i>
+                          <i className={`fas fa-chevron-down text-xs text-gray-400 transition-transform duration-200 ${isExpandido ? 'rotate-180' : ''}`}></i>
                         </button>
                         
                         {/* Cabeçalho desktop (não clicável) */}
@@ -1452,25 +1785,25 @@ export default function CalendarioPage() {
                                     setHorarioSelecionado(horario);
                                     setDataClicada(proximaData);
                                   }}
-                                  className="flex items-center gap-2 md:gap-3 p-2 md:p-3 bg-gray-50 hover:bg-gray-100 rounded-lg border border-gray-200 transition-colors text-left"
+                                  className="flex items-center gap-2 md:gap-3 p-2.5 md:p-3 bg-white hover:bg-gray-50 rounded-xl md:rounded-lg border border-gray-200 shadow-sm transition-colors text-left active:scale-[0.98]"
                                 >
-                                  <div className="flex-shrink-0 w-12 md:w-16 text-center">
-                                    <p className="text-base md:text-lg font-bold text-gray-900">{horario.horarioInicio}</p>
-                                    <p className="text-[10px] md:text-xs text-gray-500">{horario.horarioFim}</p>
+                                  <div className="flex-shrink-0 w-11 md:w-16 text-center">
+                                    <p className="text-sm md:text-lg font-bold text-gray-900">{horario.horarioInicio}</p>
+                                    <p className="text-[9px] md:text-xs text-gray-400">{horario.horarioFim}</p>
                                   </div>
                                   
                                   <div className="flex-1 min-w-0">
-                                    {professorNome && (
-                                      <span
-                                        className="inline-block px-1.5 md:px-2 py-0.5 rounded-md text-white text-[9px] md:text-[10px] font-medium mb-1 truncate max-w-full"
-                                        style={{ backgroundColor: professorCor }}
-                                      >
-                                        {professorNome}
-                                      </span>
-                                    )}
-                                    <div className="flex items-center gap-1 md:gap-2">
-                                      <span className={`text-[10px] md:text-xs font-medium px-1.5 md:px-2 py-0.5 rounded-full ${
-                                        numAlunos >= limiteAlunos ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-green-50 text-green-700 border border-green-200'
+                                    <div className="flex items-center gap-1.5 mb-0.5 md:mb-1">
+                                      {professorNome && (
+                                        <span
+                                          className="inline-block px-1.5 md:px-2 py-0.5 rounded-md text-white text-[8px] md:text-[10px] font-medium truncate max-w-[100px] md:max-w-full"
+                                          style={{ backgroundColor: professorCor }}
+                                        >
+                                          {professorNome}
+                                        </span>
+                                      )}
+                                      <span className={`text-[9px] md:text-xs font-semibold px-1.5 py-0.5 rounded-full ${
+                                        numAlunos >= limiteAlunos ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
                                       }`}>
                                         {numAlunos}/{limiteAlunos}
                                       </span>
@@ -1478,7 +1811,7 @@ export default function CalendarioPage() {
                                     
                                     {/* Lista de alunos - oculta no mobile para economizar espaço */}
                                     {horario.matriculas && horario.matriculas.length > 0 && (
-                                      <div className="hidden md:block mt-2 text-xs text-gray-600">
+                                      <div className="hidden md:block text-xs text-gray-600">
                                         {horario.matriculas
                                           .filter(m => !m.emEspera && !m.alunoId?.congelado && !m.alunoId?.ausente)
                                           .slice(0, 3)
@@ -1499,7 +1832,7 @@ export default function CalendarioPage() {
                                   </div>
                                   
                                   <div className="flex-shrink-0">
-                                    <i className="fas fa-chevron-right text-gray-400 text-sm"></i>
+                                    <i className="fas fa-chevron-right text-gray-300 text-xs"></i>
                                   </div>
                                 </button>
                               );
@@ -1512,9 +1845,11 @@ export default function CalendarioPage() {
                   })}
                   
                   {horarios.length === 0 && (
-                    <div className="p-6 md:p-8 text-center text-gray-500">
-                      <i className="fas fa-calendar-times text-3xl md:text-4xl mb-3 text-gray-300"></i>
-                      <p className="text-sm md:text-base">Nenhum horário cadastrado para esta modalidade.</p>
+                    <div className="p-8 md:p-12 text-center">
+                      <div className="w-12 h-12 md:w-16 md:h-16 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-3">
+                        <i className="fas fa-calendar-times text-xl md:text-2xl text-gray-400"></i>
+                      </div>
+                      <p className="text-sm text-gray-500">Nenhum horário nesta modalidade</p>
                     </div>
                   )}
                 </div>
@@ -1526,49 +1861,47 @@ export default function CalendarioPage() {
         {/* Modal de detalhes do horário */}
         {horarioSelecionado && (
           <div
-            className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50 p-2 md:p-4"
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
             onClick={() => {
               setHorarioSelecionado(null);
               setDataClicada(null);
             }}
           >
             <div
-              className="bg-white rounded-lg shadow-lg border border-gray-200 max-w-2xl w-full max-h-[90vh] md:max-h-[80vh] overflow-hidden p-3 md:p-6 flex flex-col"
+              className="bg-white rounded-2xl shadow-xl border border-gray-200 w-full max-w-2xl max-h-[90vh] overflow-hidden p-4 md:p-6 flex flex-col"
               onClick={(e) => e.stopPropagation()}
             >
               {/* Header */}
               <div className="flex items-start justify-between mb-3 md:mb-4">
-                <div className="flex-1">
+                <div className="flex-1 min-w-0">
                   {/* Título com horário */}
-                  <div className="flex items-center gap-2 md:gap-3 mb-2 md:mb-3">
-                    <div className="flex items-center gap-2">
-                      {(() => {
-                        const dataAula = dataClicada || new Date();
-                        const hoje = new Date();
-                        hoje.setHours(0, 0, 0, 0);
-                        const dataAulaDate = new Date(dataAula);
-                        dataAulaDate.setHours(0, 0, 0, 0);
-                        const aulaPassouOuEnviada = dataAulaDate < hoje || verificarAulaRegistrada(horarioSelecionado._id || '', dataAula);
-                        
-                        return (
-                          <div className={`w-8 h-8 md:w-10 md:h-10 rounded-lg flex items-center justify-center ${
-                            aulaPassouOuEnviada ? 'bg-gray-200' : 'bg-primary-100'
-                          }`}>
-                            <i className={`fas fa-clock text-base md:text-lg ${
-                              aulaPassouOuEnviada ? 'text-gray-500' : 'text-primary-600'
-                            }`}></i>
-                          </div>
-                        );
-                      })()}
-                      <div>
-                        <h3 className="text-base md:text-lg font-bold text-gray-900">
-                          {horarioSelecionado.horarioInicio} - {horarioSelecionado.horarioFim}
-                        </h3>
-                        <p className="text-[10px] md:text-xs text-gray-500">
-                          {diasSemana[(horarioSelecionado.diaSemana ?? 0)]}
-                          {dataClicada && `, ${dataClicada.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}`}
-                        </p>
-                      </div>
+                  <div className="flex items-center gap-2 md:gap-3 mb-2">
+                    {(() => {
+                      const dataAula = dataClicada || new Date();
+                      const hoje = new Date();
+                      hoje.setHours(0, 0, 0, 0);
+                      const dataAulaDate = new Date(dataAula);
+                      dataAulaDate.setHours(0, 0, 0, 0);
+                      const aulaPassouOuEnviada = dataAulaDate < hoje || verificarAulaRegistrada(horarioSelecionado._id || '', dataAula);
+                      
+                      return (
+                        <div className={`w-9 h-9 md:w-10 md:h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                          aulaPassouOuEnviada ? 'bg-gray-100' : 'bg-primary-100'
+                        }`}>
+                          <i className={`fas fa-clock text-sm md:text-lg ${
+                            aulaPassouOuEnviada ? 'text-gray-400' : 'text-primary-600'
+                          }`}></i>
+                        </div>
+                      );
+                    })()}
+                    <div className="min-w-0">
+                      <h3 className="text-base md:text-lg font-bold text-gray-900">
+                        {horarioSelecionado.horarioInicio} - {horarioSelecionado.horarioFim}
+                      </h3>
+                      <p className="text-[10px] md:text-xs text-gray-500 truncate">
+                        {diasSemana[(horarioSelecionado.diaSemana ?? 0)]}
+                        {dataClicada && `, ${dataClicada.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}`}
+                      </p>
                     </div>
                   </div>
                   
@@ -1666,15 +1999,15 @@ export default function CalendarioPage() {
                     setHorarioSelecionado(null);
                     setDataClicada(null);
                   }}
-                  className="ml-2 md:ml-4 w-7 h-7 md:w-8 md:h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0"
+                  className="ml-2 w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 hover:text-gray-700 transition-colors flex-shrink-0"
                   aria-label="Fechar"
                 >
-                  <i className="fas fa-times text-sm md:text-base"></i>
+                  <i className="fas fa-times text-sm"></i>
                 </button>
               </div>
 
               {/* Separator between header and content */}
-              <div className="border-t border-gray-200 mt-3 md:mt-4 mb-3 md:mb-4" />
+              <div className="border-t border-gray-100 mt-2 md:mt-4 mb-3 md:mb-4" />
 
               {/* Conteúdo - flex container to keep footer visible */}
               <div className="overflow-y-auto flex-1 min-h-0">
@@ -1719,6 +2052,31 @@ export default function CalendarioPage() {
                     return !isEmEspera && !isCongelado && !isAusente;
                   }).length || 0;
                   const totalPresentes = totalMatriculados - alunosFaltarao + alunosVirao;
+                  return null;
+                })()}
+
+                {/* Botão para agendar aula experimental */}
+                {(() => {
+                  const dataAula = dataClicada || new Date();
+                  const hoje = new Date();
+                  hoje.setHours(0, 0, 0, 0);
+                  const dataAulaDate = new Date(dataAula);
+                  dataAulaDate.setHours(0, 0, 0, 0);
+                  const aulaFutura = dataAulaDate >= hoje;
+                  
+                  if (aulaFutura) {
+                    return (
+                      <div className="mb-4">
+                        <button
+                          onClick={() => setShowAulaExperimentalModal(true)}
+                          className="w-full bg-white border border-gray-300 text-gray-700 py-2 px-3 rounded-md font-normal hover:bg-gray-50 hover:border-gray-400 transition-colors flex items-center justify-center gap-2 text-sm"
+                        >
+                          <i className="fas fa-user-plus text-xs"></i>
+                          Agendar Aula Experimental
+                        </button>
+                      </div>
+                    );
+                  }
                   return null;
                 })()}
 
@@ -2496,6 +2854,130 @@ export default function CalendarioPage() {
                   );
                 })()}
 
+                {/* Alunos Experimentais */}
+                {(() => {
+                  const dataAula = dataClicada || new Date();
+                  const experimentais = getAulasExperimentaisForDate(dataAula, horarioSelecionado._id || '');
+                  
+                  if (experimentais.length === 0) return null;
+                  
+                  // Verificar se a aula já passou ou foi registrada
+                  const hoje = new Date();
+                  hoje.setHours(0, 0, 0, 0);
+                  const dataAulaDate = new Date(dataAula);
+                  dataAulaDate.setHours(0, 0, 0, 0);
+                  const aulaPassouOuEnviada = dataAulaDate < hoje || verificarAulaRegistrada(horarioSelecionado._id || '', dataAula);
+                  
+                  return (
+                    <div className="border border-purple-300 rounded-lg p-4 relative pt-6 mt-6">
+                      <h3 className="font-semibold text-purple-700 text-sm md:text-base absolute -top-3 left-4 bg-white px-2">
+                        Aulas Experimentais ({experimentais.length})
+                      </h3>
+                      <div className="space-y-2">
+                        {experimentais.map((exp, idx) => {
+                          // Verificar se o aluno experimental teve presença registrada
+                          const aulaRealizada = aulasRealizadas.find((aula: any) => {
+                            const aulaHorarioId = typeof aula.horarioFixoId === 'string' 
+                              ? aula.horarioFixoId 
+                              : aula.horarioFixoId?._id;
+                            const dataAulaStr = formatDateToISO(dataAula);
+                            const aulaDataStr = aula.data?.split('T')[0];
+                            return aulaHorarioId === horarioSelecionado._id && aulaDataStr === dataAulaStr;
+                          });
+                          
+                          let expPresente = false;
+                          let expFaltou = false;
+                          if (aulaRealizada?.alunosExperimentais) {
+                            const expNaAula = aulaRealizada.alunosExperimentais.find((e: any) => 
+                              String(e.aulaExperimentalId) === String(exp._id)
+                            );
+                            if (expNaAula) {
+                              expPresente = expNaAula.presente === true;
+                              expFaltou = expNaAula.presente === false;
+                            }
+                          }
+                          
+                          // Fallback para compareceu no próprio registro
+                          if (!expPresente && !expFaltou && exp.compareceu !== undefined) {
+                            expPresente = exp.compareceu === true;
+                            expFaltou = exp.compareceu === false;
+                          }
+                          
+                          const isPendente = exp.status === 'agendada';
+                          
+                          return (
+                            <div 
+                              key={exp._id || `exp-${idx}`}
+                              className={`flex items-center justify-between p-3 rounded-md border ${
+                                aulaPassouOuEnviada
+                                  ? 'bg-gray-100 border-gray-300'
+                                  : (isPendente
+                                      ? 'bg-gray-100 border-gray-300'
+                                      : 'bg-purple-50 border-purple-200')
+                              }`}
+                            >
+                              <div className="flex items-center gap-3 flex-1">
+                                <div className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold text-white ${
+                                  aulaPassouOuEnviada 
+                                    ? 'bg-gray-400' 
+                                    : (isPendente ? 'bg-gray-400' : 'bg-purple-500')
+                                }`}>
+                                  {exp.nomeExperimental?.charAt(0).toUpperCase() || '?'}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <p className={`font-medium ${aulaPassouOuEnviada || isPendente ? 'text-gray-500' : 'text-gray-900'}`}>
+                                      {exp.nomeExperimental || 'Nome não disponível'}
+                                    </p>
+                                    <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-medium ${
+                                      aulaPassouOuEnviada || isPendente
+                                        ? 'bg-gray-200 text-gray-500' 
+                                        : 'bg-purple-100 text-purple-700'
+                                    }`}>
+                                      <i className="fas fa-flask text-[8px]"></i>
+                                      Experimental
+                                    </span>
+                                    {/* Status de aprovação */}
+                                    {isPendente ? (
+                                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-yellow-100 text-yellow-700 text-[9px] rounded font-medium">
+                                        <i className="fas fa-clock text-[8px]"></i>
+                                        Pendente
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-green-100 text-green-700 text-[9px] rounded font-medium">
+                                        <i className="fas fa-check text-[7px]"></i>
+                                        Aprovado
+                                      </span>
+                                    )}
+                                    {expPresente && (
+                                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-green-100 text-green-700 text-[9px] rounded font-medium">
+                                        <i className="fas fa-check-circle text-[8px]"></i>
+                                        Presente
+                                      </span>
+                                    )}
+                                    {expFaltou && (
+                                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-red-100 text-red-700 text-[9px] rounded font-medium">
+                                        <i className="fas fa-times-circle text-[8px]"></i>
+                                        Faltou
+                                      </span>
+                                    )}
+                                  </div>
+                                  {exp.telefoneExperimental && (
+                                    <p className="text-xs text-gray-500">
+                                      <i className="fas fa-phone text-[9px] mr-1"></i>
+                                      {exp.telefoneExperimental}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 {/* Lista de espera */}
                 {horarioSelecionado.matriculas?.some(m => m.emEspera) && (
                   <>
@@ -2531,14 +3013,150 @@ export default function CalendarioPage() {
           </div>
         )}
 
+        {/* Modal de Aula Experimental */}
+        {showAulaExperimentalModal && horarioSelecionado && dataClicada && (
+          <div
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4"
+            onClick={() => {
+              setShowAulaExperimentalModal(false);
+              setDadosExperimental({ nome: '', telefone: '', email: '', observacoes: '' });
+            }}
+          >
+            <div
+              className="bg-white rounded-2xl shadow-xl border border-gray-200 w-full max-w-md max-h-[90vh] overflow-y-auto p-4 md:p-6"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                    <i className="fas fa-user-plus text-purple-600"></i>
+                    Aula Experimental
+                  </h2>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {dataClicada.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}
+                    {' às '}
+                    {horarioSelecionado.horarioInicio} - {horarioSelecionado.horarioFim}
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowAulaExperimentalModal(false);
+                    setDadosExperimental({ nome: '', telefone: '', email: '', observacoes: '' });
+                  }}
+                  className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <i className="fas fa-times"></i>
+                </button>
+              </div>
+
+              <div className="border-t border-gray-200 mb-4"></div>
+
+              {/* Formulário */}
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Nome Completo <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={dadosExperimental.nome}
+                    onChange={(e) => setDadosExperimental({ ...dadosExperimental, nome: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    placeholder="Ex: João Silva"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Telefone <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="tel"
+                    value={dadosExperimental.telefone}
+                    onChange={(e) => setDadosExperimental({ ...dadosExperimental, telefone: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    placeholder="Ex: (11) 98765-4321"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    E-mail (opcional)
+                  </label>
+                  <input
+                    type="email"
+                    value={dadosExperimental.email}
+                    onChange={(e) => setDadosExperimental({ ...dadosExperimental, email: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    placeholder="Ex: joao@email.com"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Observações (opcional)
+                  </label>
+                  <textarea
+                    value={dadosExperimental.observacoes}
+                    onChange={(e) => setDadosExperimental({ ...dadosExperimental, observacoes: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    placeholder="Informações adicionais..."
+                    rows={3}
+                  />
+                </div>
+
+                {/* Informativo */}
+                <div className="bg-purple-50 border border-purple-200 rounded-md p-3">
+                  <p className="text-xs text-purple-800">
+                    <i className="fas fa-info-circle mr-1"></i>
+                    Esta aula experimental será registrada e poderá ser confirmada posteriormente.
+                  </p>
+                </div>
+
+                {/* Botões */}
+                <div className="flex gap-3 pt-2">
+                  <button
+                    onClick={() => {
+                      setShowAulaExperimentalModal(false);
+                      setDadosExperimental({ nome: '', telefone: '', email: '', observacoes: '' });
+                    }}
+                    disabled={salvandoExperimental}
+                    className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors font-medium disabled:opacity-50"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={criarAulaExperimental}
+                    disabled={salvandoExperimental}
+                    className="flex-1 px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-md hover:from-purple-700 hover:to-indigo-700 transition-all font-medium disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {salvandoExperimental ? (
+                      <>
+                        <i className="fas fa-spinner fa-spin"></i>
+                        Agendando...
+                      </>
+                    ) : (
+                      <>
+                        <i className="fas fa-check"></i>
+                        Confirmar
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Modal de Reagendamento */}
         {reagendamentoModal && (
           <div 
-            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4"
+            className="fixed inset-0 bg-black/50 flex items-end md:items-center justify-center z-[60] md:p-4"
             onClick={() => setReagendamentoModal(null)}
           >
             <div 
-              className="bg-white rounded-lg shadow-lg border border-gray-200 max-w-lg w-full p-6 "
+              className="bg-white rounded-t-2xl md:rounded-xl shadow-xl border border-gray-200 w-full md:max-w-lg max-h-[90vh] md:max-h-[85vh] overflow-hidden p-4 md:p-6"
               onClick={(e) => e.stopPropagation()}
             >
               {/* Header */}

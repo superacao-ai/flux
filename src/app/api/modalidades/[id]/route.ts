@@ -125,7 +125,7 @@ export async function PUT(
   }
 }
 
-// DELETE - Desativar modalidade
+// DELETE - Desativar modalidade (soft delete) ou excluir permanentemente (hard delete)
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -134,10 +134,10 @@ export async function DELETE(
     await connectDB();
     const { id } = await params;
     const url = new URL(request.url);
-    const hard = url.searchParams.get('hard') === 'true';
+    const permanent = url.searchParams.get('permanent') === 'true';
 
-    if (hard) {
-      // Hard delete (remove document from collection)
+    if (permanent) {
+      // Hard delete (remove document from collection permanently)
       const removed = await Modalidade.findByIdAndDelete(id);
       if (!removed) {
         return NextResponse.json(
@@ -149,9 +149,10 @@ export async function DELETE(
         );
       }
 
-      return NextResponse.json({ success: true, message: 'Modalidade apagada permanentemente', data: removed });
+      return NextResponse.json({ success: true, message: 'Modalidade excluída permanentemente', data: removed });
     }
 
+    // Soft delete - apenas marca como inativo
     const modalidade = await Modalidade.findByIdAndUpdate(
       id,
       { ativo: false },
@@ -170,10 +171,10 @@ export async function DELETE(
 
     return NextResponse.json({
       success: true,
-      message: 'Modalidade desativada com sucesso'
+      message: 'Modalidade movida para lixeira'
     });
   } catch (error) {
-    console.error('Erro ao desativar modalidade:', error);
+    console.error('Erro ao deletar modalidade:', error);
     return NextResponse.json(
       { 
         success: false, 

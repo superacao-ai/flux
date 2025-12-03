@@ -153,7 +153,16 @@
                   <i className="fas fa-clock text-yellow-600 mr-2"></i>
                   Aulas Pendentes ({aulasPendentes.length})
                 </h2>
-                {loading ? <div className="text-center py-8 text-gray-500">Carregando...</div> : aulasPendentes.length === 0 ? (
+                {loading ? (
+                  <div className="space-y-3">
+                    {[1, 2].map(i => (
+                      <div key={i} className="p-3 rounded-lg border border-gray-200 animate-pulse">
+                        <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
+                        <div className="h-3 bg-gray-200 rounded w-1/2"></div>
+                      </div>
+                    ))}
+                  </div>
+                ) : aulasPendentes.length === 0 ? (
                   <div className="text-center py-8 text-gray-500">Nenhuma aula pendente</div>
                 ) : (
                   <>
@@ -220,7 +229,16 @@
                   <i className="fas fa-paper-plane text-primary-600 mr-2"></i>
                   Aulas Enviadas ({aulasEnviadas.length})
                 </h2>
-                {loading ? <div className="text-center py-8 text-gray-500">Carregando...</div> : aulasEnviadas.length === 0 ? (
+                {loading ? (
+                  <div className="space-y-3">
+                    {[1, 2, 3].map(i => (
+                      <div key={i} className="p-3 rounded-lg border border-gray-200 animate-pulse">
+                        <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
+                        <div className="h-3 bg-gray-200 rounded w-1/2"></div>
+                      </div>
+                    ))}
+                  </div>
+                ) : aulasEnviadas.length === 0 ? (
                   <div className="text-center py-8 text-gray-500">Nenhuma aula enviada</div>
                 ) : (
                   <>

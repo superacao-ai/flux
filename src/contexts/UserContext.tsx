@@ -20,13 +20,6 @@ interface UserContextType {
 
 const UserContext = createContext<UserContextType | null>(null);
 
-// Singleton global - persiste mesmo quando o Provider remonta
-const globalState = {
-  user: null as User | null,
-  displayName: '',
-  initialized: false,
-};
-
 function loadUserFromStorage(): { user: User | null; displayName: string } {
   if (typeof window === 'undefined') {
     return { user: null, displayName: '' };
@@ -36,6 +29,7 @@ function loadUserFromStorage(): { user: User | null; displayName: string } {
     const raw = localStorage.getItem('user');
     if (raw) {
       const u = JSON.parse(raw);
+      console.log('👤 UserContext - Usuário carregado:', u?.nome, 'Abas:', u?.abas?.length || 0);
       return { user: u, displayName: u?.nome || '' };
     }
     
@@ -61,45 +55,32 @@ function loadUserFromStorage(): { user: User | null; displayName: string } {
         try {
           localStorage.setItem('user', JSON.stringify(restoredUser));
         } catch (e) {}
+        console.log('👤 UserContext - Usuário restaurado do token:', restoredUser?.nome);
         return { user: restoredUser, displayName: restoredUser.nome || '' };
       }
     }
   } catch (e) {
-    // ignore
+    console.error('❌ UserContext - Erro ao carregar usuário:', e);
   }
   
   return { user: null, displayName: '' };
 }
 
 export function UserProvider({ children }: { children: React.ReactNode }) {
-  // Inicializa com o estado global (já preenchido se não for a primeira montagem)
-  const [user, setUser] = useState<User | null>(globalState.user);
-  const [displayName, setDisplayName] = useState<string>(globalState.displayName);
-  const [mounted, setMounted] = useState(globalState.initialized);
-  const initRef = useRef(false);
+  const [user, setUser] = useState<User | null>(null);
+  const [displayName, setDisplayName] = useState<string>('');
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    // Evita múltiplas inicializações
-    if (initRef.current) return;
-    initRef.current = true;
-
-    // Só carrega do localStorage se ainda não foi inicializado globalmente
-    if (!globalState.initialized) {
-      const { user: loadedUser, displayName: loadedName } = loadUserFromStorage();
-      globalState.user = loadedUser;
-      globalState.displayName = loadedName;
-      globalState.initialized = true;
-      setUser(loadedUser);
-      setDisplayName(loadedName);
-    }
-    
+    // Sempre carrega do localStorage ao montar
+    const { user: loadedUser, displayName: loadedName } = loadUserFromStorage();
+    setUser(loadedUser);
+    setDisplayName(loadedName);
     setMounted(true);
 
     const onStorage = (e: StorageEvent) => {
       if (e.key === 'user') {
         const { user: newUser, displayName: newName } = loadUserFromStorage();
-        globalState.user = newUser;
-        globalState.displayName = newName;
         setUser(newUser);
         setDisplayName(newName);
       }
@@ -115,16 +96,12 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       localStorage.removeItem('token');
       fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
     } catch (e) {}
-    globalState.user = null;
-    globalState.displayName = '';
     setUser(null);
     setDisplayName('');
   }, []);
 
   const refreshUser = useCallback(() => {
     const { user: loadedUser, displayName: loadedName } = loadUserFromStorage();
-    globalState.user = loadedUser;
-    globalState.displayName = loadedName;
     setUser(loadedUser);
     setDisplayName(loadedName);
   }, []);

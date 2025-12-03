@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Logo from '@/components/Logo';
 
@@ -11,7 +11,24 @@ export default function LoginPage() {
   const [carregando, setCarregando] = useState(false);
   const [remember, setRemember] = useState(false);
   const [mostrarSenha, setMostrarSenha] = useState(false);
+  const [showModalSenha, setShowModalSenha] = useState(false);
+  const [showModalAcesso, setShowModalAcesso] = useState(false);
+  const [adminContact, setAdminContact] = useState<{ whatsapp: string; nome: string } | null>(null);
   const router = useRouter();
+
+  // Buscar contato do admin ao montar
+  useEffect(() => {
+    fetch('/api/public/admin-contact')
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          setAdminContact({ whatsapp: data.whatsapp, nome: data.nome });
+        }
+      })
+      .catch(() => {
+        // Silenciar erro - botão ficará desabilitado
+      });
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,8 +43,12 @@ export default function LoginPage() {
       });
       const data = await response.json();
       if (response.ok) {
-        try { localStorage.setItem('user', JSON.stringify(data.user)); localStorage.setItem('token', data.token); } catch (e) { /* ignore storage errors */ }
-        router.push('/dashboard');
+        try { 
+          localStorage.setItem('user', JSON.stringify(data.user)); 
+          localStorage.setItem('token', data.token); 
+        } catch (e) { /* ignore storage errors */ }
+        // Força reload completo para garantir que o UserContext seja reiniciado com os novos dados
+        window.location.href = '/dashboard';
       } else {
         setErro(data.error || 'Erro ao fazer login');
       }
@@ -39,7 +60,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex">
+    <div className="min-h-screen flex overflow-x-hidden">
       {/* Lado esquerdo - Hero com informações */}
       <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-green-600 via-green-700 to-green-900 relative overflow-hidden">
         {/* Elementos decorativos de fundo */}
@@ -109,7 +130,7 @@ export default function LoginPage() {
           </div>
           
           {/* Card de login */}
-          <div className="bg-white rounded-xl shadow-lg p-6 sm:p-8 border border-gray-100">
+          <div className=" rounded-xl p-6 sm:p-8 ">
             {/* Header */}
             <div className="text-center mb-6">
               <div className="inline-flex items-center justify-center w-12 h-12 bg-green-100 rounded-xl mb-3">
@@ -190,9 +211,13 @@ export default function LoginPage() {
                   />
                   <span className="ml-2 text-xs text-gray-600 group-hover:text-gray-800 transition-colors">Lembrar-me</span>
                 </label>
-                <a href="#" className="text-xs text-green-600 hover:text-green-700 font-medium transition-colors">
+                <button 
+                  type="button"
+                  onClick={() => setShowModalSenha(true)}
+                  className="text-xs text-green-600 hover:text-green-700 font-medium transition-colors"
+                >
                   Esqueceu a senha?
-                </a>
+                </button>
               </div>
 
               <button 
@@ -228,9 +253,13 @@ export default function LoginPage() {
             <div className="text-center">
               <p className="text-xs text-gray-500">
                 Não tem uma conta?{' '}
-                <a href="#" className="text-green-600 hover:text-green-700 font-medium transition-colors">
+                <button 
+                  type="button"
+                  onClick={() => setShowModalAcesso(true)}
+                  className="text-green-600 hover:text-green-700 font-medium transition-colors"
+                >
                   Solicite acesso
-                </a>
+                </button>
               </p>
             </div>
           </div>
@@ -241,6 +270,123 @@ export default function LoginPage() {
           </p>
         </div>
       </div>
+
+      {/* Modal Esqueceu a Senha */}
+      {showModalSenha && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl p-6 max-w-sm w-full shadow-xl">
+            <div className="text-center mb-4">
+              <div className="inline-flex items-center justify-center w-12 h-12 bg-yellow-100 rounded-full mb-3">
+                <i className="fas fa-key text-yellow-600 text-xl"></i>
+              </div>
+              <h3 className="text-lg font-bold text-gray-900">Esqueceu sua senha?</h3>
+              <p className="text-sm text-gray-500 mt-2">
+                Entre em contato com o administrador do sistema para redefinir sua senha.
+              </p>
+            </div>
+            
+            <div className="bg-gray-50 rounded-lg p-4 mb-4">
+              <p className="text-xs text-gray-600 mb-2">
+                <i className="fas fa-info-circle text-gray-400 mr-1"></i>
+                Envie uma mensagem informando:
+              </p>
+              <ul className="text-xs text-gray-600 space-y-1 ml-4">
+                <li>• Seu nome completo</li>
+                <li>• Email de acesso</li>
+                <li>• Solicitação de nova senha</li>
+              </ul>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              {adminContact ? (
+                <a
+                  href={`https://wa.me/${adminContact.whatsapp}?text=${encodeURIComponent('Olá! Esqueci minha senha do sistema Superação Flux.\n\nMeu email de acesso é: ')}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-green-600 hover:bg-green-700 text-white text-sm font-semibold rounded-lg transition-colors"
+                >
+                  <i className="fab fa-whatsapp text-lg"></i>
+                  Contatar {adminContact.nome || 'Admin'}
+                </a>
+              ) : (
+                <button
+                  disabled
+                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-gray-300 text-gray-500 text-sm font-semibold rounded-lg cursor-not-allowed"
+                >
+                  <i className="fas fa-spinner fa-spin"></i>
+                  Carregando contato...
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setShowModalSenha(false)}
+                className="w-full py-2.5 px-4 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Solicitar Acesso */}
+      {showModalAcesso && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl p-6 max-w-sm w-full shadow-xl">
+            <div className="text-center mb-4">
+              <div className="inline-flex items-center justify-center w-12 h-12 bg-blue-100 rounded-full mb-3">
+                <i className="fas fa-user-plus text-blue-600 text-xl"></i>
+              </div>
+              <h3 className="text-lg font-bold text-gray-900">Solicitar Acesso</h3>
+              <p className="text-sm text-gray-500 mt-2">
+                Para obter acesso ao sistema, entre em contato com o administrador.
+              </p>
+            </div>
+            
+            <div className="bg-gray-50 rounded-lg p-4 mb-4">
+              <p className="text-xs text-gray-600 mb-2">
+                <i className="fas fa-info-circle text-gray-400 mr-1"></i>
+                Informe ao administrador:
+              </p>
+              <ul className="text-xs text-gray-600 space-y-1 ml-4">
+                <li>• Seu nome completo</li>
+                <li>• Email para cadastro</li>
+                <li>• Função (Professor ou Outro)</li>
+                <li>• Telefone para contato</li>
+              </ul>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              {adminContact ? (
+                <a
+                  href={`https://wa.me/${adminContact.whatsapp}?text=${encodeURIComponent('Olá! Gostaria de solicitar acesso ao sistema Superação Flux.\n\nMeus dados:\nNome: \nEmail: \nFunção: \nTelefone: ')}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-green-600 hover:bg-green-700 text-white text-sm font-semibold rounded-lg transition-colors"
+                >
+                  <i className="fab fa-whatsapp text-lg"></i>
+                  Solicitar para {adminContact.nome || 'Admin'}
+                </a>
+              ) : (
+                <button
+                  disabled
+                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-gray-300 text-gray-500 text-sm font-semibold rounded-lg cursor-not-allowed"
+                >
+                  <i className="fas fa-spinner fa-spin"></i>
+                  Carregando contato...
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setShowModalAcesso(false)}
+                className="w-full py-2.5 px-4 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

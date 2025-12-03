@@ -110,11 +110,26 @@ interface Reagendamento {
   };
 }
 
+interface AulaExperimental {
+  _id: string;
+  horarioFixoId: string;
+  data: string;
+  nomeExperimental: string;
+  telefoneExperimental: string;
+  emailExperimental?: string;
+  observacoesExperimental?: string;
+  status: 'agendada' | 'aprovada' | 'realizada' | 'cancelada';
+  compareceu: boolean | null;
+}
+
 export default function MinhaAgendaClient() {
   const [horarios, setHorarios] = useState<HorarioFixo[]>([]);
   const [reagendamentos, setReagendamentos] = useState<Reagendamento[]>([]);
+  const [aulasExperimentais, setAulasExperimentais] = useState<AulaExperimental[]>([]);
+  const [presencasExperimentais, setPresencasExperimentais] = useState<Map<string, boolean>>(new Map()); // Presença local das experimentais
   const [presencas, setPresencas] = useState<Presenca[]>([]); // Rascunho local
   const [loading, setLoading] = useState(true);
+  const [mounted, setMounted] = useState(false);
   const [error, setError] = useState('');
   const [dataSelecionada, setDataSelecionada] = useState(new Date());
   const [aulaStatus, setAulaStatus] = useState<Map<string, AulaStatus>>(new Map());
@@ -143,6 +158,11 @@ export default function MinhaAgendaClient() {
     
     return hoje; // Se não achar, volta para hoje
   };
+
+  // setMounted on client
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Buscar horários do professor
   useEffect(() => {
@@ -211,7 +231,7 @@ export default function MinhaAgendaClient() {
     fetchHorarios();
   }, []);
 
-  // Buscar reagendamentos
+  // Buscar reagen damentos
   useEffect(() => {
     const fetchReagendamentos = async () => {
       try {
@@ -233,6 +253,32 @@ export default function MinhaAgendaClient() {
 
     fetchReagendamentos();
   }, []);
+
+  // Buscar aulas experimentais aprovadas do dia selecionado
+  useEffect(() => {
+    const fetchAulasExperimentais = async () => {
+      if (!dataSelecionada) return;
+      
+      try {
+        const dataFormatada = dataSelecionada.toISOString().split('T')[0];
+        const res = await fetch(`/api/aulas-experimentais?data=${dataFormatada}`);
+        
+        if (res.ok) {
+          const data = await res.json();
+          const list = Array.isArray(data) ? data : (data.data || []);
+          console.log('[MinhaAgenda] Aulas experimentais do dia:', list);
+          // Filtrar apenas aulas aprovadas (não pendentes, não canceladas, não realizadas)
+          const aprovadas = list.filter((a: AulaExperimental) => a.status === 'aprovada');
+          console.log('[MinhaAgenda] Aulas experimentais aprovadas:', aprovadas);
+          setAulasExperimentais(aprovadas);
+        }
+      } catch (err) {
+        console.error('[MinhaAgenda] Erro ao buscar aulas experimentais:', err);
+      }
+    };
+
+    fetchAulasExperimentais();
+  }, [dataSelecionada]);
 
   // Buscar presenças do dia selecionado
   useEffect(() => {
@@ -428,6 +474,22 @@ export default function MinhaAgendaClient() {
       .filter(a => a._id); // Remover alunos inválidos
   };
 
+  // Função para buscar aulas experimentais aprovadas para este horário
+  const aulasExperimentaisDoHorario = (horarioId?: string) => {
+    if (!horarioId) return [];
+    // Comparar strings para evitar problemas de tipo ObjectId vs string
+    const result = aulasExperimentais.filter(a => String(a.horarioFixoId) === String(horarioId));
+    if (aulasExperimentais.length > 0) {
+      console.log('[MinhaAgenda] aulasExperimentaisDoHorario:', { 
+        horarioId, 
+        totalExperimentais: aulasExperimentais.length,
+        horarioIds: aulasExperimentais.map(a => a.horarioFixoId),
+        matched: result.length 
+      });
+    }
+    return result;
+  };
+
   // Calcular estatísticas do dia
   const calcularEstatisticas = () => {
     let totalAlunos = 0;
@@ -587,6 +649,29 @@ export default function MinhaAgendaClient() {
           return newMap;
         });
 
+        // Enviar presenças das aulas experimentais deste horário
+        const aulasExpDoHorario = aulasExperimentaisDoHorario(horarioFixoId);
+        for (const aulaExp of aulasExpDoHorario) {
+          const presente = getPresencaExperimentalStatus(aulaExp._id);
+          try {
+            await fetch('/api/aulas-experimentais', {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                _id: aulaExp._id,
+                compareceu: presente,
+                status: 'realizada'
+              })
+            });
+            // Atualizar estado local das aulas experimentais
+            setAulasExperimentais(prev => 
+              prev.map(a => a._id === aulaExp._id ? { ...a, compareceu: presente, status: 'realizada' } : a)
+            );
+          } catch (e) {
+            console.error('Erro ao registrar presença experimental:', e);
+          }
+        }
+
         // Remover rascunhos locais para este horário na data enviada
         try {
           const dataFormatada = dataSelecionada.toISOString().split('T')[0];
@@ -670,6 +755,20 @@ export default function MinhaAgendaClient() {
     );
 
     return presenca ? (presenca.presente === true) : false;
+  };
+
+  // Marcar presença/falta de aula experimental (salva localmente, envia só ao confirmar aula)
+  const marcarPresencaExperimental = (aulaId: string, presente: boolean) => {
+    setPresencasExperimentais(prev => {
+      const newMap = new Map(prev);
+      newMap.set(aulaId, presente);
+      return newMap;
+    });
+  };
+
+  // Obter status de presença de aula experimental (padrão: false = falta)
+  const getPresencaExperimentalStatus = (aulaId: string): boolean => {
+    return presencasExperimentais.get(aulaId) ?? false;
   };
 
   // Calcular estatísticas de presença por horário
@@ -782,8 +881,52 @@ export default function MinhaAgendaClient() {
     });
   };
 
-  // NOTE: removed loading spinner to always render the agenda UI immediately.
-  // Loading is still tracked internally but we avoid blocking the initial render.
+  // Skeleton loading
+  if (!mounted) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-4 sm:p-6">
+        <div className="max-w-7xl mx-auto">
+          {/* Header skeleton */}
+          <div className="mb-8">
+            <div className="h-7 bg-gray-200 rounded w-36 mb-2 animate-pulse" />
+            <div className="h-4 bg-gray-200 rounded w-56 animate-pulse" />
+          </div>
+          {/* Date selector skeleton */}
+          <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6 animate-pulse">
+            <div className="flex items-center justify-between">
+              <div className="w-10 h-10 bg-gray-200 rounded-lg" />
+              <div className="text-center">
+                <div className="h-6 bg-gray-200 rounded w-40 mx-auto mb-2" />
+                <div className="h-4 bg-gray-100 rounded w-28 mx-auto" />
+              </div>
+              <div className="w-10 h-10 bg-gray-200 rounded-lg" />
+            </div>
+          </div>
+          {/* Cards skeleton */}
+          <div className="space-y-4">
+            {[1, 2, 3, 4].map(i => (
+              <div key={i} className="bg-white rounded-xl border border-gray-200 p-5 animate-pulse">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 bg-gray-200 rounded-lg" />
+                    <div>
+                      <div className="h-4 bg-gray-200 rounded w-24 mb-2" />
+                      <div className="h-3 bg-gray-100 rounded w-32" />
+                    </div>
+                  </div>
+                  <div className="w-24 h-8 bg-gray-200 rounded-lg" />
+                </div>
+                <div className="space-y-3">
+                  <div className="h-12 bg-gray-100 rounded-lg" />
+                  <div className="h-12 bg-gray-100 rounded-lg" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (error) {
     return (
@@ -969,7 +1112,7 @@ export default function MinhaAgendaClient() {
               {/* Conteúdo expandido */}
               {horariosExpandidos.has(horario.horarioFixoId || '') && (
                 <div className={`border-t ${aulaStatus.get(horario.horarioFixoId || '')?.enviada ? 'border-gray-300 bg-gray-50' : 'border-gray-200 bg-white'}`}>
-                  <div className="p-4">{horario.alunos.length === 0 && alunosReagendadosParaDentro(horario.horarioFixoId).length === 0 ? (
+                  <div className="p-4">{horario.alunos.length === 0 && alunosReagendadosParaDentro(horario.horarioFixoId).length === 0 && aulasExperimentaisDoHorario(horario.horarioFixoId).length === 0 ? (
                     <div className="p-6 text-center">
                       <i className="fas fa-inbox text-gray-300 text-4xl mb-3 mx-auto"></i>
                       <p className="text-gray-500 font-medium">Nenhum aluno neste horário</p>
@@ -1164,6 +1307,109 @@ export default function MinhaAgendaClient() {
 
                                   <span className={`${aulaEnviada ? 'text-gray-400' : (statusPresenca ? 'text-green-600' : 'text-gray-700')} text-xs font-semibold`}>PRESENTE</span>
                                 </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                      {/* Aulas Experimentais Aprovadas */}
+                      {aulasExperimentaisDoHorario(horario.horarioFixoId).map((aulaExp) => {
+                        const aulaEnviada = aulaStatus.get(horario.horarioFixoId || '')?.enviada ?? false;
+                        const jaRegistrada = aulaExp.compareceu !== null;
+                        const statusPresenca = getPresencaExperimentalStatus(aulaExp._id);
+
+                        return (
+                          <div
+                            key={`exp-${aulaExp._id}`}
+                            className={`p-3 rounded-md border shadow-sm transition-all ${
+                              aulaEnviada || jaRegistrada
+                                ? 'bg-gray-100 border-gray-200' 
+                                : 'border-purple-300 bg-purple-50'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <div
+                                className={`w-10 h-10 rounded-full overflow-hidden flex items-center justify-center font-bold text-sm flex-shrink-0 ${
+                                  aulaEnviada || jaRegistrada ? 'bg-gray-200 text-gray-600' : 'bg-purple-500 text-white'
+                                }`}
+                              >
+                                <i className="fas fa-user-plus text-sm"></i>
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className={`${aulaEnviada || jaRegistrada ? 'text-gray-600' : 'font-semibold text-gray-900'} text-sm`}>
+                                  {aulaExp.nomeExperimental}
+                                </div>
+                                
+                                {/* Badge de Aula Experimental */}
+                                <div className="mt-1 flex items-center gap-2 flex-wrap">
+                                  <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium ${
+                                    aulaEnviada || jaRegistrada
+                                      ? 'bg-gray-200 text-gray-600 border border-gray-300'
+                                      : 'bg-purple-100 text-purple-800 border border-purple-300'
+                                  }`}>
+                                    <i className={`fas fa-star ${aulaEnviada || jaRegistrada ? 'text-gray-500' : 'text-purple-600'}`}></i>
+                                    Aula Experimental
+                                  </span>
+                                  
+                                  {aulaExp.telefoneExperimental && (
+                                    <a
+                                      href={`https://wa.me/55${aulaExp.telefoneExperimental.replace(/\D/g, '')}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700 border border-green-200 hover:bg-green-200 transition-colors"
+                                    >
+                                      <i className="fab fa-whatsapp"></i>
+                                      {aulaExp.telefoneExperimental}
+                                    </a>
+                                  )}
+                                </div>
+
+                                {/* Observações */}
+                                {aulaExp.observacoesExperimental && (
+                                  <div className="text-xs text-gray-500 mt-1 italic">
+                                    <i className="fas fa-comment text-gray-400 mr-1"></i>
+                                    {aulaExp.observacoesExperimental}
+                                  </div>
+                                )}
+
+                                {/* Status de presença já registrada */}
+                                {jaRegistrada ? (
+                                  <div className="mt-2">
+                                    {aulaExp.compareceu ? (
+                                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-bold bg-green-100 text-green-700 border border-green-300">
+                                        <i className="fas fa-check-circle"></i>
+                                        Compareceu à aula experimental
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-bold bg-red-100 text-red-700 border border-red-300">
+                                        <i className="fas fa-times-circle"></i>
+                                        Não compareceu à aula experimental
+                                      </span>
+                                    )}
+                                  </div>
+                                ) : (
+                                  /* Switch de Presença/Falta igual aos outros alunos */
+                                  <div className="flex items-center gap-2 mt-2">
+                                    <span className={`${aulaEnviada ? 'text-gray-400' : 'text-gray-700'} text-xs font-semibold`}>FALTOU</span>
+
+                                    <label className={`relative inline-flex items-center ${aulaEnviada ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
+                                      <input
+                                        type="checkbox"
+                                        className="sr-only"
+                                        checked={statusPresenca}
+                                        disabled={aulaEnviada}
+                                        onChange={(e) => marcarPresencaExperimental(aulaExp._id, e.target.checked)}
+                                        aria-label={`Marcar presença de ${aulaExp.nomeExperimental}`}
+                                      />
+
+                                      <div className={`w-12 h-6 rounded-full transition-colors ${statusPresenca ? 'bg-green-500' : 'bg-gray-300'}`}></div>
+                                      <div className={`absolute left-1 top-1 w-4 h-4 bg-white rounded-full shadow transform transition-transform ${statusPresenca ? 'translate-x-6' : ''}`}></div>
+                                    </label>
+
+                                    <span className={`${aulaEnviada ? 'text-gray-400' : (statusPresenca ? 'text-green-600' : 'text-gray-700')} text-xs font-semibold`}>PRESENTE</span>
+                                  </div>
+                                )}
                               </div>
                             </div>
                           </div>

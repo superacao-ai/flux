@@ -3,7 +3,6 @@ import Swal from 'sweetalert2';
 import { toast } from 'react-toastify';
 import { useEffect, useState } from 'react';
 import AccessDenied from '@/components/AccessDenied';
-import Layout from '@/components/Layout';
 import { useCountAnimation } from '@/hooks/useCountAnimation';
 
 interface User {
@@ -434,22 +433,20 @@ export default function Dashboard() {
   // Skeleton loading
   if (!hydrated) {
     return (
-      <Layout title="Dashboard - Superação Flux" fullWidth>
-        <div className="p-6">
-          <div className="mb-6">
-            <div className="h-6 bg-gray-200 rounded w-48 mb-2 animate-pulse" />
-            <div className="h-4 bg-gray-200 rounded w-64 animate-pulse" />
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {[1, 2, 3, 4].map(i => (
-              <div key={i} className="bg-white rounded-lg border border-gray-200 p-6 animate-pulse">
-                <div className="h-4 bg-gray-200 rounded w-24 mb-4" />
-                <div className="h-8 bg-gray-200 rounded w-16" />
-              </div>
-            ))}
-          </div>
+      <div className="p-6">
+        <div className="mb-6">
+          <div className="h-6 bg-gray-200 rounded w-48 mb-2 animate-pulse" />
+          <div className="h-4 bg-gray-200 rounded w-64 animate-pulse" />
         </div>
-      </Layout>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map(i => (
+            <div key={i} className="bg-white rounded-lg border border-gray-200 p-6 animate-pulse">
+              <div className="h-4 bg-gray-200 rounded w-24 mb-4" />
+              <div className="h-8 bg-gray-200 rounded w-16" />
+            </div>
+          ))}
+        </div>
+      </div>
     );
   }
 
@@ -459,8 +456,7 @@ export default function Dashboard() {
   }
 
   return (
-    <Layout title="Dashboard - Superação Flux" fullWidth>
-      <div className="p-6 bg-gray-50 min-h-screen">
+    <div className="p-6 bg-gray-50 min-h-screen">
         {/* Logo and Header */}
         <div className="mb-8 text-center fade-in-1">
           <img src="/s.png" alt="Studio Superação" className="h-12 w-auto mx-auto mb-2" />
@@ -934,6 +930,5 @@ export default function Dashboard() {
           </>
         )}
       </div>
-      </Layout>
   );
 }

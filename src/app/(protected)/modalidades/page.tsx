@@ -40,6 +40,7 @@ export default function ModalidadesPage() {
     ];
   const [modalidades, setModalidades] = useState<Modalidade[]>([]);
   const [showModal, setShowModal] = useState(false);
+  const [showInactive, setShowInactive] = useState(false);
   const [editingModalidade, setEditingModalidade] = useState<Modalidade | null>(null);
   const [query, setQuery] = useState('');
   const [formData, setFormData] = useState({
@@ -57,6 +58,7 @@ export default function ModalidadesPage() {
     }
   });
   const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
 
   // Marcar como montado
   useEffect(() => {
@@ -79,12 +81,13 @@ export default function ModalidadesPage() {
 
   useEffect(() => {
     fetchModalidades();
-  }, []);
+  }, [showInactive]);
 
   const fetchModalidades = async () => {
     try {
-      // request inactive modalities as well so recently desativadas remain visible on this page
-      const response = await fetch('/api/modalidades?includeInactive=true');
+      setLoading(true);
+      const urlParam = showInactive ? 'onlyInactive=true' : '';
+      const response = await fetch(`/api/modalidades?${urlParam}`);
 
       // Se a resposta não for OK, mostre alerta ao usuário e logue o corpo
       if (!response.ok) {
@@ -112,6 +115,9 @@ export default function ModalidadesPage() {
     } catch (error) {
       toast.error('Erro ao buscar modalidades: ' + String(error));
       console.error('Erro ao buscar modalidades:', error);
+    } finally {
+      setLoading(false);
+      setInitialLoading(false);
     }
   };
 
@@ -272,13 +278,13 @@ export default function ModalidadesPage() {
     }
 
     const result = await Swal.fire({
-      title: 'Confirmar Desativação',
-      text: 'Tem certeza que deseja desativar esta modalidade?',
+      title: 'Mover para lixeira?',
+      text: 'A modalidade será desativada mas os dados serão mantidos',
       icon: 'warning',
       showCancelButton: true,
-      confirmButtonColor: '#d33',
+      confirmButtonColor: '#f97316',
       cancelButtonColor: '#6b7280',
-      confirmButtonText: 'Sim, desativar',
+      confirmButtonText: 'Sim, desativar!',
       cancelButtonText: 'Cancelar'
     });
     if (result.isConfirmed) {
@@ -289,13 +295,8 @@ export default function ModalidadesPage() {
 
         const data = await response.json();
         if (data.success) {
-          // sucesso silencioso: marcar localmente como desativada para manter visível mas em estado inativo
-          setModalidades(prev => prev.map(m => {
-            const mid = (m as any).id || (m as any)._id || '';
-            if (String(mid) === String(id)) return { ...(m as any), ativo: false } as any;
-            return m;
-          }));
-          toast.success('Modalidade desativada com sucesso!');
+          toast.success('Modalidade movida para lixeira!');
+          fetchModalidades();
           try {
             if (typeof window !== 'undefined') {
               // notify other tabs/pages that modalidades changed
@@ -332,14 +333,12 @@ export default function ModalidadesPage() {
     });
     if (!result.isConfirmed) return;
     try {
-      // Use the hard=true query param to request permanent deletion on the server
-      const response = await fetch(`/api/modalidades/${id}?hard=true`, { method: 'DELETE' });
+      const response = await fetch(`/api/modalidades/${id}?permanent=true`, { method: 'DELETE' });
       let data: any = null;
       try { data = await response.json(); } catch (e) { data = null; }
       if (response.ok && data && data.success) {
-        // sucesso silencioso: remover localmente (hard delete)
-        setModalidades(prev => prev.filter(m => { const mid = (m as any).id || (m as any)._id || ''; return String(mid) !== String(id); }));
-        toast.success('Modalidade apagada permanentemente!');
+        toast.success('Modalidade excluída permanentemente!');
+        fetchModalidades();
         try {
           if (typeof window !== 'undefined') {
             localStorage.setItem('modalidadesUpdated', Date.now().toString());
@@ -368,20 +367,15 @@ export default function ModalidadesPage() {
       });
       const data = await response.json();
       if (data && data.success) {
-        // update local state to mark active
-        setModalidades(prev => prev.map(m => {
-          const mid = (m as any).id || (m as any)._id || '';
-          if (String(mid) === String(id)) return { ...(m as any), ativo: true } as any;
-          return m;
-        }));
-        toast.success('Modalidade ativada com sucesso!');
+        toast.success('Modalidade restaurada com sucesso!');
+        fetchModalidades();
         try { if (typeof window !== 'undefined') localStorage.setItem('modalidadesUpdated', Date.now().toString()); } catch (e) {}
       } else {
-        toast.error('Erro ao ativar modalidade');
+        toast.error('Erro ao restaurar modalidade');
       }
     } catch (err) {
-      console.error('Erro ao ativar modalidade:', err);
-      toast.error('Erro ao ativar modalidade');
+      console.error('Erro ao restaurar modalidade:', err);
+      toast.error('Erro ao restaurar modalidade');
     }
   };
 
@@ -400,35 +394,118 @@ export default function ModalidadesPage() {
     });
   }, [modalidades, query]);
 
-  // Skeleton loading enquanto não está montado
-  if (!mounted) {
+  // Skeleton loading enquanto não está montado ou carregando dados iniciais
+  if (!mounted || initialLoading) {
     return (
-      <ProtectedPage tab="modalidades" title="Modalidades - Superação Flux" fullWidth>
-        <div className="px-4 py-6 sm:px-0">
-          {/* Header skeleton */}
-          <div className="flex items-center justify-between gap-4 mb-6">
+      <ProtectedPage tab="modalidades" title="Modalidades - Superação Flux" fullWidth customLoading>
+        <div className="w-full px-4 py-6 sm:px-6 lg:px-8">
+          {/* Header skeleton - Desktop */}
+          <div className="hidden md:flex items-center justify-between gap-4 mb-6">
             <div>
-              <div className="h-5 bg-gray-200 rounded w-32 mb-2 animate-pulse" />
-              <div className="h-4 bg-gray-200 rounded w-72 animate-pulse" />
+              <div className="h-6 bg-gray-200 rounded w-36 mb-2 animate-pulse" />
+              <div className="h-4 bg-gray-200 rounded w-64 animate-pulse" />
             </div>
-            <div className="h-10 w-36 bg-gray-200 rounded-full animate-pulse" />
+            <div className="flex gap-3">
+              <div className="h-10 w-40 bg-gray-200 rounded-full animate-pulse" />
+              <div className="h-10 w-32 bg-gray-200 rounded-full animate-pulse" />
+            </div>
           </div>
           
-          {/* Search skeleton */}
-          <div className="mb-6">
+          {/* Header skeleton - Mobile */}
+          <div className="md:hidden flex items-center justify-between mb-4">
+            <div className="h-5 bg-gray-200 rounded w-28 animate-pulse" />
+            <div className="flex gap-2">
+              <div className="h-9 w-9 bg-gray-200 rounded-full animate-pulse" />
+              <div className="h-9 w-9 bg-gray-200 rounded-full animate-pulse" />
+            </div>
+          </div>
+          
+          {/* Search skeleton - Desktop */}
+          <div className="hidden md:block mb-6">
             <div className="h-10 bg-gray-200 rounded-lg w-full max-w-md animate-pulse" />
           </div>
           
-          {/* Cards grid skeleton */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {[1, 2, 3, 4, 5, 6].map(i => (
-              <div key={i} className="bg-white rounded-lg border border-gray-200 p-4">
-                <div className="flex items-start gap-3">
-                  <div className="h-10 w-10 bg-gray-200 rounded-lg animate-pulse" />
-                  <div className="flex-1 space-y-2">
-                    <div className="h-5 bg-gray-200 rounded w-28 animate-pulse" />
-                    <div className="h-4 bg-gray-200 rounded w-full animate-pulse" />
-                    <div className="h-4 bg-gray-200 rounded w-20 animate-pulse" />
+          {/* Search skeleton - Mobile */}
+          <div className="md:hidden mb-4">
+            <div className="h-10 bg-gray-200 rounded-lg w-full animate-pulse" />
+          </div>
+          
+          {/* Cards grid skeleton - Desktop */}
+          <div className="hidden md:grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {[1, 2, 3, 4, 5, 6, 7, 8].map(i => (
+              <div key={i} className="bg-white rounded-xl border border-gray-200 overflow-hidden animate-pulse">
+                {/* Barra colorida no topo */}
+                <div className="h-2 bg-gray-300" />
+                
+                <div className="p-5">
+                  {/* Cabeçalho */}
+                  <div className="flex items-start gap-3 mb-4">
+                    <div className="w-10 h-10 bg-gray-200 rounded-xl" />
+                    <div className="flex-1">
+                      <div className="h-4 bg-gray-200 rounded w-24 mb-1" />
+                    </div>
+                  </div>
+                  
+                  {/* Descrição */}
+                  <div className="h-3 bg-gray-100 rounded w-full mb-1" />
+                  <div className="h-3 bg-gray-100 rounded w-3/4 mb-4" />
+                  
+                  {/* Info Grid */}
+                  <div className="grid grid-cols-2 gap-3 mb-4">
+                    <div className="bg-gray-50 rounded-lg px-3 py-2">
+                      <div className="h-3 bg-gray-200 rounded w-12 mb-1" />
+                      <div className="h-4 bg-gray-200 rounded w-16" />
+                    </div>
+                    <div className="bg-gray-50 rounded-lg px-3 py-2">
+                      <div className="h-3 bg-gray-200 rounded w-10 mb-1" />
+                      <div className="h-4 bg-gray-200 rounded w-14" />
+                    </div>
+                  </div>
+                  
+                  {/* Dias da semana */}
+                  <div className="flex gap-1.5 mb-4">
+                    {[1, 2, 3, 4, 5].map(j => (
+                      <div key={j} className="h-6 bg-gray-100 rounded-md w-9" />
+                    ))}
+                  </div>
+                  
+                  {/* Botões de ação */}
+                  <div className="flex gap-2 pt-4 border-t border-gray-100">
+                    <div className="flex-1 h-9 bg-gray-200 rounded-lg" />
+                    <div className="w-10 h-9 bg-gray-200 rounded-lg" />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          
+          {/* Lista skeleton - Mobile */}
+          <div className="md:hidden space-y-3">
+            {[1, 2, 3, 4, 5].map(i => (
+              <div key={i} className="bg-white rounded-xl border border-gray-200 overflow-hidden animate-pulse">
+                {/* Header com cor de fundo */}
+                <div className="px-4 py-3 bg-gray-50 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-gray-200 rounded-lg" />
+                    <div>
+                      <div className="h-3.5 bg-gray-200 rounded w-20 mb-1" />
+                      <div className="h-2.5 bg-gray-200 rounded w-24" />
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="px-4 py-3">
+                  {/* Dias da semana */}
+                  <div className="flex gap-1 mb-3">
+                    {[1, 2, 3, 4, 5].map(j => (
+                      <div key={j} className="h-5 bg-gray-100 rounded w-7" />
+                    ))}
+                  </div>
+                  
+                  {/* Botões */}
+                  <div className="flex gap-2 pt-3 border-t border-gray-100">
+                    <div className="flex-1 h-8 bg-gray-200 rounded-lg" />
+                    <div className="w-8 h-8 bg-gray-200 rounded-lg" />
                   </div>
                 </div>
               </div>
@@ -441,17 +518,21 @@ export default function ModalidadesPage() {
 
   return (
     <ProtectedPage tab="modalidades" title="Modalidades - Superação Flux" fullWidth>
-      <div className="px-4 py-6 sm:px-0">
-        <div className="flex items-center justify-between gap-4 mb-4 fade-in-1">
+      <div className="w-full px-4 py-6 sm:px-6 lg:px-8">
+        {/* Header Desktop */}
+        <div className="hidden md:flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-base font-semibold text-gray-900 flex items-center gap-2">
-              <i className="fas fa-layer-group text-primary-600" />
+            <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+              <i className="fas fa-layer-group text-green-600"></i>
               Modalidades
             </h1>
-            <p className="mt-2 text-sm text-gray-600 max-w-xl">Gerencie as modalidades disponíveis no seu studio — nome, cor, duração e horários.</p>
+            <p className="text-sm text-gray-600 mt-1">
+              Gerencie as modalidades do studio
+            </p>
           </div>
 
-          <div>
+          {/* Botões de ação */}
+          <div className="flex items-center gap-3">
             <button
               type="button"
               onClick={() => setShowModal(true)}
@@ -460,123 +541,368 @@ export default function ModalidadesPage() {
               <i className="fas fa-plus w-4 text-white" aria-hidden="true" />
               Nova Modalidade
             </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowInactive(!showInactive);
+              }}
+              className={`h-10 inline-flex items-center justify-center rounded-full px-4 text-sm font-medium transition-colors ${
+                showInactive
+                  ? 'bg-gray-700 text-white hover:bg-gray-800'
+                  : 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+              }`}
+              title={showInactive ? 'Voltar para ativos' : 'Ver modalidades excluídas/inativas'}
+            >
+              <i className={`fas ${showInactive ? 'fa-arrow-left' : 'fa-trash'} mr-2`} aria-hidden="true"></i>
+              {showInactive ? 'Voltar' : 'Excluídos'}
+            </button>
           </div>
         </div>
 
-        {/* Search row above grid */}
-        <div className="mb-6 fade-in-2">
-          <div className="relative w-full sm:w-1/2">
-            <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 w-4 text-gray-400" aria-hidden="true" />
+        {/* Header Mobile */}
+        <div className="md:hidden mb-4 fade-in-1">
+          <div className="flex items-center justify-between">
+            <h1 className="text-lg font-semibold text-gray-900">Modalidades</h1>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowInactive(!showInactive)}
+                className={`h-8 w-8 inline-flex items-center justify-center rounded-full transition-colors ${
+                  showInactive
+                    ? 'bg-gray-700 text-white'
+                    : 'bg-gray-100 text-gray-600'
+                }`}
+              >
+                <i className={`fas ${showInactive ? 'fa-arrow-left' : 'fa-trash'} text-xs`}></i>
+              </button>
+              <button 
+                type="button" 
+                onClick={() => setShowModal(true)} 
+                className="h-8 w-8 inline-flex items-center justify-center rounded-full bg-green-600 text-white"
+              >
+                <i className="fas fa-plus text-xs"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Busca */}
+        <div className="mb-4 fade-in-2">
+          <div className="relative w-full">
+            <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden="true" />
             <input
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Pesquisar por nome ou descrição..."
-              className="block w-full pl-10 pr-3 border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 bg-white"
+              placeholder="Pesquisar modalidade..."
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm"
             />
           </div>
         </div>
 
+        {/* Contador Mobile */}
+        <div className="md:hidden mb-4 text-xs text-gray-500 fade-in-2">
+          {filteredModalidades.length} {filteredModalidades.length === 1 ? 'modalidade' : 'modalidades'}
+        </div>
+
         {/* Grid de modalidades */}
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 fade-in-3">
-          {filteredModalidades.map((modalidade, idx) => (
-            <div
-              key={(modalidade as any).id || (modalidade as any)._id || idx}
-              className={`relative rounded-lg border p-6 transition-colors transition-opacity duration-200 ease-in-out fade-in-${Math.min((idx % 8) + 3, 8)} ${((modalidade as any).ativo === false) ? 'bg-gray-50 opacity-60 border-gray-200' : 'bg-white border-gray-200'}`}
-            >
-              {(modalidade as any).ativo === false && (
-                <div className="absolute top-3 right-3 text-xs bg-gray-200 text-gray-700 px-2 py-0.5 rounded transition-opacity duration-200">Desativada</div>
-              )}
-              <div className="flex items-center">
-                <div
-                  className={`w-4 h-4 rounded-full mr-3 transition-all duration-200 ease-in-out ${((modalidade as any).ativo === false) ? 'grayscale opacity-40' : ''}`}
-                  style={{ backgroundColor: modalidade.cor }}
-                />
-                <h3 className={`text-lg font-medium transition-colors duration-200 ease-in-out ${((modalidade as any).ativo === false) ? 'text-gray-500' : 'text-gray-900'}`}>{modalidade.nome}</h3>
-              </div>
+        {filteredModalidades.length === 0 ? (
+          <div className="text-center py-12">
+            <i className={`fas ${showInactive ? 'fa-trash' : 'fa-layer-group'} text-4xl text-gray-300 mb-4`}></i>
+            <p className="text-gray-500 text-lg font-medium mb-2">
+              {showInactive 
+                ? 'Nenhuma modalidade excluída' 
+                : query 
+                  ? 'Nenhuma modalidade encontrada'
+                  : 'Nenhuma modalidade cadastrada'
+              }
+            </p>
+            {!showInactive && !query && (
+              <p className="text-gray-400 text-sm mb-4">
+                Comece criando uma nova modalidade
+              </p>
+            )}
+          </div>
+        ) : (
+          <>
+            {/* Grid Desktop */}
+            <div className="hidden md:grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 fade-in-3">
+              {filteredModalidades.map((modalidade, idx) => {
+                const isInativo = (modalidade as any).ativo === false;
+                const fadeClass = `fade-in-${Math.min((idx % 8) + 3, 8)}`;
+                
+                return (
+                  <div
+                    key={(modalidade as any).id || (modalidade as any)._id || idx}
+                    className={`relative rounded-xl border shadow-sm overflow-hidden transition-all duration-200 hover:shadow-lg ${fadeClass} ${
+                      isInativo 
+                        ? 'bg-gray-50 border-gray-200 opacity-70' 
+                        : 'bg-white border-gray-200 hover:border-green-400'
+                    }`}
+                  >
+                    {/* Barra colorida no topo */}
+                    <div 
+                      className="h-2"
+                      style={{ backgroundColor: isInativo ? '#d1d5db' : modalidade.cor }}
+                    />
+                    
+                    <div className="p-5">
+                      {/* Cabeçalho */}
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                          <div 
+                            className="w-10 h-10 rounded-xl flex items-center justify-center"
+                            style={{ backgroundColor: isInativo ? '#E5E7EB' : `${modalidade.cor}20` }}
+                          >
+                            <i 
+                              className="fas fa-layer-group text-lg"
+                              style={{ color: isInativo ? '#9CA3AF' : modalidade.cor }}
+                            />
+                          </div>
+                          <div>
+                            <h3 className={`text-base font-bold ${isInativo ? 'text-gray-500' : 'text-gray-900'}`}>
+                              {modalidade.nome}
+                            </h3>
+                            {isInativo && (
+                              <span className="text-[10px] bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full font-bold uppercase">
+                                Inativa
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
 
-              {modalidade.descricao && (
-                <p className="mt-2 text-sm text-gray-600">{modalidade.descricao}</p>
-              )}
-
-              <div className="mt-4 space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Duração:</span>
-                  <span className="font-medium">{modalidade.duracao} min</span>
-                </div>
-
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Limite de alunos:</span>
-                  <span className="font-medium">{modalidade.limiteAlunos} alunos</span>
-                </div>
-
-                {modalidade.diasSemana && modalidade.diasSemana.length > 0 && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">Dias de aula:</span>
-                    <span className="font-medium text-xs">
-                      {([...modalidade.diasSemana].sort()).map(dia =>
-                        ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'][dia]
-                      ).join(', ')}
-                    </span>
-                  </div>
-                )}
-
-                {((modalidade as any).horarioFuncionamento && (((modalidade as any).horarioFuncionamento.manha?.inicio) || ((modalidade as any).horarioFuncionamento.tarde?.inicio))) && (
-                  <div className="mt-2 text-sm text-gray-600">
-                    <div className="text-xs text-gray-500 mb-1">Horário de funcionamento:</div>
-                    <div className="space-y-1">
-                      {(modalidade as any).horarioFuncionamento.manha?.inicio && (modalidade as any).horarioFuncionamento.manha?.fim && (
-                        <div className="text-xs bg-gray-50 p-2 rounded">Manhã: {(modalidade as any).horarioFuncionamento.manha.inicio} — {(modalidade as any).horarioFuncionamento.manha.fim}</div>
+                      {/* Descrição */}
+                      {modalidade.descricao && (
+                        <p className="text-sm text-gray-500 mb-4 line-clamp-2">{modalidade.descricao}</p>
                       )}
-                      {(modalidade as any).horarioFuncionamento.tarde?.inicio && (modalidade as any).horarioFuncionamento.tarde?.fim && (
-                        <div className="text-xs bg-gray-50 p-2 rounded">Tarde: {(modalidade as any).horarioFuncionamento.tarde.inicio} — {(modalidade as any).horarioFuncionamento.tarde.fim}</div>
+
+                      {/* Info Grid */}
+                      <div className="grid grid-cols-2 gap-3 mb-4">
+                        <div className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2">
+                          <i className="fas fa-clock text-green-500 text-sm"></i>
+                          <div>
+                            <p className="text-xs text-gray-500">Duração</p>
+                            <p className="text-sm font-semibold text-gray-900">{modalidade.duracao} min</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2">
+                          <i className="fas fa-users text-green-500 text-sm"></i>
+                          <div>
+                            <p className="text-xs text-gray-500">Limite</p>
+                            <p className="text-sm font-semibold text-gray-900">{modalidade.limiteAlunos} alunos</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Dias da semana */}
+                      {modalidade.diasSemana && modalidade.diasSemana.length > 0 && (
+                        <div className="mb-4">
+                          <p className="text-xs text-gray-500 mb-2">Dias de funcionamento</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {([...modalidade.diasSemana].sort()).map(dia => (
+                              <span 
+                                key={dia}
+                                className="text-xs px-2 py-1 bg-green-50 text-green-700 rounded-md font-semibold"
+                              >
+                                {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'][dia]}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
                       )}
+
+                      {/* Horários de funcionamento */}
+                      {((modalidade as any).horarioFuncionamento && (((modalidade as any).horarioFuncionamento.manha?.inicio) || ((modalidade as any).horarioFuncionamento.tarde?.inicio))) && (
+                        <div className="flex flex-wrap gap-2 mb-4">
+                          {(modalidade as any).horarioFuncionamento.manha?.inicio && (modalidade as any).horarioFuncionamento.manha?.fim && (
+                            <div className="flex items-center gap-1.5 text-xs bg-amber-50 text-amber-700 px-3 py-1.5 rounded-lg font-medium">
+                              <i className="fas fa-sun"></i>
+                              <span>{(modalidade as any).horarioFuncionamento.manha.inicio} – {(modalidade as any).horarioFuncionamento.manha.fim}</span>
+                            </div>
+                          )}
+                          {(modalidade as any).horarioFuncionamento.tarde?.inicio && (modalidade as any).horarioFuncionamento.tarde?.fim && (
+                            <div className="flex items-center gap-1.5 text-xs bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-lg font-medium">
+                              <i className="fas fa-moon"></i>
+                              <span>{(modalidade as any).horarioFuncionamento.tarde.inicio} – {(modalidade as any).horarioFuncionamento.tarde.fim}</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Botões de ação */}
+                      <div className="flex gap-2 pt-4 border-t border-gray-100">
+                        {showInactive ? (
+                          <>
+                            <button 
+                              onClick={() => activateModalidade((modalidade as any).id || (modalidade as any)._id)} 
+                              className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-green-600 text-white text-sm font-medium hover:bg-green-700 transition-colors"
+                            >
+                              <i className="fas fa-undo"></i>
+                              <span>Restaurar</span>
+                            </button>
+                            <button 
+                              onClick={() => deleteModalidadeHard((modalidade as any).id || (modalidade as any)._id)} 
+                              className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-red-100 text-red-600 hover:bg-red-200 transition-colors"
+                              title="Apagar permanentemente"
+                            >
+                              <i className="fas fa-trash-alt"></i>
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button 
+                              onClick={() => editModalidade(modalidade)} 
+                              className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-white border border-gray-200 text-gray-700 text-sm font-medium hover:bg-gray-50 hover:border-green-300 transition-colors"
+                            >
+                              <i className="fas fa-edit text-green-600"></i>
+                              <span>Editar</span>
+                            </button>
+                            <button 
+                              onClick={() => deleteModalidade((modalidade as any).id || (modalidade as any)._id)} 
+                              className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-white border border-gray-200 text-red-500 hover:bg-red-50 hover:border-red-300 transition-colors"
+                              title="Mover para lixeira"
+                            >
+                              <i className="fas fa-trash"></i>
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </div>
                   </div>
-                )}
-              </div>
-
-              <div className="mt-4 flex justify-end gap-3">
-                {((modalidade as any).ativo === false) ? (
-                  <>
-                    <button disabled className="inline-flex items-center gap-2 h-8 px-3 rounded-md bg-white border border-gray-100 text-gray-300 text-sm cursor-not-allowed transition-colors duration-200">
-                      <i className="fas fa-edit w-4 text-gray-300" aria-hidden="true" />
-                      <span>Editar</span>
-                    </button>
-                    <button onClick={() => activateModalidade((modalidade as any).id || (modalidade as any)._id)} className="inline-flex items-center gap-2 h-8 px-3 rounded-md bg-primary-600 text-white text-sm transition-colors duration-200">
-                      <i className="fas fa-toggle-on w-4 text-white" aria-hidden="true" />
-                      <span>Ativar</span>
-                    </button>
-                    <button disabled className="inline-flex items-center gap-2 h-8 px-3 rounded-md bg-white border border-gray-100 text-gray-300 text-sm cursor-not-allowed transition-colors duration-200">
-                      <i className="fas fa-trash-alt w-4 text-gray-300" aria-hidden="true" />
-                      <span>Apagar</span>
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <button onClick={() => editModalidade(modalidade)} className="inline-flex items-center gap-2 h-8 px-3 rounded-md bg-white border border-gray-100 hover:bg-gray-50 text-primary-600 text-sm transition-colors duration-200">
-                      <i className="fas fa-edit w-4 text-primary-600" aria-hidden="true" />
-                      <span>Editar</span>
-                    </button>
-                    <button onClick={() => deleteModalidade((modalidade as any).id || (modalidade as any)._id)} className="inline-flex items-center gap-2 h-8 px-3 rounded-md bg-red-50 border border-red-100 text-red-700 hover:bg-red-100 text-sm transition-colors duration-200">
-                      <i className="fas fa-toggle-off w-4 text-red-700" aria-hidden="true" />
-                      <span>Desativar</span>
-                    </button>
-                    <button onClick={() => deleteModalidadeHard((modalidade as any).id || (modalidade as any)._id)} className="inline-flex items-center gap-2 h-8 px-3 rounded-md bg-red-600 text-white hover:bg-red-700 text-sm transition-colors duration-200">
-                      <i className="fas fa-trash-alt w-4 text-white" aria-hidden="true" />
-                      <span>Apagar</span>
-                    </button>
-                  </>
-                )}
-              </div>
+                );
+              })}
             </div>
-          ))}
-        </div>
+
+            {/* Lista Mobile */}
+            <div className="md:hidden space-y-3 fade-in-3">
+              {filteredModalidades.map((modalidade, idx) => {
+                const isInativo = (modalidade as any).ativo === false;
+                const fadeClass = `fade-in-${Math.min((idx % 8) + 3, 8)}`;
+                
+                return (
+                  <div
+                    key={(modalidade as any).id || (modalidade as any)._id || idx}
+                    className={`relative rounded-xl border overflow-hidden ${fadeClass} ${
+                      isInativo 
+                        ? 'bg-gray-50 border-gray-200 opacity-70' 
+                        : 'bg-white border-gray-200'
+                    }`}
+                  >
+                    {/* Header com cor */}
+                    <div 
+                      className="px-4 py-3 flex items-center justify-between"
+                      style={{ backgroundColor: isInativo ? '#F3F4F6' : `${modalidade.cor}10` }}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div 
+                          className="w-8 h-8 rounded-lg flex items-center justify-center"
+                          style={{ backgroundColor: isInativo ? '#E5E7EB' : `${modalidade.cor}30` }}
+                        >
+                          <i 
+                            className="fas fa-layer-group text-sm"
+                            style={{ color: isInativo ? '#9CA3AF' : modalidade.cor }}
+                          />
+                        </div>
+                        <div>
+                          <h3 className={`text-sm font-bold ${isInativo ? 'text-gray-500' : 'text-gray-900'}`}>
+                            {modalidade.nome}
+                          </h3>
+                          <div className="flex items-center gap-2 text-xs text-gray-500">
+                            <span>{modalidade.duracao}min</span>
+                            <span>•</span>
+                            <span>{modalidade.limiteAlunos} alunos</span>
+                          </div>
+                        </div>
+                      </div>
+                      {isInativo && (
+                        <span className="text-[10px] bg-gray-300 text-gray-600 px-2 py-0.5 rounded-full font-bold">
+                          INATIVA
+                        </span>
+                      )}
+                    </div>
+                    
+                    <div className="px-4 py-3">
+                      {/* Dias da semana - compact */}
+                      {modalidade.diasSemana && modalidade.diasSemana.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mb-3">
+                          {([...modalidade.diasSemana].sort()).map(dia => (
+                            <span 
+                              key={dia}
+                              className="text-[10px] px-1.5 py-0.5 bg-green-50 text-green-700 rounded font-semibold"
+                            >
+                              {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'][dia]}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Horários de funcionamento - Mobile */}
+                      {((modalidade as any).horarioFuncionamento && (((modalidade as any).horarioFuncionamento.manha?.inicio) || ((modalidade as any).horarioFuncionamento.tarde?.inicio))) && (
+                        <div className="flex flex-wrap gap-1.5 mb-3">
+                          {(modalidade as any).horarioFuncionamento.manha?.inicio && (modalidade as any).horarioFuncionamento.manha?.fim && (
+                            <div className="flex items-center gap-1 text-[10px] bg-amber-50 text-amber-700 px-2 py-1 rounded-lg font-medium">
+                              <i className="fas fa-sun text-[9px]"></i>
+                              <span>{(modalidade as any).horarioFuncionamento.manha.inicio} – {(modalidade as any).horarioFuncionamento.manha.fim}</span>
+                            </div>
+                          )}
+                          {(modalidade as any).horarioFuncionamento.tarde?.inicio && (modalidade as any).horarioFuncionamento.tarde?.fim && (
+                            <div className="flex items-center gap-1 text-[10px] bg-indigo-50 text-indigo-700 px-2 py-1 rounded-lg font-medium">
+                              <i className="fas fa-moon text-[9px]"></i>
+                              <span>{(modalidade as any).horarioFuncionamento.tarde.inicio} – {(modalidade as any).horarioFuncionamento.tarde.fim}</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Botões de ação - compact */}
+                      <div className="flex gap-2">
+                        {showInactive ? (
+                          <>
+                            <button 
+                              onClick={() => activateModalidade((modalidade as any).id || (modalidade as any)._id)} 
+                              className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-green-600 text-white text-xs font-medium"
+                            >
+                              <i className="fas fa-undo text-[10px]"></i>
+                              <span>Restaurar</span>
+                            </button>
+                            <button 
+                              onClick={() => deleteModalidadeHard((modalidade as any).id || (modalidade as any)._id)} 
+                              className="w-9 h-9 flex items-center justify-center rounded-lg bg-red-100 text-red-600"
+                            >
+                              <i className="fas fa-trash-alt text-xs"></i>
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button 
+                              onClick={() => editModalidade(modalidade)} 
+                              className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-gray-200 text-gray-700 text-xs font-medium"
+                            >
+                              <i className="fas fa-edit text-green-600 text-[10px]"></i>
+                              <span>Editar</span>
+                            </button>
+                            <button 
+                              onClick={() => deleteModalidade((modalidade as any).id || (modalidade as any)._id)} 
+                              className="w-9 h-9 flex items-center justify-center rounded-lg border border-gray-200 text-red-500"
+                            >
+                              <i className="fas fa-trash text-xs"></i>
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
 
         {/* Modal para nova modalidade */}
         {showModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-600 bg-opacity-50 px-4">
-            <div className="relative w-full max-w-xl bg-white rounded-lg shadow-lg border p-6">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-600 bg-opacity-50 p-3 sm:p-4">
+            <div className="relative w-full max-w-xl bg-white rounded-lg shadow-lg border p-4 sm:p-6 max-h-[90vh] overflow-y-auto">
               <div className="flex items-start justify-between mb-4 border-b pb-4">
                 <div>
                   <h3 className="text-base font-semibold text-gray-900">

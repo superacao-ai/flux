@@ -8,8 +8,16 @@ export async function GET(request: NextRequest) {
     await connectDB();
     const url = new URL(request.url);
     const includeInactive = url.searchParams.get('includeInactive') === 'true';
+    const onlyInactive = url.searchParams.get('onlyInactive') === 'true';
 
-    const query = includeInactive ? {} : { ativo: true };
+    let query: any = {};
+    if (onlyInactive) {
+      query.ativo = false;
+    } else if (!includeInactive) {
+      query.ativo = true;
+    }
+    // Se includeInactive=true, não filtra por ativo (retorna todos)
+
     const modalidades = await Modalidade.find(query)
       .sort({ nome: 1 })
       .select('-__v')

@@ -4,7 +4,7 @@ import Swal from 'sweetalert2';
 import { toast } from 'react-toastify';
 import ProtectedPage from '@/components/ProtectedPage';
 import { useEffect, useState, useMemo } from 'react';
-import { Line, Bar } from 'react-chartjs-2';
+import { Line, Bar, Doughnut, Pie } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -13,6 +13,7 @@ import {
   LineElement,
   BarElement,
   BarController,
+  ArcElement,
   Filler,
   Title,
   Tooltip,
@@ -26,6 +27,7 @@ ChartJS.register(
   LineElement,
   BarElement,
   BarController,
+  ArcElement,
   Filler,
   Title,
   Tooltip,
@@ -108,6 +110,7 @@ export default function RelatoriosPage() {
   const [mounted, setMounted] = useState(false);
   const [dados, setDados] = useState<RelatorioDados | null>(null);
   const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState('');
   const [paginaAlunosComFaltas, setPaginaAlunosComFaltas] = useState(1);
   const [filtros, setFiltros] = useState({
@@ -123,6 +126,14 @@ export default function RelatoriosPage() {
   const [faltasSemanaHorario, setFaltasSemanaHorario] = useState<{ dias: string[]; horarios: string[]; matriz: number[][] }>({ dias: [], horarios: [], matriz: [] });
   const [faltasPorDia, setFaltasPorDia] = useState<number[]>([]);
   const [faltasPorHorario, setFaltasPorHorario] = useState<number[]>([]);
+  
+  // Novos estados para gráficos adicionais
+  const [alunosPorModalidade, setAlunosPorModalidade] = useState<{ labels: string[]; data: number[]; colors: string[] }>({ labels: [], data: [], colors: [] });
+  const [horariosMaisOcupados, setHorariosMaisOcupados] = useState<{ dias: string[]; horarios: string[]; ocupacao: number[][] }>({ dias: [], horarios: [], ocupacao: [] });
+  const [performanceProfessores, setPerformanceProfessores] = useState<{ labels: string[]; frequencias: number[] }>({ labels: [], frequencias: [] });
+  const [taxaRetencao, setTaxaRetencao] = useState<{ labels: string[]; novos: number[]; inativos: number[] }>({ labels: [], novos: [], inativos: [] });
+  const [rankingAssíduos, setRankingAssíduos] = useState<{ labels: string[]; frequencias: number[] }>({ labels: [], frequencias: [] });
+  const [horariosMaisFaltas, setHorariosMaisFaltas] = useState<{ labels: string[]; taxas: number[] }>({ labels: [], taxas: [] });
   
   // Estados para modais
   const [showModalAulasEnviadas, setShowModalAulasEnviadas] = useState(false);
@@ -513,6 +524,135 @@ export default function RelatoriosPage() {
         // Contar reagendamentos aprovados
         const reagendamentosAprovados = reagendamentos.filter(r => r.status === 'aprovado').length;
 
+        // ======== NOVOS GRÁFICOS ========
+        
+        // 1. Distribuição de Alunos por Modalidade
+        const alunosPorModalidadeMap = new Map<string, { count: number; cor: string }>();
+        alunos.filter(a => a.ativo !== false).forEach(aluno => {
+          const modalidades = aluno.modalidades || [];
+          if (modalidades.length > 0) {
+            modalidades.forEach(mod => {
+              const nome = mod.nome || 'Sem modalidade';
+              const modalidade = modalidadesData.data?.find((m: any) => m._id === mod._id || m.nome === nome);
+              const cor = modalidade?.cor || '#6B7280';
+              if (!alunosPorModalidadeMap.has(nome)) {
+                alunosPorModalidadeMap.set(nome, { count: 0, cor });
+              }
+              alunosPorModalidadeMap.get(nome)!.count++;
+            });
+          } else if (aluno.modalidadeId?.nome) {
+            const nome = aluno.modalidadeId.nome;
+            const cor = aluno.modalidadeId.cor || '#6B7280';
+            if (!alunosPorModalidadeMap.has(nome)) {
+              alunosPorModalidadeMap.set(nome, { count: 0, cor });
+            }
+            alunosPorModalidadeMap.get(nome)!.count++;
+          } else {
+            const nome = 'Sem modalidade';
+            if (!alunosPorModalidadeMap.has(nome)) {
+              alunosPorModalidadeMap.set(nome, { count: 0, cor: '#6B7280' });
+            }
+            alunosPorModalidadeMap.get(nome)!.count++;
+          }
+        });
+        const modalidadesLabels = Array.from(alunosPorModalidadeMap.keys());
+        const modalidadesCounts = modalidadesLabels.map(k => alunosPorModalidadeMap.get(k)!.count);
+        const modalidadesColors = modalidadesLabels.map(k => alunosPorModalidadeMap.get(k)!.cor);
+        setAlunosPorModalidade({ labels: modalidadesLabels, data: modalidadesCounts, colors: modalidadesColors });
+
+        // 2. Horários Mais Ocupados (Heatmap de Ocupação)
+        const ocupacaoMap = new Map<string, Map<string, number>>(); // dia -> horario -> count
+        horarios.filter((h: any) => h.ativo !== false).forEach((h: any) => {
+          const dia = diasSemana[h.diaSemana] || 'Desconhecido';
+          const horario = `${h.horarioInicio || ''}-${h.horarioFim || ''}`;
+          const matriculas = h.matriculas || [];
+          const count = Array.isArray(matriculas) ? matriculas.length : 0;
+          
+          if (!ocupacaoMap.has(dia)) ocupacaoMap.set(dia, new Map());
+          const current = ocupacaoMap.get(dia)!.get(horario) || 0;
+          ocupacaoMap.get(dia)!.set(horario, current + count);
+        });
+        
+        const diasOcupacao = Array.from(ocupacaoMap.keys());
+        const horariosOcupacaoSet = new Set<string>();
+        ocupacaoMap.forEach(horarioMap => {
+          horarioMap.forEach((_, horario) => horariosOcupacaoSet.add(horario));
+        });
+        const horariosOcupacao = Array.from(horariosOcupacaoSet).sort();
+        const ocupacaoMatriz = diasOcupacao.map(dia => 
+          horariosOcupacao.map(horario => ocupacaoMap.get(dia)?.get(horario) || 0)
+        );
+        setHorariosMaisOcupados({ dias: diasOcupacao, horarios: horariosOcupacao, ocupacao: ocupacaoMatriz });
+
+        // 3. Performance de Professores (Taxa de Frequência)
+        const performanceLabels = faltasPorProfessor.map(p => p.professorNome);
+        const performanceFreq = faltasPorProfessor.map(p => p.frequencia);
+        setPerformanceProfessores({ labels: performanceLabels, frequencias: performanceFreq });
+
+        // 4. Taxa de Retenção Mensal (Novos vs Inativos)
+        const retencaoPorMes = new Map<string, { novos: number; inativos: number }>();
+        alunos.forEach(aluno => {
+          // Alunos novos (baseado em criadoEm)
+          if ((aluno as any).criadoEm) {
+            const data = new Date((aluno as any).criadoEm);
+            const mes = `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, '0')}`;
+            if (!retencaoPorMes.has(mes)) retencaoPorMes.set(mes, { novos: 0, inativos: 0 });
+            retencaoPorMes.get(mes)!.novos++;
+          }
+          // Alunos inativos (baseado em ativo === false e atualizadoEm)
+          if (aluno.ativo === false && (aluno as any).atualizadoEm) {
+            const data = new Date((aluno as any).atualizadoEm);
+            const mes = `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, '0')}`;
+            if (!retencaoPorMes.has(mes)) retencaoPorMes.set(mes, { novos: 0, inativos: 0 });
+            retencaoPorMes.get(mes)!.inativos++;
+          }
+        });
+        const mesesRetencao = Array.from(retencaoPorMes.keys()).sort().slice(-6); // Últimos 6 meses
+        const meses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+        const retencaoLabels = mesesRetencao.map(m => {
+          const [ano, mes] = m.split('-');
+          return `${meses[parseInt(mes) - 1]} ${ano}`;
+        });
+        const retencaoNovos = mesesRetencao.map(m => retencaoPorMes.get(m)?.novos || 0);
+        const retencaoInativos = mesesRetencao.map(m => retencaoPorMes.get(m)?.inativos || 0);
+        setTaxaRetencao({ labels: retencaoLabels, novos: retencaoNovos, inativos: retencaoInativos });
+
+        // 5. Ranking de Alunos Mais Assíduos (Top 10)
+        const alunosOrdenados = alunosComMaisFaltas
+          .filter(a => (a.presencas + a.faltas) >= 5) // Mínimo 5 aulas
+          .sort((a, b) => b.frequencia - a.frequencia)
+          .slice(0, 10);
+        const rankingLabels = alunosOrdenados.map(a => a.nome);
+        const rankingFreq = alunosOrdenados.map(a => a.frequencia);
+        setRankingAssíduos({ labels: rankingLabels, frequencias: rankingFreq });
+
+        // 6. Horários com Mais Faltas
+        const faltasPorHorarioMap = new Map<string, { faltas: number; total: number }>();
+        aulasFiltradas.forEach(aula => {
+          const horario = (aula as any).horarioInicio 
+            ? `${(aula as any).horarioInicio}-${(aula as any).horarioFim || ''}` 
+            : 'Horário desconhecido';
+          if (!faltasPorHorarioMap.has(horario)) {
+            faltasPorHorarioMap.set(horario, { faltas: 0, total: 0 });
+          }
+          const stats = faltasPorHorarioMap.get(horario)!;
+          aula.alunos.forEach(a => {
+            if (a.presente === false) stats.faltas++;
+            if (a.presente !== null) stats.total++;
+          });
+        });
+        const horariosComFaltas = Array.from(faltasPorHorarioMap.entries())
+          .map(([horario, stats]) => ({
+            horario,
+            taxa: stats.total > 0 ? Math.round((stats.faltas / stats.total) * 100) : 0
+          }))
+          .filter(h => h.taxa > 0)
+          .sort((a, b) => b.taxa - a.taxa)
+          .slice(0, 10);
+        const horariosFaltasLabels = horariosComFaltas.map(h => h.horario);
+        const horariosFaltasTaxas = horariosComFaltas.map(h => h.taxa);
+        setHorariosMaisFaltas({ labels: horariosFaltasLabels, taxas: horariosFaltasTaxas });
+
         setDados({
           totalAulas,
           totalFaltas,
@@ -530,6 +670,7 @@ export default function RelatoriosPage() {
         setError('Erro ao carregar dados de relatório');
       } finally {
         setLoading(false);
+        setInitialLoading(false);
       }
     };
 
@@ -552,20 +693,25 @@ export default function RelatoriosPage() {
     setFaltasPorHorario(colSums);
   }, [faltasSemanaHorario]);
 
-  // Skeleton loading enquanto não está montado
-  if (!mounted) {
+  // Skeleton loading enquanto não está montado ou carregando dados iniciais
+  if (!mounted || initialLoading) {
     return (
-      <ProtectedPage tab="relatorios" title="Relatórios - Superação Flux" fullWidth>
-        <div className="px-4 py-6 sm:px-0">
-          {/* Header skeleton */}
-          <div className="mb-8">
-            <div className="h-5 bg-gray-200 rounded w-44 mb-2 animate-pulse" />
-            <div className="h-4 bg-gray-200 rounded w-72 animate-pulse" />
+      <ProtectedPage tab="relatorios" title="Relatórios - Superação Flux" fullWidth customLoading>
+        <div className="w-full px-4 py-6 sm:px-6 lg:px-8">
+          {/* Header skeleton - Desktop */}
+          <div className="hidden md:block mb-6">
+            <div className="h-6 bg-gray-200 rounded w-48 mb-2 animate-pulse" />
+            <div className="h-4 bg-gray-200 rounded w-80 animate-pulse" />
           </div>
           
-          {/* Filtros skeleton */}
-          <div className="bg-white rounded-md border border-gray-200 p-4 mb-6">
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+          {/* Header skeleton - Mobile */}
+          <div className="md:hidden mb-4">
+            <div className="h-5 bg-gray-200 rounded w-24 animate-pulse" />
+          </div>
+          
+          {/* Filtros skeleton - Desktop */}
+          <div className="hidden md:block bg-white rounded-md border border-gray-200 p-4 mb-6">
+            <div className="grid grid-cols-6 gap-4">
               {[1, 2, 3, 4, 5, 6].map(i => (
                 <div key={i}>
                   <div className="h-4 bg-gray-200 rounded w-16 mb-2 animate-pulse" />
@@ -575,8 +721,28 @@ export default function RelatoriosPage() {
             </div>
           </div>
           
-          {/* Stats cards skeleton */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          {/* Filtros skeleton - Mobile */}
+          <div className="md:hidden mb-4">
+            <div className="bg-white rounded-lg border border-gray-200 p-3">
+              <div className="grid grid-cols-2 gap-2 mb-2">
+                <div>
+                  <div className="h-2.5 bg-gray-200 rounded w-10 mb-1 animate-pulse" />
+                  <div className="h-8 bg-gray-200 rounded w-full animate-pulse" />
+                </div>
+                <div>
+                  <div className="h-2.5 bg-gray-200 rounded w-8 mb-1 animate-pulse" />
+                  <div className="h-8 bg-gray-200 rounded w-full animate-pulse" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="h-8 bg-gray-200 rounded animate-pulse" />
+                <div className="h-8 bg-gray-200 rounded animate-pulse" />
+              </div>
+            </div>
+          </div>
+          
+          {/* Stats cards skeleton - Desktop */}
+          <div className="hidden md:grid grid-cols-4 gap-4 mb-6">
             {[1, 2, 3, 4].map(i => (
               <div key={i} className="bg-white rounded-lg border border-gray-200 p-4">
                 <div className="h-4 bg-gray-200 rounded w-24 mb-3 animate-pulse" />
@@ -585,12 +751,32 @@ export default function RelatoriosPage() {
             ))}
           </div>
           
-          {/* Charts skeleton */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Stats cards skeleton - Mobile */}
+          <div className="md:hidden grid grid-cols-2 gap-2 mb-4">
+            {[1, 2, 3, 4].map(i => (
+              <div key={i} className="bg-white rounded-lg border border-gray-200 p-3">
+                <div className="h-3 bg-gray-200 rounded w-16 mb-2 animate-pulse" />
+                <div className="h-6 bg-gray-200 rounded w-12 animate-pulse" />
+              </div>
+            ))}
+          </div>
+          
+          {/* Charts skeleton - Desktop */}
+          <div className="hidden md:grid grid-cols-2 gap-6">
             {[1, 2].map(i => (
               <div key={i} className="bg-white rounded-lg border border-gray-200 p-6">
                 <div className="h-5 bg-gray-200 rounded w-48 mb-4 animate-pulse" />
                 <div className="h-48 bg-gray-100 rounded animate-pulse" />
+              </div>
+            ))}
+          </div>
+          
+          {/* Charts skeleton - Mobile */}
+          <div className="md:hidden space-y-3">
+            {[1, 2].map(i => (
+              <div key={i} className="bg-white rounded-lg border border-gray-200 p-4">
+                <div className="h-4 bg-gray-200 rounded w-36 mb-3 animate-pulse" />
+                <div className="h-32 bg-gray-100 rounded animate-pulse" />
               </div>
             ))}
           </div>
@@ -712,19 +898,121 @@ export default function RelatoriosPage() {
 
   return (
     <ProtectedPage tab="relatorios" title="Relatórios - Superação Flux" fullWidth>
-      <div className="px-4 py-6 sm:px-0">
-        <div className="mb-8 fade-in-1">
-          <h1 className="text-base font-semibold text-gray-900 flex items-center gap-2">
-            <i className="fas fa-chart-bar text-primary-600"></i>
+      <div className="w-full px-4 py-6 sm:px-6 lg:px-8">
+        {/* Header Desktop */}
+        <div className="hidden md:block mb-6 fade-in-1">
+          <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+            <i className="fas fa-chart-line text-green-600"></i>
             Relatórios Gerenciais
           </h1>
-          <p className="mt-2 text-xs text-gray-600">
+          <p className="text-sm text-gray-600 mt-1">
             Análises e métricas de frequência, faltas e reagendamentos
           </p>
         </div>
 
-        {/* Filtros */}
-        <div className="bg-white rounded-md border border-gray-200 p-4 mb-6 fade-in-2">
+        {/* Header Mobile */}
+        <div className="md:hidden mb-4 fade-in-1">
+          <h1 className="text-lg font-semibold text-gray-900">Relatórios</h1>
+        </div>
+
+        {/* Filtros Mobile */}
+        <div className="md:hidden mb-4 fade-in-2">
+          <div className="bg-white rounded-lg border border-gray-200 p-3">
+            <div className="grid grid-cols-2 gap-2 mb-2">
+              <div>
+                <label className="block text-[10px] font-medium text-gray-500 mb-1">Início</label>
+                <input
+                  type="date"
+                  value={filtros.dataInicio}
+                  disabled={filtrosDesativados}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (value && value.length <= 10) {
+                      const year = value.split('-')[0];
+                      if (year && year.length <= 4) {
+                        setFiltros({ ...filtros, dataInicio: value });
+                      }
+                    } else if (!value) {
+                      setFiltros({ ...filtros, dataInicio: value });
+                    }
+                  }}
+                  max="9999-12-31"
+                  className={`w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs ${filtrosDesativados ? 'bg-gray-100 text-gray-400' : ''}`}
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-medium text-gray-500 mb-1">Fim</label>
+                <input
+                  type="date"
+                  value={filtros.dataFim}
+                  disabled={filtrosDesativados}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (value && value.length <= 10) {
+                      const year = value.split('-')[0];
+                      if (year && year.length <= 4) {
+                        setFiltros({ ...filtros, dataFim: value });
+                      }
+                    } else if (!value) {
+                      setFiltros({ ...filtros, dataFim: value });
+                    }
+                  }}
+                  max="9999-12-31"
+                  className={`w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs ${filtrosDesativados ? 'bg-gray-100 text-gray-400' : ''}`}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <select
+                value={filtros.professor}
+                disabled={filtrosDesativados}
+                onChange={(e) => setFiltros({ ...filtros, professor: e.target.value })}
+                className={`w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs ${filtrosDesativados ? 'bg-gray-100 text-gray-400' : ''}`}
+              >
+                <option value="">Professor</option>
+                {professores.map((prof) => (
+                  <option key={prof._id} value={prof._id}>{prof.nome}</option>
+                ))}
+              </select>
+              <select
+                value={filtros.modalidade}
+                disabled={filtrosDesativados}
+                onChange={(e) => setFiltros({ ...filtros, modalidade: e.target.value })}
+                className={`w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs ${filtrosDesativados ? 'bg-gray-100 text-gray-400' : ''}`}
+              >
+                <option value="">Modalidade</option>
+                {modalidades.map((mod) => (
+                  <option key={mod._id} value={mod.nome}>{mod.nome}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-100">
+              <button
+                onClick={() => setFiltrosDesativados(!filtrosDesativados)}
+                className={`text-xs font-medium ${filtrosDesativados ? 'text-red-600' : 'text-gray-600'}`}
+              >
+                <i className={`fas ${filtrosDesativados ? 'fa-filter-circle-xmark' : 'fa-filter'} mr-1`}></i>
+                {filtrosDesativados ? 'Ativar' : 'Desativar'}
+              </button>
+              <button
+                onClick={() => {
+                  setFiltros({
+                    dataInicio: new Date(new Date().setDate(new Date().getDate() - 90)).toISOString().split('T')[0],
+                    dataFim: new Date().toISOString().split('T')[0],
+                    professor: '',
+                    modalidade: ''
+                  });
+                }}
+                className="text-xs text-green-600 font-medium"
+              >
+                Limpar
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Filtros Desktop */}
+        <div className="hidden md:block bg-white rounded-md border border-gray-200 p-4 mb-6 fade-in-2">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Data Início</label>
@@ -834,12 +1122,28 @@ export default function RelatoriosPage() {
           </div>
         </div>
 
-        {/* Resumo do Período (cards de Aulas Realizadas/Pendentes removidos por solicitação) */}
+        {/* ========== SEÇÃO: ANÁLISE DE FREQUÊNCIA ========== */}
+        <div className="mb-6 md:mb-8 fade-in-3">
+          {/* Título da seção - Desktop */}
+          <div className="hidden md:flex items-center gap-3 mb-4">
+            <div className="h-1 w-12 bg-green-600 rounded"></div>
+            <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+              <i className="fas fa-chart-line text-green-600"></i>
+              Análise de Frequência
+            </h2>
+            <div className="h-1 flex-1 bg-gray-200 rounded"></div>
+          </div>
+          {/* Título da seção - Mobile */}
+          <div className="md:hidden mb-3">
+            <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+              <i className="fas fa-chart-line text-green-600 text-xs"></i>
+              Frequência
+            </h2>
+          </div>
 
-  {/* Gráficos de Análise - Todos lado a lado */}
-  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8 fade-in-3">
-          {/* Gráfico de Evolução da Frequência */}
-          <div className="bg-white rounded-md shadow-sm border border-gray-200 p-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+            {/* Gráfico de Evolução da Frequência */}
+            <div className="bg-white rounded-xl md:rounded-md shadow-sm border border-gray-200 p-4 md:p-6">
             <h3 className="text-sm font-semibold text-gray-900 mb-4 flex items-center gap-2">
               <i className="fas fa-chart-line text-green-600"></i>
               Evolução Frequência
@@ -957,12 +1261,315 @@ export default function RelatoriosPage() {
               )}
             </div>
           </div>
+          </div>
         </div>
 
-        {/* Gráficos e Tabelas */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 fade-in-5">
-          {/* Faltas por Aluno */}
-          <div className="bg-white rounded-md shadow-sm border border-gray-200 p-6 lg:col-span-2">
+        {/* ========== SEÇÃO: VISÃO GERAL DO STUDIO ========== */}
+        <div className="mb-6 md:mb-8 fade-in-4">
+          {/* Título da seção - Desktop */}
+          <div className="hidden md:flex items-center gap-3 mb-4">
+            <div className="h-1 w-12 bg-blue-600 rounded"></div>
+            <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+              <i className="fas fa-chart-pie text-blue-600"></i>
+              Visão Geral do Studio
+            </h2>
+            <div className="h-1 flex-1 bg-gray-200 rounded"></div>
+          </div>
+          {/* Título da seção - Mobile */}
+          <div className="md:hidden mb-3">
+            <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+              <i className="fas fa-chart-pie text-blue-600 text-xs"></i>
+              Visão Geral
+            </h2>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+            {/* Distribuição de Alunos por Modalidade */}
+            <div className="bg-white rounded-md shadow-sm border border-gray-200 p-6">
+            <h3 className="text-sm font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <i className="fas fa-chart-pie text-green-600"></i>
+              Alunos por Modalidade
+              <span className="ml-auto text-xs text-gray-500 font-normal bg-gray-100 px-2 py-1 rounded-full">Visão Geral</span>
+            </h3>
+            <div className="w-full flex justify-center">
+              {alunosPorModalidade.labels.length === 0 ? (
+                <div className="text-center py-8 bg-gray-50 rounded-md flex flex-col items-center justify-center min-h-[250px] w-full">
+                  <i className="fas fa-chart-pie text-gray-300 text-3xl mb-2"></i>
+                  <p className="text-gray-500 text-sm">Sem dados de modalidades</p>
+                </div>
+              ) : (
+                <div className="max-w-sm w-full">
+                  <Doughnut
+                    data={{
+                      labels: alunosPorModalidade.labels,
+                      datasets: [
+                        {
+                          data: alunosPorModalidade.data,
+                          backgroundColor: alunosPorModalidade.colors,
+                          borderWidth: 2,
+                          borderColor: '#fff',
+                        },
+                      ],
+                    }}
+                    options={{
+                      responsive: true,
+                      maintainAspectRatio: true,
+                      plugins: {
+                        legend: {
+                          position: 'bottom',
+                          labels: { padding: 15, font: { size: 11 } }
+                        },
+                      },
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Performance de Professores */}
+          <div className="bg-white rounded-md shadow-sm border border-gray-200 p-6">
+            <h3 className="text-sm font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <i className="fas fa-chalkboard-teacher text-green-600"></i>
+              Performance dos Professores
+            </h3>
+            <div className="w-full">
+              {performanceProfessores.labels.length === 0 ? (
+                <div className="text-center py-8 bg-gray-50 rounded-md flex flex-col items-center justify-center min-h-[250px]">
+                  <i className="fas fa-chalkboard-teacher text-gray-300 text-3xl mb-2"></i>
+                  <p className="text-gray-500 text-sm">Sem dados de professores</p>
+                </div>
+              ) : (
+                <Bar
+                  data={{
+                    labels: performanceProfessores.labels,
+                    datasets: [
+                      {
+                        label: 'Frequência (%)',
+                        data: performanceProfessores.frequencias,
+                        backgroundColor: '#16a34a',
+                        borderRadius: 6,
+                      },
+                    ],
+                  }}
+                  options={{
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                      legend: { display: false },
+                    },
+                    scales: {
+                      x: { min: 0, max: 100, ticks: { stepSize: 20 } },
+                    },
+                  }}
+                />
+              )}
+            </div>
+          </div>
+          </div>
+        </div>
+
+        {/* ========== SEÇÃO: PERFORMANCE E ENGAJAMENTO ========== */}
+        <div className="mb-6 md:mb-8 fade-in-5">
+          {/* Título da seção - Desktop */}
+          <div className="hidden md:flex items-center gap-3 mb-4">
+            <div className="h-1 w-12 bg-purple-600 rounded"></div>
+            <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+              <i className="fas fa-trophy text-purple-600"></i>
+              Performance e Engajamento
+            </h2>
+            <div className="h-1 flex-1 bg-gray-200 rounded"></div>
+          </div>
+          {/* Título da seção - Mobile */}
+          <div className="md:hidden mb-3">
+            <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+              <i className="fas fa-trophy text-purple-600 text-xs"></i>
+              Performance
+            </h2>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+            {/* Taxa de Retenção Mensal */}
+            <div className="bg-white rounded-md shadow-sm border border-gray-200 p-6">
+            <h3 className="text-sm font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <i className="fas fa-user-friends text-green-600"></i>
+              Taxa de Retenção (Novos vs Inativos)
+              <span className="ml-auto text-xs text-gray-500 font-normal bg-gray-100 px-2 py-1 rounded-full">Visão Geral</span>
+            </h3>
+            <div className="w-full">
+              {taxaRetencao.labels.length === 0 ? (
+                <div className="text-center py-8 bg-gray-50 rounded-md flex flex-col items-center justify-center min-h-[200px]">
+                  <i className="fas fa-user-friends text-gray-300 text-3xl mb-2"></i>
+                  <p className="text-gray-500 text-sm">Sem dados de retenção</p>
+                </div>
+              ) : (
+                <Line
+                  data={{
+                    labels: taxaRetencao.labels,
+                    datasets: [
+                      {
+                        label: 'Novos Alunos',
+                        data: taxaRetencao.novos,
+                        borderColor: '#16a34a',
+                        backgroundColor: 'rgba(22,163,74,0.1)',
+                        tension: 0.3,
+                      },
+                      {
+                        label: 'Alunos Inativos',
+                        data: taxaRetencao.inativos,
+                        borderColor: '#dc2626',
+                        backgroundColor: 'rgba(220,38,38,0.1)',
+                        tension: 0.3,
+                      },
+                    ],
+                  }}
+                  options={{
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                      legend: { 
+                        display: true,
+                        position: 'top',
+                        labels: { padding: 10, font: { size: 11 } }
+                      },
+                    },
+                    scales: {
+                      y: { beginAtZero: true },
+                    },
+                  }}
+                />
+              )}
+            </div>
+          </div>
+
+          {/* Ranking de Alunos Mais Assíduos */}
+          <div className="bg-white rounded-md shadow-sm border border-gray-200 p-6">
+            <h3 className="text-sm font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <i className="fas fa-trophy text-green-600"></i>
+              Top 10 Alunos Mais Assíduos
+            </h3>
+            <div className="w-full">
+              {rankingAssíduos.labels.length === 0 ? (
+                <div className="text-center py-8 bg-gray-50 rounded-md flex flex-col items-center justify-center min-h-[200px]">
+                  <i className="fas fa-trophy text-gray-300 text-3xl mb-2"></i>
+                  <p className="text-gray-500 text-sm">Sem dados suficientes</p>
+                </div>
+              ) : (
+                <Bar
+                  data={{
+                    labels: rankingAssíduos.labels,
+                    datasets: [
+                      {
+                        label: 'Frequência (%)',
+                        data: rankingAssíduos.frequencias,
+                        backgroundColor: '#16a34a',
+                        borderRadius: 6,
+                      },
+                    ],
+                  }}
+                  options={{
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                      legend: { display: false },
+                    },
+                    scales: {
+                      x: { min: 0, max: 100, ticks: { stepSize: 20 } },
+                    },
+                  }}
+                />
+              )}
+            </div>
+          </div>
+          </div>
+        </div>
+
+        {/* ========== SEÇÃO: ANÁLISE DE PROBLEMAS ========== */}
+        <div className="mb-6 md:mb-8 fade-in-6">
+          {/* Título da seção - Desktop */}
+          <div className="hidden md:flex items-center gap-3 mb-4">
+            <div className="h-1 w-12 bg-red-600 rounded"></div>
+            <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+              <i className="fas fa-exclamation-triangle text-red-600"></i>
+              Análise de Problemas
+            </h2>
+            <div className="h-1 flex-1 bg-gray-200 rounded"></div>
+          </div>
+          {/* Título da seção - Mobile */}
+          <div className="md:hidden mb-3">
+            <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+              <i className="fas fa-exclamation-triangle text-red-600 text-xs"></i>
+              Problemas
+            </h2>
+          </div>
+
+          <div className="grid grid-cols-1 gap-6">
+          {/* Horários com Mais Faltas */}
+          <div className="bg-white rounded-md shadow-sm border border-gray-200 p-6">
+            <h3 className="text-sm font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <i className="fas fa-exclamation-triangle text-green-600"></i>
+              Horários com Maior Taxa de Faltas
+            </h3>
+            <div className="w-full">
+              {horariosMaisFaltas.labels.length === 0 ? (
+                <div className="text-center py-8 bg-gray-50 rounded-md flex flex-col items-center justify-center min-h-[200px]">
+                  <i className="fas fa-exclamation-triangle text-gray-300 text-3xl mb-2"></i>
+                  <p className="text-gray-500 text-sm">Sem dados de faltas por horário</p>
+                </div>
+              ) : (
+                <Bar
+                  data={{
+                    labels: horariosMaisFaltas.labels,
+                    datasets: [
+                      {
+                        label: 'Taxa de Faltas (%)',
+                        data: horariosMaisFaltas.taxas,
+                        backgroundColor: '#dc2626',
+                        borderRadius: 6,
+                      },
+                    ],
+                  }}
+                  options={{
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                      legend: { display: false },
+                    },
+                    scales: {
+                      y: { min: 0, max: 100, ticks: { stepSize: 20 } },
+                    },
+                  }}
+                />
+              )}
+            </div>
+          </div>
+          </div>
+        </div>
+
+        {/* ========== SEÇÃO: DETALHAMENTO DE DADOS ========== */}
+        <div className="mb-6 md:mb-8 fade-in-7">
+          {/* Título da seção - Desktop */}
+          <div className="hidden md:flex items-center gap-3 mb-4">
+            <div className="h-1 w-12 bg-gray-600 rounded"></div>
+            <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+              <i className="fas fa-table text-gray-600"></i>
+              Detalhamento de Dados
+            </h2>
+            <div className="h-1 flex-1 bg-gray-200 rounded"></div>
+          </div>
+          {/* Título da seção - Mobile */}
+          <div className="md:hidden mb-3">
+            <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+              <i className="fas fa-table text-gray-600 text-xs"></i>
+              Dados
+            </h2>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 md:gap-6 lg:grid-cols-2">
+            {/* Faltas por Aluno */}
+            <div className="bg-white rounded-md shadow-sm border border-gray-200 p-6 lg:col-span-2">
             <h3 className="text-sm font-semibold text-gray-900 mb-4 flex items-center gap-2">
               <i className="fas fa-list text-green-600"></i>
               Alunos com Mais Faltas
@@ -1126,13 +1733,14 @@ export default function RelatoriosPage() {
               </div>
             )}
           </div>
+          </div>
         </div>
       </div>
 
       {/* Modal Aulas Enviadas */}
       {showModalAulasEnviadas && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
             <div className="bg-green-600 text-white px-6 py-4 flex items-center justify-between">
               <h3 className="text-lg font-semibold flex items-center gap-2">
                 <i className="fas fa-check"></i>
@@ -1225,8 +1833,8 @@ export default function RelatoriosPage() {
 
       {/* Modal Aulas Pendentes */}
       {showModalAulasPendentes && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
             <div className="bg-yellow-600 text-white px-6 py-4 flex items-center justify-between">
               <h3 className="text-lg font-semibold flex items-center gap-2">
                 <i className="fas fa-clock"></i>

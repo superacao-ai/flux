@@ -50,10 +50,12 @@ export default function ProfessorAlunosPage() {
   const [horarios, setHorarios] = useState<HorarioFixo[]>([]);
   const [fullAlunosMap, setFullAlunosMap] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(true);
+  const [mounted, setMounted] = useState(false);
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
 
   useEffect(() => {
+    setMounted(true);
     // moved to top-level function fetchHorarios for reuse
     fetchHorarios();
   }, []);
@@ -125,6 +127,19 @@ export default function ProfessorAlunosPage() {
     };
   }, []);
 
+  // Fechar modais com ESC
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && showModalFaltas) {
+        setShowModalFaltas(false);
+        setAlunoSelecionado(null);
+        setFaltasAlunoSelecionado([]);
+      }
+    };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [showModalFaltas]);
+
   const alunosComAulas = useMemo(() => {
     const mapa = new Map<string, AlunoComAulas>();
 
@@ -165,8 +180,43 @@ export default function ProfessorAlunosPage() {
 
   const diasAbrev = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
-  // NOTE: removed blocking loading spinner so the alunos page renders immediately.
-  // The `loading` state is still tracked internally but no longer blocks rendering.
+  // Skeleton loading enquanto não está montado
+  if (!mounted) {
+    return (
+      <ProtectedPage tab="professor:alunos" title="Meus Alunos - Superação Flux">
+        <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6">
+          <div className="max-w-6xl mx-auto">
+            {/* Header skeleton */}
+            <div className="mb-8">
+              <div className="h-7 bg-gray-200 rounded w-40 mb-2 animate-pulse" />
+            </div>
+            {/* Search skeleton */}
+            <div className="mb-6">
+              <div className="h-10 bg-gray-200 rounded-lg w-full max-w-md animate-pulse" />
+            </div>
+            {/* Cards skeleton */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {[1, 2, 3, 4, 5, 6].map(i => (
+                <div key={i} className="bg-white rounded-xl border border-gray-200 p-4 animate-pulse">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-10 h-10 bg-gray-200 rounded-full" />
+                    <div>
+                      <div className="h-4 bg-gray-200 rounded w-32 mb-1" />
+                      <div className="h-3 bg-gray-200 rounded w-24" />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="h-3 bg-gray-100 rounded w-full" />
+                    <div className="h-3 bg-gray-100 rounded w-3/4" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </ProtectedPage>
+    );
+  }
 
   if (error) {
     return (

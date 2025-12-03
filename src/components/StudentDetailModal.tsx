@@ -495,8 +495,8 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
   const modalidadeObj = modalidades.find(m => getMid(m) === String(modalidadeId));
 
   return (
-    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center" style={{ zIndex: 9999 }} onClick={() => onClose()}>
-      <div className="relative mx-auto w-full max-w-2xl bg-white rounded-lg shadow-lg border p-6" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="studentDetailTitle">
+    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 z-50 flex items-center justify-center p-4" style={{ zIndex: 9999 }} onClick={() => onClose()}>
+      <div className="relative mx-auto w-full max-w-2xl bg-white rounded-2xl shadow-lg border p-4 sm:p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="studentDetailTitle">
         {/* Header */}
         <div className="flex items-start justify-between pb-4 border-b border-gray-200">
           <div className="flex flex-col">
@@ -581,7 +581,7 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
               {/* Status Flags */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-3">Status do Aluno</label>
-                <div className="flex gap-2 flex-wrap">
+                <div className="grid grid-cols-2 sm:flex gap-2 sm:flex-wrap">
                   <button
                     onClick={toggleAlunoCongelado}
                     title={alunoCongelado ? 'Remover congelado' : 'Marcar congelado'}
@@ -626,7 +626,7 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
         </div>
 
         {/* Footer */}
-        <div className="border-t border-gray-200 pt-4 mt-4 flex items-center justify-end gap-3">
+        <div className="border-t border-gray-200 pt-4 mt-4 flex flex-col sm:flex-row items-stretch sm:items-center sm:justify-end gap-2 sm:gap-3">
           {modalEditing ? (
             <>
               <button 
@@ -684,8 +684,8 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
 
       {/* Conflict Modal: substitutes found when attempting to unfreeze original */}
       {showConflictModal && conflictSubstitutes && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center" style={{ zIndex: 10000 }}>
-          <div className="relative mx-auto w-full max-w-lg bg-white rounded-md shadow-xl" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 z-50 flex items-center justify-center p-4" style={{ zIndex: 10000 }}>
+          <div className="relative mx-auto w-full max-w-lg bg-white rounded-2xl shadow-xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
             <div className="border-b border-gray-200 px-6 py-4 flex items-center justify-between">
               <h3 className="text-lg font-semibold text-gray-900">Conflito ao Descongelar Aluno</h3>
               <button onClick={() => { setShowConflictModal(false); setConflictSubstitutes(null); }} className="text-gray-400 hover:text-gray-600 transition-colors" aria-label="Fechar">
@@ -727,8 +727,8 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
 
       {/* Merge Modal */}
       {showMergeModal && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center" style={{ zIndex: 10000 }}>
-          <div className="relative mx-auto w-full max-w-md bg-white rounded-md shadow-xl" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 z-50 flex items-center justify-center p-4" style={{ zIndex: 10000 }}>
+          <div className="relative mx-auto w-full max-w-md bg-white rounded-2xl shadow-xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
             {/* Header */}
             <div className="border-b border-gray-200 px-6 py-4 flex items-center justify-between">
               <h3 className="text-lg font-semibold text-gray-900">Mesclar Aluno</h3>

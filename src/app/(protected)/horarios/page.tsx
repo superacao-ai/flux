@@ -197,6 +197,8 @@ export default function HorariosPage() {
   
   const [showStudentDetailModal, setShowStudentDetailModal] = useState(false);
   const [selectedStudentHorario, setSelectedStudentHorario] = useState<any | null>(null);
+  const [mobileDiaSelecionado, setMobileDiaSelecionado] = useState<number>(new Date().getDay()); // Dia atual por padrão
+  const [mobileExpandedCards, setMobileExpandedCards] = useState<Set<string>>(new Set()); // Cards expandidos no mobile
   const [modalEditing, setModalEditing] = useState<boolean>(false);
   const [modalEditName, setModalEditName] = useState<string>('');
   const [modalEditObservacoes, setModalEditObservacoes] = useState<string>('');
@@ -323,6 +325,7 @@ export default function HorariosPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showImportModal, importText]);
   const [mounted, setMounted] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
   // Contador para gerar IDs previsíveis
   const idCounter = useRef(0);
   // local visual flags for quick toggles (not persisted) keyed by horarioId
@@ -478,12 +481,29 @@ export default function HorariosPage() {
 
   const visibleHorarios = getVisibleHorarios();
 
+  // Marcar como montado imediatamente
   useEffect(() => {
-    fetchHorarios();
-    fetchAlunos();
-    fetchProfessores();
-    fetchModalidades();
     setMounted(true);
+  }, []);
+
+  // Fetch data inicial
+  useEffect(() => {
+    const loadInitialData = async () => {
+      setInitialLoading(true);
+      try {
+        await Promise.all([
+          fetchHorarios(),
+          fetchAlunos(),
+          fetchProfessores(),
+          fetchModalidades()
+        ]);
+      } catch (error) {
+        console.error('Erro ao carregar dados iniciais:', error);
+      } finally {
+        setInitialLoading(false);
+      }
+    };
+    loadInitialData();
   }, []);
 
   // Hydrate persisted UI state from localStorage on client mount
@@ -590,6 +610,18 @@ export default function HorariosPage() {
       // ignore
     }
   }, [modalidadeSelecionada]);
+
+  // Ajustar mobileDiaSelecionado quando a modalidade mudar para garantir que seja um dia válido
+  useEffect(() => {
+    if (!modalidadeSelecionada || modalidades.length === 0) return;
+    const mod = modalidades.find(m => getMid(m) === modalidadeSelecionada) as any;
+    if (!mod) return;
+    const diasDisponiveis: number[] = mod.diasSemana || [];
+    // Se a modalidade tem dias definidos e o dia atual não está incluído, selecionar o primeiro dia disponível
+    if (diasDisponiveis.length > 0 && !diasDisponiveis.includes(mobileDiaSelecionado)) {
+      setMobileDiaSelecionado(diasDisponiveis[0]);
+    }
+  }, [modalidadeSelecionada, modalidades]);
 
   // Sync modalidade selection across tabs (storage event)
   useEffect(() => {
@@ -1877,48 +1909,88 @@ export default function HorariosPage() {
     await fetchHorarios();
   };
 
-  // Skeleton loading enquanto não está montado
-  if (!mounted) {
+  // Skeleton loading enquanto não está montado ou dados iniciais carregando
+  if (!mounted || initialLoading) {
     return (
-      <ProtectedPage tab="horarios" title="Horários - Superação Flux" fullWidth>
-        <div className="px-4 py-6 sm:px-0">
-          {/* Header skeleton */}
-          <div className="flex items-center justify-between gap-4 mb-6">
+      <ProtectedPage tab="horarios" title="Horários - Superação Flux" fullWidth customLoading>
+        <div className="w-full px-4 py-6 sm:px-6 lg:px-8">
+          {/* Header skeleton - Desktop */}
+          <div className="hidden md:flex items-center justify-between gap-4 mb-6">
             <div>
-              <div className="h-5 bg-gray-200 rounded w-28 mb-2 animate-pulse" />
-              <div className="h-4 bg-gray-200 rounded w-64 animate-pulse" />
+              <div className="h-6 bg-gray-200 rounded w-32 mb-2 animate-pulse" />
+              <div className="h-4 bg-gray-200 rounded w-72 animate-pulse" />
             </div>
-            <div className="flex gap-2">
-              <div className="h-10 w-28 bg-gray-200 rounded-full animate-pulse" />
+            <div className="flex gap-3">
+              <div className="h-10 w-36 bg-gray-200 rounded-full animate-pulse" />
               <div className="h-10 w-32 bg-gray-200 rounded-full animate-pulse" />
             </div>
           </div>
           
-          {/* Modalidades pills skeleton */}
-          <div className="mb-6 flex flex-wrap gap-2">
-            {[1, 2, 3, 4, 5].map(i => (
-              <div key={i} className="h-9 bg-gray-200 rounded-full w-24 animate-pulse" />
+          {/* Header skeleton - Mobile */}
+          <div className="md:hidden mb-4">
+            <div className="h-5 bg-gray-200 rounded w-24 animate-pulse" />
+          </div>
+          
+          {/* Modalidades pills skeleton - Desktop */}
+          <div className="hidden md:flex mb-6 flex-wrap gap-2">
+            {[1, 2, 3, 4, 5, 6].map(i => (
+              <div key={i} className="h-9 bg-gray-200 rounded-full w-28 animate-pulse" />
             ))}
           </div>
           
-          {/* Table skeleton */}
-          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-            {/* Header */}
+          {/* Modalidades pills skeleton - Mobile */}
+          <div className="md:hidden mb-4 flex flex-wrap gap-1.5">
+            {[1, 2, 3, 4].map(i => (
+              <div key={i} className="h-7 bg-gray-200 rounded-full w-20 animate-pulse" />
+            ))}
+          </div>
+          
+          {/* Table skeleton - Desktop */}
+          <div className="hidden md:block bg-white rounded-lg border border-gray-200 overflow-hidden">
+            {/* Table Header */}
             <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
-              <div className="flex gap-4">
+              <div className="grid grid-cols-7 gap-2">
                 <div className="h-4 bg-gray-200 rounded w-16 animate-pulse" />
-                {['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((d, i) => (
-                  <div key={i} className="h-4 bg-gray-200 rounded w-12 animate-pulse" />
+                {['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((_, i) => (
+                  <div key={i} className="h-4 bg-gray-200 rounded w-full animate-pulse" />
                 ))}
               </div>
             </div>
-            {/* Rows */}
+            {/* Table Rows */}
             {[1, 2, 3, 4, 5, 6, 7, 8].map(i => (
-              <div key={i} className="border-b border-gray-200 px-4 py-3 flex gap-4 items-center">
-                <div className="h-4 bg-gray-200 rounded w-12 animate-pulse" />
-                {[1, 2, 3, 4, 5, 6].map(j => (
-                  <div key={j} className="h-12 bg-gray-100 rounded w-20 animate-pulse" />
-                ))}
+              <div key={i} className="border-b border-gray-200 px-4 py-3">
+                <div className="grid grid-cols-7 gap-2 items-center">
+                  <div className="h-4 bg-gray-200 rounded w-14 animate-pulse" />
+                  {[1, 2, 3, 4, 5, 6].map(j => (
+                    <div key={j} className="h-16 bg-gray-100 rounded animate-pulse" />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+          
+          {/* Cards skeleton - Mobile */}
+          <div className="md:hidden space-y-3">
+            {/* Day selector skeleton */}
+            <div className="grid grid-cols-6 gap-1 mb-4">
+              {[1, 2, 3, 4, 5, 6].map(i => (
+                <div key={i} className="h-10 bg-gray-200 rounded-lg animate-pulse" />
+              ))}
+            </div>
+            {/* Cards */}
+            {[1, 2, 3, 4].map(i => (
+              <div key={i} className="bg-white rounded-xl border border-gray-200 p-4 animate-pulse">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 bg-gray-200 rounded-full" />
+                    <div className="h-4 bg-gray-200 rounded w-20" />
+                  </div>
+                  <div className="h-5 bg-gray-200 rounded w-16" />
+                </div>
+                <div className="space-y-2">
+                  <div className="h-10 bg-gray-100 rounded-lg" />
+                  <div className="h-10 bg-gray-100 rounded-lg" />
+                </div>
               </div>
             ))}
           </div>
@@ -1930,8 +2002,8 @@ export default function HorariosPage() {
   return (
     <>
       {showModalLote.open && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white fade-in-4">
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="relative w-full max-w-sm mx-auto p-5 bg-white shadow-lg rounded-2xl max-h-[90vh] overflow-y-auto fade-in-4">
             <div className="mt-3">
           <h3 className="text-base font-semibold text-gray-900 mb-2">Adicionar Alunos em Lotee</h3>
           <p className="text-sm text-gray-700 mb-3">Modalidade aplicada: <span className="font-semibold">{(modalidades.find(m => getMid(m) === modalidadeSelecionada)?.nome) || '— nenhuma selecionada —'}</span>. Os alunos selecionados serão adicionados a esta modalidade — verifique se está correta antes de confirmar.</p>
@@ -1980,7 +2052,7 @@ export default function HorariosPage() {
       {/* Modal para adicionar alunos a uma turma (bulk via textarea) */}
       {showAddAlunoModal && addAlunoTurma && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-600 bg-opacity-50 p-4">
-          <div className="relative w-full max-w-lg mx-auto bg-white rounded-lg shadow-lg border border-gray-200 p-6" role="dialog" aria-modal="true" aria-labelledby="bulkAddTitle" aria-describedby="bulkAddDesc" tabIndex={-1}>
+          <div className="relative w-full max-w-lg mx-auto bg-white rounded-2xl shadow-lg border border-gray-200 p-4 sm:p-6 max-h-[90vh] overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="bulkAddTitle" aria-describedby="bulkAddDesc" tabIndex={-1}>
             {/* Header + Info */}
             <div className="mb-4 border-b pb-4">
               <div className="flex items-center justify-between">
@@ -2293,19 +2365,20 @@ export default function HorariosPage() {
           </div>
         </div>
       )}
-  <ProtectedPage tab="horarios" title="Horários - Superação Flux" fullWidth>
-  <div className="w-full px-4 py-6 sm:px-0">
-        <div className="sm:flex sm:items-center mb-6 fade-in-1">
-          <div className="sm:flex-auto">
-            <h1 className="text-base font-semibold text-gray-900 flex items-center gap-2">
-              <i className="fas fa-calendar-alt text-primary-600"></i>
+  <ProtectedPage tab="horarios" title="Horários - Superação Flux" fullWidth customLoading>
+  <div className="w-full px-4 py-6 sm:px-6 lg:px-8 overflow-x-hidden">
+        {/* Header Desktop */}
+        <div className="hidden md:flex items-center justify-between gap-4 mb-6 fade-in-1">
+          <div>
+            <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+              <i className="fas fa-calendar-alt text-green-600"></i>
               Grade de Horários
             </h1>
-            <p className="mt-2 text-sm text-gray-600">
-              Gerencie os horários fixos dos alunos de forma organizada e profissional.
+            <p className="text-sm text-gray-600 mt-1">
+              Gerencie os horários fixos dos alunos de forma organizada
             </p>
           </div>
-          <div className="mt-4 sm:mt-0 sm:ml-16 sm:flex-none space-x-3">
+          <div>
             <button
               type="button"
               onClick={() => { setShowGradeProfessorModal(true); setGradeProfessorId(''); setGradeSlotsSelected(new Set()); }}
@@ -2313,6 +2386,24 @@ export default function HorariosPage() {
             >
               <i className="fas fa-th text-primary-600" aria-hidden="true" />
               Montar Grade Professor
+            </button>
+          </div>
+        </div>
+
+        {/* Header Mobile */}
+        <div className="md:hidden mb-4 fade-in-1">
+          <div className="flex items-center justify-between">
+            <h1 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+              <i className="fas fa-calendar-alt text-green-600"></i>
+              Grade de Horários
+            </h1>
+            <button
+              type="button"
+              onClick={() => { setShowGradeProfessorModal(true); setGradeProfessorId(''); setGradeSlotsSelected(new Set()); }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-primary-600 rounded-lg text-xs font-medium text-primary-600 bg-white hover:bg-primary-50 transition-all"
+            >
+              <i className="fas fa-th" aria-hidden="true" />
+              Grade
             </button>
           </div>
         </div>
@@ -2347,10 +2438,10 @@ export default function HorariosPage() {
           </div>
         </div>
 
-        {/* Grade de horários */}
+        {/* Grade de horários - Versão Desktop */}
         {/* Only render the heavy schedule after hydration on client to avoid SSR/CSR mismatch */}
         {mounted && (
-          <div className="bg-white rounded-md overflow-hidden border border-gray-200 fade-in-3">
+          <div className="hidden md:block bg-white rounded-md overflow-hidden border border-gray-200 fade-in-3">
             {/* Horário de funcionamento removido da UI por decisão do produto; a lógica de filtragem por openTime/closeTime permanece. */}
             <div className="overflow-auto max-h-[75vh]">{/* table scrolls internally */}
               <table className="w-full table-fixed text-sm border-collapse">
@@ -2873,6 +2964,405 @@ export default function HorariosPage() {
           </div>
         )}
 
+        {/* Grade de horários - Versão Mobile */}
+        {mounted && (
+          <div className="md:hidden fade-in-3">
+            {/* Seletor de dia da semana - Mobile */}
+            {(() => {
+              // Obter dias disponíveis da modalidade selecionada
+              const modalidadeAtual = modalidades.find(m => getMid(m) === modalidadeSelecionada) as any;
+              const diasDisponiveis: number[] = modalidadeAtual?.diasSemana || [0, 1, 2, 3, 4, 5, 6];
+              const diasLabels = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'];
+              const diasVisiveis = diasLabels.filter((_, idx) => diasDisponiveis.length === 0 || diasDisponiveis.includes(idx));
+              
+              return (
+                <div className="bg-white rounded-lg border border-gray-200 p-3 mb-4">
+                  <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${diasVisiveis.length}, 1fr)` }}>
+                    {diasLabels.map((dia, idx) => {
+                      // Se a modalidade tem diasSemana definidos e este dia não está incluído, não exibir
+                      if (diasDisponiveis.length > 0 && !diasDisponiveis.includes(idx)) {
+                        return null;
+                      }
+                      
+                      const isToday = idx === todayIndex;
+                      const isSelected = idx === mobileDiaSelecionado;
+                      // Contar horários neste dia
+                      const horariosNoDia = horariosFiltrados.filter(h => h.diaSemana === idx).length;
+                      
+                      return (
+                        <button
+                          key={idx}
+                          onClick={() => setMobileDiaSelecionado(idx)}
+                          className={`flex flex-col items-center py-2 rounded-lg text-xs font-medium transition-all ${
+                            isSelected 
+                              ? 'bg-primary-600 text-white shadow-md' 
+                              : isToday 
+                                ? 'bg-green-100 text-green-800 border border-green-300'
+                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                          }`}
+                        >
+                          <span className="font-semibold">{dia}</span>
+                          {horariosNoDia > 0 && (
+                            <span className={`text-[10px] mt-0.5 ${isSelected ? 'text-white/80' : 'text-gray-500'}`}>
+                              {horariosNoDia}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Lista de horários do dia selecionado */}
+            <div className="space-y-3">
+              {(() => {
+                // Agrupar horários do dia por horarioInicio
+                const horariosNoDia = horariosFiltrados
+                  .filter(h => h.diaSemana === mobileDiaSelecionado)
+                  .sort((a, b) => a.horarioInicio.localeCompare(b.horarioInicio));
+
+                if (horariosNoDia.length === 0) {
+                  return (
+                    <div className="bg-white rounded-lg border border-gray-200 p-8 text-center">
+                      <i className="fas fa-calendar-times text-3xl text-gray-300 mb-3"></i>
+                      <p className="text-gray-500">Nenhum horário cadastrado para {diasSemana[mobileDiaSelecionado]}</p>
+                      <button
+                        onClick={() => {
+                          setEditingMode('create');
+                          setFormData({
+                            alunoId: '',
+                            professorId: '',
+                            diaSemana: mobileDiaSelecionado,
+                            horarioInicio: '06:00',
+                            horarioFim: '07:00',
+                            observacoes: '',
+                            observacaoTurma: '',
+                            modalidadeId: modalidadeSelecionada || ''
+                          });
+                          setSelectedHorarioId(null);
+                          setEditingMemberIds([]);
+                          setShowModal(true);
+                        }}
+                        className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium"
+                      >
+                        <i className="fas fa-plus"></i>
+                        Adicionar Horário
+                      </button>
+                    </div>
+                  );
+                }
+
+                // Agrupar por horário de início + professor
+                const grupos: Record<string, typeof horariosNoDia> = {};
+                horariosNoDia.forEach(h => {
+                  const profId = typeof h.professorId === 'object' ? h.professorId?._id : h.professorId;
+                  const key = `${h.horarioInicio}-${h.horarioFim}-${profId || 'sem-prof'}`;
+                  if (!grupos[key]) grupos[key] = [];
+                  grupos[key].push(h);
+                });
+
+                return Object.entries(grupos).map(([key, horarios]) => {
+                  const primeiro = horarios[0];
+                  const profObj = typeof primeiro.professorId === 'object' ? primeiro.professorId : professores.find(p => p._id === primeiro.professorId);
+                  const profNome = profObj?.nome || 'Sem professor';
+                  const profCor = profObj?.cor || '#3B82F6';
+
+                  // Coletar alunos de todas as matrículas
+                  const todosAlunos: any[] = [];
+                  horarios.forEach(h => {
+                    const matriculas = (h as any).matriculas || [];
+                    if (Array.isArray(matriculas) && matriculas.length > 0) {
+                      matriculas.forEach((m: any) => {
+                        if (m.alunoId) todosAlunos.push({ ...m, horarioId: h._id });
+                      });
+                    } else if (h.alunoId) {
+                      todosAlunos.push({ alunoId: h.alunoId, horarioId: h._id });
+                    }
+                  });
+
+                  // Determinar capacidade
+                  let capacity: number | undefined = undefined;
+                  if (modalidadeSelecionada) {
+                    const mod = modalidades.find(m => (m as any)._id === modalidadeSelecionada || (m as any).id === modalidadeSelecionada) as any;
+                    if (mod?.limiteAlunos) capacity = mod.limiteAlunos;
+                  }
+
+                  const alunosAtivos = todosAlunos.filter(a => {
+                    const aluno = a.alunoId;
+                    return !(aluno?.congelado || aluno?.ausente || aluno?.emEspera);
+                  });
+
+                  const isFull = capacity !== undefined && alunosAtivos.length >= capacity;
+                  const isExpanded = mobileExpandedCards.has(key);
+
+                  const toggleExpand = () => {
+                    setMobileExpandedCards(prev => {
+                      // Se já está aberto, fecha. Senão, abre apenas este (fechando os outros)
+                      if (prev.has(key)) {
+                        return new Set();
+                      } else {
+                        return new Set([key]);
+                      }
+                    });
+                  };
+
+                  return (
+                    <div 
+                      key={key} 
+                      className={`bg-white rounded-xl border ${isFull ? 'border-red-300' : 'border-gray-200'} overflow-hidden shadow-sm`}
+                    >
+                      {/* Header do card - Clicável para expandir */}
+                      <div 
+                        className="px-4 py-3 flex items-center justify-between cursor-pointer active:bg-gray-50 transition-colors"
+                        style={{ backgroundColor: isFull ? '#FEE2E2' : `${profCor}10` }}
+                        onClick={toggleExpand}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div 
+                            className="w-1 h-10 rounded-full"
+                            style={{ backgroundColor: profCor }}
+                          />
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-base font-bold text-gray-900">
+                                {primeiro.horarioInicio}
+                              </span>
+                              <span className="text-xs text-gray-400">-</span>
+                              <span className="text-sm text-gray-600">
+                                {primeiro.horarioFim}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <span 
+                                className="text-xs font-medium"
+                                style={{ color: profCor }}
+                              >
+                                {profNome.replace(/^Personal\s*/i, '')}
+                              </span>
+                              <span className="text-xs text-gray-400">•</span>
+                              <span className={`text-xs font-medium ${isFull ? 'text-red-600' : 'text-gray-500'}`}>
+                                {alunosAtivos.length}{capacity ? `/${capacity}` : ''} alunos
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {isFull && (
+                            <span className="px-2 py-0.5 bg-red-100 text-red-700 text-[10px] font-semibold rounded-full">
+                              LOTADA
+                            </span>
+                          )}
+                          <i className={`fas fa-chevron-down text-gray-400 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}></i>
+                        </div>
+                      </div>
+
+                      {/* Conteúdo expandível */}
+                      {isExpanded && (
+                        <>
+                          {/* Lista de alunos */}
+                          <div className="divide-y divide-gray-100 border-t border-gray-100">
+                            {todosAlunos.length === 0 ? (
+                              <div className="px-4 py-4 text-sm text-gray-500 italic text-center flex flex-col items-center justify-center">
+                                <i className="fas fa-users text-gray-300 text-lg mb-2"></i>
+                                <span>Nenhum aluno matriculado</span>
+                              </div>
+                            ) : (
+                              todosAlunos.map((item, idx) => {
+                                const aluno = item.alunoId || {};
+                                const isCongelado = aluno.congelado;
+                                const isAusente = aluno.ausente;
+                                const isEmEspera = aluno.emEspera;
+                                const isMuted = isCongelado || isAusente || isEmEspera;
+
+                                return (
+                                  <div 
+                                    key={`${aluno._id || idx}-${idx}`}
+                                    className={`px-4 py-2.5 flex items-center justify-between ${isMuted ? 'bg-gray-50' : ''}`}
+                                  >
+                                    <div 
+                                      className="flex items-center gap-2 min-w-0 flex-1"
+                                      onClick={() => {
+                                        if (aluno._id) {
+                                          setAlunoRowModalId(aluno._id);
+                                          setShowAlunoRowModal(true);
+                                        }
+                                      }}
+                                    >
+                                      <i className={`fas fa-user text-xs ${isMuted ? 'text-gray-300' : 'text-gray-400'}`}></i>
+                                      <span className={`text-sm truncate ${isMuted ? 'text-gray-400 line-through' : 'text-gray-800'}`}>
+                                        {aluno.nome || '— sem nome —'}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-2 flex-shrink-0">
+                                      {isCongelado && (
+                                        <span className="text-sky-500" title="Congelado">
+                                          <i className="fas fa-snowflake text-xs"></i>
+                                        </span>
+                                      )}
+                                      {isAusente && (
+                                        <span className="text-rose-500" title="Ausente">
+                                          <i className="fas fa-user-clock text-xs"></i>
+                                        </span>
+                                      )}
+                                      {isEmEspera && (
+                                        <span className="text-amber-500" title="Em Espera">
+                                          <i className="fas fa-clock text-xs"></i>
+                                        </span>
+                                      )}
+                                      {aluno.parceria === 'TOTALPASS' && (
+                                        <span className="text-purple-500" title="TOTALPASS">
+                                          <i className="fas fa-id-badge text-xs"></i>
+                                        </span>
+                                      )}
+                                      {/* Botão remover aluno */}
+                                      <button
+                                        onClick={async (e) => {
+                                          e.stopPropagation();
+                                          try {
+                                            const result = await Swal.fire({
+                                              title: 'Remover aluno?',
+                                              text: `Remover ${aluno.nome || 'este aluno'} desta turma?`,
+                                              icon: 'warning',
+                                              showCancelButton: true,
+                                              confirmButtonColor: '#ef4444',
+                                              cancelButtonColor: '#6b7280',
+                                              confirmButtonText: 'Sim, remover',
+                                              cancelButtonText: 'Cancelar'
+                                            });
+                                            if (!result.isConfirmed) return;
+                                            
+                                            let deleted = false;
+                                            const matriculaId = item._id || item.horarioId;
+                                            
+                                            if (matriculaId) {
+                                              // Tentar deletar como matrícula primeiro
+                                              try {
+                                                const respMat = await fetch(`/api/matriculas/${matriculaId}`, { method: 'DELETE' });
+                                                if (respMat.ok) {
+                                                  const j = await respMat.json();
+                                                  if (j && j.success) deleted = true;
+                                                }
+                                              } catch (e) {}
+                                              
+                                              // Se não conseguiu, tentar como horário
+                                              if (!deleted) {
+                                                try {
+                                                  const respHor = await fetch(`/api/horarios/${matriculaId}`, { method: 'DELETE' });
+                                                  if (respHor.ok) {
+                                                    const j2 = await respHor.json();
+                                                    if (j2 && j2.success) deleted = true;
+                                                  }
+                                                } catch (e) {}
+                                              }
+                                            }
+                                            
+                                            if (deleted) {
+                                              toast.success('Aluno removido da turma');
+                                              await fetchHorarios();
+                                            } else {
+                                              toast.error('Falha ao remover aluno.');
+                                            }
+                                          } catch (err) {
+                                            console.error('Erro ao remover aluno:', err);
+                                            toast.error('Erro ao remover aluno');
+                                          }
+                                        }}
+                                        className="p-1.5 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                                        title="Remover aluno"
+                                      >
+                                        <i className="fas fa-trash-alt text-xs"></i>
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+
+                          {/* Footer com ações */}
+                          <div className="px-4 py-3 bg-gray-50 border-t border-gray-100 flex justify-between gap-2">
+                            <button
+                              onClick={() => {
+                                // Editar turma - abre o modal de edição
+                                const profId = typeof primeiro.professorId === 'object' ? primeiro.professorId?._id : primeiro.professorId;
+                                setEditingMode('turma');
+                                setFormData({
+                                  alunoId: '',
+                                  professorId: profId || '',
+                                  diaSemana: primeiro.diaSemana,
+                                  horarioInicio: primeiro.horarioInicio,
+                                  horarioFim: primeiro.horarioFim,
+                                  observacoes: '',
+                                  observacaoTurma: (primeiro as any).observacaoTurma || '',
+                                  modalidadeId: modalidadeSelecionada || ''
+                                });
+                                // Coletar IDs de todos os membros da turma
+                                const memberIds = horarios.map(h => h._id).filter(Boolean) as string[];
+                                setEditingMemberIds(memberIds);
+                                setSelectedHorarioId(primeiro._id);
+                                setShowModal(true);
+                              }}
+                              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200 bg-white"
+                            >
+                              <i className="fas fa-edit"></i>
+                              Editar Turma
+                            </button>
+                            <button
+                              onClick={() => {
+                                setAddAlunoTurma({
+                                  professorId: typeof primeiro.professorId === 'object' ? primeiro.professorId?._id : primeiro.professorId,
+                                  diaSemana: primeiro.diaSemana,
+                                  horarioInicio: primeiro.horarioInicio,
+                                  horarioFim: primeiro.horarioFim
+                                });
+                                setSingleAlunoSearch('');
+                                setSingleAlunoSelectedId(null);
+                                setSingleAlunoName('');
+                                setSingleAlunoObservacoes('');
+                                setShowAddSingleAlunoModal(true);
+                              }}
+                              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors"
+                            >
+                              <i className="fas fa-user-plus"></i>
+                              Adicionar Aluno
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+
+            {/* Botão para adicionar novo horário no dia selecionado */}
+            <button
+              onClick={() => {
+                setEditingMode('create');
+                setFormData({
+                  alunoId: '',
+                  professorId: '',
+                  diaSemana: mobileDiaSelecionado,
+                  horarioInicio: '06:00',
+                  horarioFim: '07:00',
+                  observacoes: '',
+                  observacaoTurma: '',
+                  modalidadeId: modalidadeSelecionada || ''
+                });
+                setSelectedHorarioId(null);
+                setEditingMemberIds([]);
+                setShowModal(true);
+              }}
+              className="w-full mt-4 inline-flex items-center justify-center gap-2 px-4 py-3 bg-white text-primary-600 border-2 border-dashed border-primary-300 rounded-lg text-sm font-medium hover:bg-primary-50 transition-colors"
+            >
+              <i className="fas fa-plus-circle"></i>
+              Adicionar Nova Turma em {['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'][mobileDiaSelecionado]}
+            </button>
+          </div>
+        )}
+
         {/* Lista de horários removida conforme solicitado pelo usuário */}
 
         {/* legenda removida */}
@@ -2882,8 +3372,8 @@ export default function HorariosPage() {
       {/* Modal para cadastrar novo horário */}
       {/* Modal de confirmação quando encontra aluno similar */}
       {confirmAlunoDialog && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full" style={{ zIndex: 9999 }}>
-          <div className="relative top-24 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 z-50 flex items-center justify-center p-4" style={{ zIndex: 9999 }}>
+          <div className="relative w-full max-w-sm mx-auto p-5 bg-white shadow-lg rounded-2xl max-h-[90vh] overflow-y-auto">
             <div className="mt-3">
               <h3 className="text-base font-semibold text-gray-900 mb-2">Confirmação de Aluno Similar</h3>
               <p className="text-sm text-gray-700 mb-3">O nome &quot;{confirmAlunoDialog.name}&quot; parece corresponder a um aluno já cadastrado. O que deseja fazer?</p>
@@ -2931,8 +3421,8 @@ export default function HorariosPage() {
         </div>
       )}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-600 bg-opacity-50">
-          <div className="relative w-full max-w-lg mx-auto bg-white rounded-lg shadow-lg border border-gray-200 p-6" role="dialog" aria-modal="true" aria-labelledby="horarioModalTitle" aria-describedby="horarioModalDesc" tabIndex={-1}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-600 bg-opacity-50 p-4">
+          <div className="relative w-full max-w-lg mx-auto bg-white rounded-2xl shadow-lg border border-gray-200 p-4 sm:p-6 max-h-[90vh] overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="horarioModalTitle" aria-describedby="horarioModalDesc" tabIndex={-1}>
             {/* Header + Info */}
             <div className="mb-2 border-b pb-4">
               <div className="flex items-center justify-between">
@@ -3082,26 +3572,26 @@ export default function HorariosPage() {
                 </div>
               </div>
 
-              {editingMode !== 'turma' && (
+              {editingMode === 'single' && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Observações</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Observações do Aluno</label>
                   <textarea
                     value={formData.observacoes}
                     onChange={(e) => setFormData({...formData, observacoes: e.target.value})}
                     className="mt-1 block w-full h-10 border border-gray-300 rounded-md px-3 py-2 text-sm font-medium focus:outline-none focus:ring-primary-500 focus:border-primary-500 transition-all"
-                    placeholder="Ex.: Problema no joelho"
+                    placeholder="Ex.: Problema no joelho, restrição de movimento..."
                   />
                 </div>
               )}
 
-              {editingMode === 'turma' && (
+              {(editingMode === 'turma' || editingMode === 'create') && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Observação da Turma</label>
                   <textarea
                     value={formData.observacaoTurma}
                     onChange={(e) => setFormData({...formData, observacaoTurma: e.target.value})}
                     className="mt-1 block w-full h-10 border border-gray-300 rounded-md px-3 py-2 text-sm font-medium focus:outline-none focus:ring-primary-500 focus:border-primary-500 transition-all"
-                    placeholder="Observação visível para todos os alunos..."
+                    placeholder="Ex.: Turma iniciante, foco em cardio, aquecimento de 10min..."
                   />
                 </div>
               )}
@@ -3327,22 +3817,14 @@ export default function HorariosPage() {
 
       {/* Modal: adicionar um aluno individualmente (search/create) */}
       {showAddSingleAlunoModal && addAlunoTurma && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-600 bg-opacity-50">
-          <div className="relative w-full max-w-lg mx-auto bg-white rounded-lg shadow-lg border border-gray-200 p-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-600 bg-opacity-50 p-4">
+          <div className="relative w-full max-w-lg mx-auto bg-white rounded-2xl shadow-lg border border-gray-200 p-4 sm:p-6 max-h-[90vh] overflow-y-auto">
             {/* Header + Info */}
-            <div className="mb-2 border-b pb-4">
+            <div className="mb-4 border-b pb-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <i className="fas fa-edit text-primary-600 text-lg" aria-hidden="true" />
-                  <h3 className="text-base font-semibold text-gray-900">Adicionar um aluno</h3>
-                  <button
-                    type="button"
-                    onClick={() => { setShowAddSingleAlunoModal(false); setBulkAlunoTextAdd(''); setShowAddAlunoModal(true); }}
-                    className="ml-2 p-1 rounded-md text-primary-600 hover:bg-gray-100 focus:outline-none"
-                    title="Adicionar em lote"
-                  >
-                    <i className="fas fa-users" aria-hidden="true" />
-                  </button>
+                  <i className="fas fa-user-plus text-primary-600 text-lg" aria-hidden="true" />
+                  <h3 className="text-base font-semibold text-gray-900">Adicionar Aluno</h3>
                 </div>
                 <button
                   type="button"
@@ -3353,49 +3835,85 @@ export default function HorariosPage() {
                   <i className="fas fa-times text-lg" aria-hidden="true" />
                 </button>
               </div>
-                <div className="flex items-center gap-2 mt-1">
+              <div className="flex items-center gap-2 mt-2 text-xs text-gray-500">
                 <i className="fas fa-info-circle text-primary-600" aria-hidden="true" />
-                <span className="text-xs text-gray-500">Escolha um aluno existente.</span>
+                <span>Turma: {professores.find(p => p._id === addAlunoTurma.professorId)?.nome || 'Professor'} • {diasSemana[addAlunoTurma.diaSemana || 0]} {addAlunoTurma.horarioInicio}-{addAlunoTurma.horarioFim}</span>
               </div>
             </div>
-            <div className="space-y-3">
-              
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Pesquisar aluno</label>
-                  <input
-                    value={singleAlunoSearch}
-                    onChange={(e) => { setSingleAlunoSearch(String(e.target.value || '')); setSingleAlunoSelectedId(null); }}
-                    placeholder="Digite para pesquisar..."
-                    className="mt-1 block w-full h-10 border border-gray-300 rounded-md px-3 py-2 text-sm font-medium focus:outline-none focus:ring-primary-500 focus:border-primary-500 transition-all"
-                  />
-                  {singleAlunoSearch && (
-                    <div className="mt-2 max-h-40 overflow-y-auto border rounded-md p-1 bg-white">
-                      {(alunos || []).filter(a => String(a.nome || '').toLowerCase().includes(singleAlunoSearch.toLowerCase())).slice(0,10).map(a => (
-                        <div key={a._id} className={`p-2 rounded-md hover:bg-gray-50 ${singleAlunoSelectedId === a._id ? 'bg-primary-50' : 'cursor-pointer'}`} onClick={() => { setSingleAlunoSelectedId(a._id); setSingleAlunoName(a.nome); }}>
-                          <div className="text-sm font-medium">{a.nome}</div>
-                          <div className="text-xs text-gray-500">{a.email || ''}</div>
-                        </div>
-                      ))}
-                      {(alunos || []).filter(a => String(a.nome || '').toLowerCase().includes(singleAlunoSearch.toLowerCase())).length === 0 && (
-                        <div className="p-2 text-xs text-gray-500">Nenhum aluno encontrado — crie o aluno em /alunos antes de adicioná-lo aqui.</div>
-                      )}
-                    </div>
-                  )}
-                </div>
-             
-
+            
+            <div className="space-y-4">
+              {/* Pesquisar aluno */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Observações</label>
-                <textarea placeholder="Ex.: Problema no joelho" value={singleAlunoObservacoes} onChange={(e) => setSingleAlunoObservacoes(String(e.target.value || ''))} className="mt-1 block w-full h-10 border border-gray-300 rounded-md px-3 py-2 text-sm font-medium focus:outline-none focus:ring-primary-500 focus:border-primary-500 transition-all" />
+                <label className="block text-sm font-medium text-gray-700 mb-1">Pesquisar aluno existente</label>
+                <input
+                  value={singleAlunoSearch}
+                  onChange={(e) => { setSingleAlunoSearch(String(e.target.value || '')); setSingleAlunoSelectedId(null); }}
+                  placeholder="Digite o nome do aluno..."
+                  className="block w-full h-10 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 transition-all"
+                />
+                {singleAlunoSearch && (
+                  <div className="mt-2 max-h-40 overflow-y-auto border rounded-lg bg-white">
+                    {(alunos || []).filter(a => String(a.nome || '').toLowerCase().includes(singleAlunoSearch.toLowerCase())).slice(0,10).map(a => (
+                      <div 
+                        key={a._id} 
+                        className={`p-3 border-b last:border-b-0 cursor-pointer transition-colors ${singleAlunoSelectedId === a._id ? 'bg-primary-50 border-primary-200' : 'hover:bg-gray-50'}`} 
+                        onClick={() => { setSingleAlunoSelectedId(a._id); setSingleAlunoName(a.nome); }}
+                      >
+                        <div className="text-sm font-medium">{a.nome}</div>
+                        {a.email && <div className="text-xs text-gray-500">{a.email}</div>}
+                      </div>
+                    ))}
+                    {(alunos || []).filter(a => String(a.nome || '').toLowerCase().includes(singleAlunoSearch.toLowerCase())).length === 0 && (
+                      <div className="p-3 text-xs text-gray-500 text-center">
+                        <i className="fas fa-search text-gray-300 mb-1"></i>
+                        <p>Nenhum aluno encontrado</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {singleAlunoSelectedId && (
+                  <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2">
+                    <i className="fas fa-check-circle text-green-600"></i>
+                    <span className="text-sm text-green-800 font-medium">{singleAlunoName}</span>
+                  </div>
+                )}
               </div>
 
-              <div className="flex justify-end gap-3 pt-3 border-t mt-2">
+              {/* Observações */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Observações (opcional)</label>
+                <textarea 
+                  placeholder="Ex.: Problema no joelho" 
+                  value={singleAlunoObservacoes} 
+                  onChange={(e) => setSingleAlunoObservacoes(String(e.target.value || ''))} 
+                  rows={2}
+                  className="block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 transition-all" 
+                />
+              </div>
+
+              {/* Botão para adicionar em lote */}
+              <button
+                type="button"
+                onClick={() => { 
+                  setShowAddSingleAlunoModal(false); 
+                  setBulkAlunoTextAdd(''); 
+                  setBulkImportEntries([]);
+                  setShowAddAlunoModal(true); 
+                }}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2 border-2 border-dashed border-gray-300 rounded-lg text-sm font-medium text-gray-600 hover:border-primary-400 hover:text-primary-600 hover:bg-primary-50 transition-all"
+              >
+                <i className="fas fa-users" aria-hidden="true" />
+                Adicionar vários alunos de uma vez
+              </button>
+
+              {/* Botões de ação */}
+              <div className="flex justify-end gap-3 pt-3 border-t">
                 <button
                   type="button"
                   onClick={() => { setShowAddSingleAlunoModal(false); setSingleAlunoSearch(''); setSingleAlunoSelectedId(null); setSingleAlunoName(''); setSingleAlunoObservacoes(''); }}
-                  className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 flex items-center gap-2"
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
                 >
-                  <i className="fas fa-times text-gray-600" aria-hidden="true" /> Cancelar
+                  Cancelar
                 </button>
                 <button
                   onClick={async () => {
@@ -3442,16 +3960,16 @@ export default function HorariosPage() {
                       setLoading(false);
                     }
                   }}
-                  className={`px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 ${!singleAlunoSelectedId ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 transition-colors flex items-center gap-2 ${!singleAlunoSelectedId ? 'opacity-50 cursor-not-allowed' : ''}`}
                   disabled={!singleAlunoSelectedId}
                 >
                   {loading ? (
                     <>
-                      <i className="fas fa-spinner fa-spin mr-2" /> Salvando...
+                      <i className="fas fa-spinner fa-spin" /> Salvando...
                     </>
                   ) : (
                     <>
-                      <i className="fas fa-plus mr-2" aria-hidden="true" /> Adicionar
+                      <i className="fas fa-check" aria-hidden="true" /> Adicionar
                     </>
                   )}
                 </button>
@@ -3485,8 +4003,8 @@ export default function HorariosPage() {
 
       {/* Modal para montar grade do professor em lote */}
       {showGradeProfessorModal && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-4">
-          <div className="relative w-full max-w-4xl bg-white rounded-lg shadow-lg border border-gray-200" role="dialog" aria-modal="true">
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="relative w-full max-w-4xl bg-white rounded-2xl shadow-lg border border-gray-200 max-h-[90vh] overflow-y-auto" role="dialog" aria-modal="true">
             <div className="px-5 py-4 border-b">
               <div className="flex items-start justify-between">
                 <div className="flex items-start gap-3">
