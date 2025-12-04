@@ -207,6 +207,9 @@ export async function POST(request: NextRequest) {
       novoReagendamentoData.status = 'aprovado';
     }
 
+    // Marcar que foi criado pelo admin (não pelo aluno via autoatendimento)
+    novoReagendamentoData.solicitadoPor = 'admin';
+
     const novoReagendamento = new Reagendamento(novoReagendamentoData);
 
     const reagendamentoSalvo = await novoReagendamento.save();

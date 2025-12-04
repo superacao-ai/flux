@@ -68,8 +68,8 @@ export default function AppShell({ children }: AppShellProps) {
             })
           );
           
-          // Verificar últimos 7 dias
-          for (let i = 1; i <= 7; i++) {
+          // Verificar últimos 30 dias (igual à página de aulas-realizadas)
+          for (let i = 1; i <= 30; i++) {
             const data = new Date(hoje);
             data.setDate(data.getDate() - i);
             const diaSemana = data.getDay();
@@ -128,7 +128,7 @@ export default function AppShell({ children }: AppShellProps) {
 
   const handleLogout = () => {
     logout();
-    router.push('/login');
+    router.push('/admin/login');
   };
 
   // Fechar menu mobile ao navegar
@@ -224,6 +224,12 @@ export default function AppShell({ children }: AppShellProps) {
                       {pendingCounts.experimentais > 99 ? '99+' : pendingCounts.experimentais}
                     </span>
                   )}
+                </Link>
+              )}
+              {hasAccess('avisos') && (
+                <Link href="/avisos" className={`flex items-center gap-2 px-2 py-1.5 rounded-md text-sm font-medium transition-all duration-200 hover:translate-x-1 ${pathname?.startsWith('/avisos') ? 'bg-primary-50 text-primary-700 shadow-sm' : 'text-gray-600 hover:bg-gray-100'}`}>
+                  <i className="fas fa-bullhorn w-4 text-sm text-gray-400" aria-hidden="true" />
+                  <span>Avisos</span>
                 </Link>
               )}
             </div>

@@ -30,7 +30,7 @@ export default function ProfessorSidebar() {
       localStorage.removeItem('user');
       localStorage.removeItem('token');
     } catch (e) {}
-    router.push('/login');
+    router.push('/admin/login');
   };
 
   return (

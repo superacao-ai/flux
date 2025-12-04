@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
     await connectDB();
     
     const body = await request.json();
-    const { nome, email, telefone, endereco, modalidadeId, observacoes } = body;
+    const { nome, email, telefone, endereco, modalidadeId, observacoes, cpf, dataNascimento } = body;
 
     // Validações básicas
     if (!nome) {
@@ -72,6 +72,34 @@ export async function POST(request: NextRequest) {
         },
         { status: 400 }
       );
+    }
+
+    // Validar e limpar CPF se fornecido
+    let cpfLimpo = '';
+    if (cpf) {
+      cpfLimpo = String(cpf).replace(/\D/g, '');
+      if (cpfLimpo && cpfLimpo.length !== 11) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'CPF deve ter 11 dígitos'
+          },
+          { status: 400 }
+        );
+      }
+      // Verificar se CPF já existe
+      if (cpfLimpo) {
+        const alunoComCpf = await Aluno.findOne({ cpf: cpfLimpo });
+        if (alunoComCpf) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: 'CPF já está em uso por outro aluno'
+            },
+            { status: 400 }
+          );
+        }
+      }
     }
 
     // Verificar se email já existe (apenas se email foi fornecido)
@@ -100,6 +128,16 @@ export async function POST(request: NextRequest) {
     // Adicionar email apenas se fornecido
     if (email && email.trim()) {
       dadosAluno.email = email;
+    }
+
+    // Adicionar CPF se fornecido
+    if (cpfLimpo) {
+      dadosAluno.cpf = cpfLimpo;
+    }
+
+    // Adicionar data de nascimento se fornecida
+    if (dataNascimento) {
+      dadosAluno.dataNascimento = new Date(dataNascimento);
     }
 
     // Criar aluno

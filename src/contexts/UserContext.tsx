@@ -71,12 +71,54 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   const [displayName, setDisplayName] = useState<string>('');
   const [mounted, setMounted] = useState(false);
 
+  // Função para buscar dados atualizados do usuário do servidor
+  const syncUserFromServer = useCallback(async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+
+      const res = await fetch('/api/auth/me', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.user) {
+          const updatedUser: User = {
+            id: data.user._id || data.user.id,
+            nome: data.user.nome,
+            email: data.user.email,
+            tipo: data.user.tipo,
+            abas: data.user.abas || [],
+          };
+          
+          // Comparar se mudou algo
+          const currentRaw = localStorage.getItem('user');
+          const current = currentRaw ? JSON.parse(currentRaw) : null;
+          
+          if (!current || JSON.stringify(current.abas) !== JSON.stringify(updatedUser.abas)) {
+            console.log('🔄 UserContext - Abas atualizadas do servidor:', updatedUser.abas);
+            localStorage.setItem('user', JSON.stringify(updatedUser));
+            setUser(updatedUser);
+            setDisplayName(updatedUser.nome);
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Erro ao sincronizar usuário:', e);
+    }
+  }, []);
+
   useEffect(() => {
     // Sempre carrega do localStorage ao montar
     const { user: loadedUser, displayName: loadedName } = loadUserFromStorage();
     setUser(loadedUser);
     setDisplayName(loadedName);
     setMounted(true);
+
+    // Sincroniza com o servidor ao montar e periodicamente
+    syncUserFromServer();
+    const syncInterval = setInterval(syncUserFromServer, 60000); // A cada 1 minuto
 
     const onStorage = (e: StorageEvent) => {
       if (e.key === 'user') {
@@ -87,8 +129,11 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     };
 
     window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
-  }, []);
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      clearInterval(syncInterval);
+    };
+  }, [syncUserFromServer]);
 
   const logout = useCallback(() => {
     try {

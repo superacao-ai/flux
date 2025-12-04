@@ -6,6 +6,8 @@ export interface IAluno {
   nome: string;
   email?: string;
   telefone?: string;
+  cpf?: string; // CPF do aluno (para login)
+  dataNascimento?: Date; // Data de nascimento (para login)
   endereco?: string;
   modalidadeId?: mongoose.Types.ObjectId; // Referência à modalidade (opcional)
   plano?: string; // Para modalidades que têm planos diferentes (ex: treino)
@@ -59,6 +61,27 @@ const AlunoSchema = new Schema<IAluno>({
       },
       message: 'Telefone deve estar no formato (11) 99999-9999 ou "Não informado"'
     }
+  },
+  cpf: {
+    type: String,
+    required: false,
+    unique: true,
+    sparse: true, // Permite múltiplos valores null/undefined
+    trim: true,
+    validate: {
+      validator: function(v: string) {
+        // Se vazio ou null, é válido
+        if (!v || v.trim() === '') return true;
+        // CPF deve ter 11 dígitos numéricos
+        const cpfLimpo = v.replace(/\D/g, '');
+        return cpfLimpo.length === 11;
+      },
+      message: 'CPF deve ter 11 dígitos'
+    }
+  },
+  dataNascimento: {
+    type: Date,
+    required: false
   },
   endereco: {
     type: String,
@@ -114,6 +137,7 @@ const AlunoSchema = new Schema<IAluno>({
 
 // Índices
 // `email` already declares `unique: true` on the field; avoid duplicate schema.index declaration
+// `cpf` already declares `unique: true` on the field; avoid duplicate schema.index declaration
 AlunoSchema.index({ nome: 1 });
 AlunoSchema.index({ ativo: 1 });
 AlunoSchema.index({ periodoTreino: 1 });
@@ -121,5 +145,6 @@ AlunoSchema.index({ parceria: 1 });
 AlunoSchema.index({ congelado: 1 });
 AlunoSchema.index({ ausente: 1 });
 AlunoSchema.index({ emEspera: 1 });
+AlunoSchema.index({ dataNascimento: 1 });
 
 export const Aluno = models.Aluno || model<IAluno>('Aluno', AlunoSchema);

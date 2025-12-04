@@ -18,7 +18,7 @@ export default function RequireAuth({ children, roles, showLoginRedirect = true 
 
       if (!token || !user) {
         if (showLoginRedirect) {
-          router.replace('/login');
+          router.replace('/admin/login');
           return;
         }
         setStatus('denied');
@@ -36,7 +36,7 @@ export default function RequireAuth({ children, roles, showLoginRedirect = true 
       setStatus('ok');
     } catch (e) {
       if (showLoginRedirect) {
-        router.replace('/login');
+        router.replace('/admin/login');
         return;
       }
       setStatus('denied');

@@ -50,6 +50,7 @@ interface Reagendamento {
     _id: string;
     professorId?: Professor;
   };
+  solicitadoPor?: 'aluno' | 'admin';
 }
 
 export default function ReagendamentosPage() {
@@ -526,6 +527,15 @@ export default function ReagendamentosPage() {
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-bold text-gray-900 truncate">{alunoNome}</p>
                           <p className="text-[10px] text-gray-500">{formatarData(reagendamento.criadoEm)}</p>
+                          {/* Quem solicitou */}
+                          <p className={`text-[10px] mt-0.5 ${
+                            reagendamento.solicitadoPor === 'aluno' 
+                              ? 'text-purple-600' 
+                              : 'text-gray-500'
+                          }`}>
+                            <i className={`fas ${reagendamento.solicitadoPor === 'aluno' ? 'fa-user-graduate' : 'fa-user-shield'} mr-0.5`}></i>
+                            {reagendamento.solicitadoPor === 'aluno' ? 'Pelo aluno' : 'Pela administração'}
+                          </p>
                         </div>
                         <div className="flex items-center gap-1 flex-shrink-0">
                           <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
@@ -665,6 +675,15 @@ export default function ReagendamentosPage() {
                         </div>
                         <p className="text-base font-bold text-gray-900 mb-1">{alunoNome}</p>
                         <p className="text-xs text-gray-500">{formatarData(reagendamento.criadoEm)}</p>
+                        {/* Quem solicitou */}
+                        <p className={`text-xs mt-1 ${
+                          reagendamento.solicitadoPor === 'aluno' 
+                            ? 'text-purple-600' 
+                            : 'text-gray-500'
+                        }`}>
+                          <i className={`fas ${reagendamento.solicitadoPor === 'aluno' ? 'fa-user-graduate' : 'fa-user-shield'} mr-1`}></i>
+                          {reagendamento.solicitadoPor === 'aluno' ? 'Solicitado pelo aluno' : 'Solicitado pela administração'}
+                        </p>
                         {reagendamento.aprovadoPor && (
                           <p className={`text-xs mt-2 transition-colors ${
                             reagendamento.status === 'aprovado'

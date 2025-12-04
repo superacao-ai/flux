@@ -56,6 +56,7 @@ interface Aluno {
   nome: string;
   email?: string;
   plano?: string;
+  ativo?: boolean;
   modalidadeId?: {
     nome: string;
     cor?: string;

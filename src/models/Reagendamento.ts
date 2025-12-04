@@ -23,6 +23,8 @@ export interface IReagendamento {
   aulaRealizadaId?: mongoose.Types.ObjectId;
   // ID do aluno (para reposições, identificamos diretamente o aluno)
   alunoId?: mongoose.Types.ObjectId;
+  // Quem solicitou o reagendamento: 'aluno' (autoatendimento) ou 'admin' (administrador/professor)
+  solicitadoPor?: 'aluno' | 'admin';
 }
 
 // Schema do Reagendamento
@@ -80,6 +82,12 @@ const ReagendamentoSchema = new Schema<IReagendamento>({
     default: 'pendente'
   },
   isReposicao: { type: Boolean, default: false },
+  // Quem solicitou o reagendamento
+  solicitadoPor: {
+    type: String,
+    enum: ['aluno', 'admin'],
+    default: 'admin'
+  },
   // ID da aula realizada onde a falta foi registrada
   aulaRealizadaId: {
     type: Schema.Types.ObjectId,

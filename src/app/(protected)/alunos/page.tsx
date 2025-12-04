@@ -351,7 +351,9 @@ export default function AlunosPage() {
     email: '',
     telefone: '',
     endereco: '',
-    observacoes: ''
+    observacoes: '',
+    cpf: '',
+    dataNascimento: ''
   });
 
   const [editFlags, setEditFlags] = useState<{
@@ -415,12 +417,22 @@ export default function AlunosPage() {
   // Função para abrir modal de edição
   const abrirEdicao = (aluno: Aluno) => {
     setEditingAluno(aluno);
+    // Formatar data de nascimento para input date (YYYY-MM-DD)
+    let dataNascimentoFormatted = '';
+    if ((aluno as any).dataNascimento) {
+      try {
+        const d = new Date((aluno as any).dataNascimento);
+        dataNascimentoFormatted = d.toISOString().split('T')[0];
+      } catch { /* ignore */ }
+    }
     setEditFormData({
       nome: aluno.nome,
       email: aluno.email || '',
       telefone: aluno.telefone,
       endereco: aluno.endereco || '',
-      observacoes: aluno.observacoes || ''
+      observacoes: aluno.observacoes || '',
+      cpf: (aluno as any).cpf || '',
+      dataNascimento: dataNascimentoFormatted
     });
     // set flags for edit modal
     setEditFlags({
@@ -437,7 +449,7 @@ export default function AlunosPage() {
 
   const abrirNovoAluno = () => {
     setEditingAluno(null);
-    setEditFormData({ nome: '', email: '', telefone: '', endereco: '', observacoes: '' });
+    setEditFormData({ nome: '', email: '', telefone: '', endereco: '', observacoes: '', cpf: '', dataNascimento: '' });
     setEditFlags({ congelado: false, ausente: false, periodoTreino: null, parceria: null, ativo: true });
     setEditCaracteristicas([]);
     setShowEditModal(true);
@@ -450,12 +462,21 @@ export default function AlunosPage() {
     try {
       if (!editFormData.nome || String(editFormData.nome).trim() === '') { toast.warning('Nome é obrigatório'); return; }
 
+      // Limpar CPF (apenas números)
+      const cpfLimpo = editFormData.cpf ? editFormData.cpf.replace(/\D/g, '') : '';
+      if (cpfLimpo && cpfLimpo.length !== 11) {
+        toast.warning('CPF deve ter 11 dígitos');
+        return;
+      }
+
       const payload: any = {
         nome: editFormData.nome,
         email: (typeof editFormData.email === 'string' ? String(editFormData.email).trim() : editFormData.email),
         telefone: (typeof editFormData.telefone === 'string' ? String(editFormData.telefone).trim() : editFormData.telefone),
         endereco: (typeof editFormData.endereco === 'string' ? String(editFormData.endereco).trim() : editFormData.endereco),
         observacoes: (typeof editFormData.observacoes === 'string' ? String(editFormData.observacoes).trim() : editFormData.observacoes),
+        cpf: cpfLimpo || undefined,
+        dataNascimento: editFormData.dataNascimento || undefined,
         congelado: !!editFlags.congelado,
         ausente: !!editFlags.ausente,
         periodoTreino: editFlags.periodoTreino,
@@ -470,6 +491,8 @@ export default function AlunosPage() {
       if (!payload.telefone) delete payload.telefone;
       if (!payload.endereco) delete payload.endereco;
       if (!payload.observacoes) delete payload.observacoes;
+      if (!payload.cpf) delete payload.cpf;
+      if (!payload.dataNascimento) delete payload.dataNascimento;
 
       let response;
       if (editingAluno && editingAluno._id) {
@@ -513,6 +536,7 @@ export default function AlunosPage() {
 
         await fetchAlunos();
         setShowEditModal(false);
+        toast.success(editingAluno ? 'Aluno atualizado com sucesso!' : 'Aluno criado com sucesso!');
       } else {
         toast.error('Erro: ' + (data && data.error ? data.error : 'erro'));
       }
@@ -1217,7 +1241,7 @@ export default function AlunosPage() {
                       <th scope="col" className="px-3 py-2 text-center text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
                         Nome
                       </th>
-                      <th scope="col" className="px-3 py-2 text-center text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
+                      <th scope="col" className="px-3 py-2 text-center text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200" style={{ maxWidth: '180px', width: '180px' }}>
                         Modalidades
                       </th>
                       <th scope="col" className="px-3 py-2 text-center text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
@@ -1293,16 +1317,16 @@ export default function AlunosPage() {
                                 )}
                               </div>
                             </td>
-                            <td className="px-3 py-3 text-sm text-gray-500 border-r border-b border-gray-200 text-center align-middle">
-                              <div className="flex flex-col items-center gap-3">
+                            <td className="px-3 py-3 text-sm text-gray-500 border-r border-b border-gray-200 text-center align-middle" style={{ maxWidth: '180px' }}>
+                              <div className="flex flex-col items-center gap-2">
                                 {(aluno.modalidades && aluno.modalidades.length > 0) ? (
                                   aluno.modalidades.map(m => {
                                     const hs = (aluno.horarios || []).filter(h => String(h.modalidadeNome || '').toLowerCase() === String(m.nome || '').toLowerCase());
                                     return (
                                       <div key={(m._id || m.nome)} className="w-full">
                                         <div className={`inline-flex items-center gap-2 px-2 py-0.5 rounded-full text-xs font-medium ${isMuted ? 'bg-gray-50 border-gray-200 text-gray-500' : 'bg-gray-100 border border-gray-200 text-gray-700'}`}>
-                                          <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: isMuted ? '#D1D5DB' : getModalidadeColor(m) }} />
-                                          <span className="truncate max-w-[12rem] text-sm">{m.nome}</span>
+                                          <span className="inline-block w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: isMuted ? '#D1D5DB' : getModalidadeColor(m) }} />
+                                          <span className="truncate max-w-[100px] text-xs">{m.nome}</span>
                                         </div>
                                         {hs && hs.length > 0 ? (
                                           <div className="mt-1 text-[10px] text-gray-600 space-y-0.5">
@@ -1722,6 +1746,54 @@ export default function AlunosPage() {
                   />
                 </div>
               </div>
+
+              {/* Campos para acesso do aluno */}
+              <div className="relative border border-primary-200 rounded-md p-4 mb-3 mt-3 bg-primary-50/30">
+                <div className="absolute -top-3 left-4 bg-white px-2 text-sm font-medium text-primary-700">
+                  <i className="fas fa-mobile-alt mr-1"></i> Acesso do Aluno
+                </div>
+                <p className="text-xs text-gray-500 mb-3">
+                  Preencha estes campos para permitir que o aluno acesse o sistema e solicite reagendamentos.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      CPF <span className="text-gray-400 text-xs">(apenas números)</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={editFormData.cpf}
+                      onChange={(e) => {
+                        // Aceitar apenas números e limitar a 11 dígitos
+                        const value = e.target.value.replace(/\D/g, '').slice(0, 11);
+                        // Formatar com máscara
+                        let formatted = value;
+                        if (value.length > 9) {
+                          formatted = `${value.slice(0,3)}.${value.slice(3,6)}.${value.slice(6,9)}-${value.slice(9)}`;
+                        } else if (value.length > 6) {
+                          formatted = `${value.slice(0,3)}.${value.slice(3,6)}.${value.slice(6)}`;
+                        } else if (value.length > 3) {
+                          formatted = `${value.slice(0,3)}.${value.slice(3)}`;
+                        }
+                        setEditFormData({...editFormData, cpf: formatted});
+                      }}
+                      className="block w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-medium focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                      placeholder="000.000.000-00"
+                      maxLength={14}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Data de Nascimento</label>
+                    <input
+                      type="date"
+                      value={editFormData.dataNascimento}
+                      onChange={(e) => setEditFormData({...editFormData, dataNascimento: e.target.value})}
+                      className="block w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-medium focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
               <div className="mb-3">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Observações</label>
                 <textarea

@@ -94,7 +94,46 @@ export async function PUT(
       }
     }
 
+    // Validar e verificar CPF se fornecido
+    if (body.cpf) {
+      const cpfLimpo = String(body.cpf).replace(/\D/g, '');
+      if (cpfLimpo && cpfLimpo.length !== 11) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'CPF deve ter 11 dígitos'
+          },
+          { status: 400 }
+        );
+      }
+      // Verificar se CPF já existe em outro aluno
+      if (cpfLimpo) {
+        const alunoComCpf = await Aluno.findOne({ 
+          cpf: cpfLimpo, 
+          _id: { $ne: id } 
+        });
+        if (alunoComCpf) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: 'CPF já está em uso por outro aluno'
+            },
+            { status: 400 }
+          );
+        }
+        // Atualizar o CPF limpo no body
+        body.cpf = cpfLimpo;
+      }
+    }
+
+    // Converter dataNascimento se fornecida
+    if (body.dataNascimento && typeof body.dataNascimento === 'string') {
+      body.dataNascimento = new Date(body.dataNascimento);
+    }
+
     console.log(`[PUT /api/alunos/${id}] Body recebido:`, body);
+    console.log(`[PUT /api/alunos/${id}] CPF no body:`, body.cpf, typeof body.cpf);
+    console.log(`[PUT /api/alunos/${id}] dataNascimento no body:`, body.dataNascimento, typeof body.dataNascimento);
 
     // If attempting to unfreeze (congelado: false), check for substitutes
     // If client provides forceUnfreeze=true, skip the substitute check (admin override)
@@ -146,6 +185,8 @@ export async function PUT(
     }
 
     console.log(`[PUT /api/alunos/${id}] Aluno atualizado:`, {
+      cpf: alunoAtualizado.cpf,
+      dataNascimento: alunoAtualizado.dataNascimento,
       congelado: alunoAtualizado.congelado,
       ausente: alunoAtualizado.ausente,
       emEspera: alunoAtualizado.emEspera

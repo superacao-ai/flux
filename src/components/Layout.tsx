@@ -42,7 +42,7 @@ export default function Layout({ children, title = 'Superação Flux', fullWidth
     }
     // clear displayed name immediately to prevent stale greeting
     try { setDisplayName(''); } catch (e) {}
-    router.push('/login');
+    router.push('/admin/login');
   };
 
   // Keep storage sync so opening a new tab or login/logout updates sidebar

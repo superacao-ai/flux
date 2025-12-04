@@ -54,7 +54,7 @@ export default function UsuariosPage() {
 
   const professorTabs = ['professor:minhaagenda', 'professor:alunos', 'professor:aulas'];
   const allTabs = [
-    'calendario', 'horarios', 'alunos', 'usuarios', 'modalidades', 'aulas', 'aulas-experimentais', 'reagendamentos', 'relatorios', 'backup',
+    'calendario', 'horarios', 'alunos', 'usuarios', 'modalidades', 'aulas', 'aulas-experimentais', 'avisos', 'reagendamentos', 'relatorios', 'backup',
     ...professorTabs
   ];
   const adminExcludedTabs = ['relatorios', 'backup', 'usuarios'];
@@ -951,6 +951,7 @@ export default function UsuariosPage() {
                         { key: 'modalidades', label: 'Modalidades' },
                         { key: 'aulas', label: 'Aulas' },
                         { key: 'aulas-experimentais', label: 'Experimentais' },
+                        { key: 'avisos', label: 'Avisos' },
                         { key: 'reagendamentos', label: 'Reagendamentos' },
                         { key: 'relatorios', label: 'Relatórios' },
                         { key: 'backup', label: 'Backups' },

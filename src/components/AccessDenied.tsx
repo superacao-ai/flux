@@ -14,7 +14,7 @@ export default function AccessDenied() {
 
         <div className="mt-6 flex items-center justify-center gap-3">
           <button
-            onClick={() => router.replace('/login')}
+            onClick={() => router.replace('/admin/login')}
             className="px-4 py-2 rounded-md bg-primary-600 text-white text-sm font-medium hover:bg-primary-700"
           >
             Ir para Login
