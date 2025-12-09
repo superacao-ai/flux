@@ -20,6 +20,7 @@ interface Permissoes {
     adicionarAluno?: boolean;
     bloquearHorarios?: boolean;
     importarLote?: boolean;
+    removerAluno?: boolean;
   };
   alunos?: {
     criar?: boolean;
@@ -357,7 +358,6 @@ export default function UsuariosPage() {
         }
         if (showModal) {
           setShowModal(false);
-          setEditingUsuario(null);
         }
       }
     };

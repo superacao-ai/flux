@@ -206,7 +206,7 @@ export default function DiagnosticoPage() {
                 
                 {item.detalhes.length > 0 ? (
                   <ul className="mt-2 space-y-1">
-                    {item.detalhes.slice(0, 5).map((detalhe, i) => (
+                    {item.detalhes.slice(0, 5).map((detalhe: string, i: number) => (
                       <li key={i} className="text-sm text-gray-600 flex items-start gap-2">
                         <i className="fas fa-chevron-right text-xs text-gray-400 mt-1"></i>
                         {detalhe}

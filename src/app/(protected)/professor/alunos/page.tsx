@@ -132,7 +132,6 @@ export default function ProfessorAlunosPage() {
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && showModalFaltas) {
         setShowModalFaltas(false);
-        setAlunoSelecionado(null);
         setFaltasAlunoSelecionado([]);
       }
     };

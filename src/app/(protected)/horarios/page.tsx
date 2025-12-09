@@ -1380,7 +1380,8 @@ export default function HorariosPage() {
             horarioFim: '',
             observacoes: '',
             observacaoTurma: '',
-            modalidadeId: ''
+            modalidadeId: '',
+            limiteAlunos: ''
           });
           fetchHorarios();
         } else {
@@ -1609,7 +1610,8 @@ export default function HorariosPage() {
       horarioFim: representativeHorario.horarioFim,
       observacoes: '', // keep alumno notes separate
       observacaoTurma: (representativeHorario as any).observacaoTurma || '',
-      modalidadeId: ''
+      modalidadeId: '',
+      limiteAlunos: (representativeHorario as any).limiteAlunos || ''
     });
   console.debug('abrindo modal editar turma', { editingMode: 'turma', memberIds: turmaMembers.map(m => m._id), representativeHorario });
     setShowModal(true);
@@ -2721,7 +2723,8 @@ export default function HorariosPage() {
                             horarioFim: horarioFimDefault,
                             observacoes: '',
                             observacaoTurma: '',
-                            modalidadeId: modalidadeSelecionada || ''
+                            modalidadeId: modalidadeSelecionada || '',
+                            limiteAlunos: ''
                           });
                           setSelectedHorarioId(null);
                           setEditingMemberIds([]);
@@ -3053,7 +3056,8 @@ export default function HorariosPage() {
                                         horarioFim: horarioFimDefault,
                                         observacoes: '',
                                         observacaoTurma: '',
-                                        modalidadeId: modalidadeSelecionada || ''
+                                        modalidadeId: modalidadeSelecionada || '',
+                                        limiteAlunos: ''
                                       });
                                       setSelectedHorarioId(null);
                                       setEditingMemberIds([]);
@@ -3239,7 +3243,8 @@ export default function HorariosPage() {
                             horarioFim: '07:00',
                             observacoes: '',
                             observacaoTurma: '',
-                            modalidadeId: modalidadeSelecionada || ''
+                            modalidadeId: modalidadeSelecionada || '',
+                            limiteAlunos: ''
                           });
                           setSelectedHorarioId(null);
                           setEditingMemberIds([]);
@@ -3264,7 +3269,7 @@ export default function HorariosPage() {
 
                 return Object.entries(grupos).map(([key, horarios]) => {
                   const primeiro = horarios[0];
-                  const profObj = typeof primeiro.professorId === 'object' ? primeiro.professorId : professores.find(p => p._id === primeiro.professorId);
+                  const profObj = typeof primeiro.professorId === 'object' ? primeiro.professorId : professores.find(p => p._id === (primeiro.professorId as unknown as string));
                   const profNome = profObj?.nome || 'Sem professor';
                   const profCor = profObj?.cor || '#3B82F6';
 
@@ -3498,7 +3503,8 @@ export default function HorariosPage() {
                                   horarioFim: primeiro.horarioFim,
                                   observacoes: '',
                                   observacaoTurma: (primeiro as any).observacaoTurma || '',
-                                  modalidadeId: modalidadeSelecionada || ''
+                                  modalidadeId: modalidadeSelecionada || '',
+                                  limiteAlunos: (primeiro as any).limiteAlunos || ''
                                 });
                                 // Coletar IDs de todos os membros da turma
                                 const memberIds = horarios.map(h => h._id).filter(Boolean) as string[];
@@ -3555,7 +3561,8 @@ export default function HorariosPage() {
                   horarioFim: '07:00',
                   observacoes: '',
                   observacaoTurma: '',
-                  modalidadeId: modalidadeSelecionada || ''
+                  modalidadeId: modalidadeSelecionada || '',
+                  limiteAlunos: ''
                 });
                 setSelectedHorarioId(null);
                 setEditingMemberIds([]);
@@ -3648,7 +3655,8 @@ export default function HorariosPage() {
                       horarioFim: '',
                       observacoes: '',
                       observacaoTurma: '',
-                      modalidadeId: ''
+                      modalidadeId: '',
+                      limiteAlunos: ''
                     });
                   }}
                   className="text-gray-400 hover:text-gray-600 focus:outline-none"

@@ -2250,7 +2250,7 @@ export default function CalendarioPage() {
                   const aulaFutura = dataAulaDate >= hoje;
                   
                   // Verificar se a aula já foi enviada/registrada
-                  const aulaJaEnviada = verificarAulaRegistrada(horarioSelecionado._id, dataAula);
+                  const aulaJaEnviada = horarioSelecionado._id ? verificarAulaRegistrada(horarioSelecionado._id, dataAula) : false;
                   
                   // Verificar se a turma está lotada
                   const dataAulaStr = formatDateToISO(dataAula);
