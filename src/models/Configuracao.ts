@@ -2,7 +2,7 @@ import mongoose, { Schema, Document } from 'mongoose';
 
 export interface IConfiguracao extends Document {
   chave: string;
-  valor: boolean;
+  valor: string | boolean;
   descricao?: string;
   atualizadoEm: Date;
 }
@@ -11,17 +11,11 @@ const ConfiguracaoSchema = new Schema({
   chave: {
     type: String,
     required: true,
-    unique: true,
-    enum: [
-      'aprovacaoAutomaticaReagendamento',
-      'aprovacaoAutomaticaCreditos', 
-      'aprovacaoAutomaticaReposicao',
-      'aprovacaoAutomaticaAlteracaoHorario'
-    ]
+    unique: true
   },
   valor: {
-    type: Boolean,
-    default: false
+    type: Schema.Types.Mixed, // Aceita boolean ou string
+    default: ''
   },
   descricao: {
     type: String
@@ -34,4 +28,9 @@ const ConfiguracaoSchema = new Schema({
   timestamps: true
 });
 
-export const Configuracao = mongoose.models.Configuracao || mongoose.model<IConfiguracao>('Configuracao', ConfiguracaoSchema);
+// Força recompilação do modelo se já existe (importante após mudar schema)
+if (mongoose.models.Configuracao) {
+  delete mongoose.models.Configuracao;
+}
+
+export const Configuracao = mongoose.model<IConfiguracao>('Configuracao', ConfiguracaoSchema);

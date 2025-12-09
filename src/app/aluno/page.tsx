@@ -210,6 +210,27 @@ export default function AlunoAreaPage() {
   const [showAvisarAusenciaModal, setShowAvisarAusenciaModal] = useState(false);
   const [showReposicaoModal, setShowReposicaoModal] = useState(false);
   const [showAlteracaoHorarioModal, setShowAlteracaoHorarioModal] = useState(false);
+  const [showSuporteModal, setShowSuporteModal] = useState(false);
+  const [showProfessorModal, setShowProfessorModal] = useState(false);
+  
+  // Configurações de WhatsApp
+  const [whatsappSuporte, setWhatsappSuporte] = useState('');
+  const [whatsappFinanceiro, setWhatsappFinanceiro] = useState('');
+  
+  // Mensagens de descanso (quando não tem aula)
+  const [mensagensDescanso, setMensagensDescanso] = useState<string[]>([
+    "Aproveite o dia para descansar.",
+    "Dia de recuperação. Cuide-se!",
+    "Sem compromissos hoje. Até a próxima!",
+    "Dia livre. Nos vemos em breve!",
+    "Descanse bem. Até a próxima aula!",
+    "Aproveite seu dia de folga.",
+    "Sem aulas programadas. Bom descanso!",
+    "Dia de pausa. Recupere as energias.",
+    "Nenhuma aula agendada. Até breve!",
+    "Aproveite para relaxar. Nos vemos logo!"
+  ]);
+  const [mensagemDescansoHoje] = useState(() => Math.floor(Math.random() * 10));
   
   // Estados de créditos
   const [creditos, setCreditos] = useState<CreditoReposicao[]>([]);
@@ -307,13 +328,38 @@ export default function AlunoAreaPage() {
     }
   }, [router]);
 
-  // Buscar contato do admin
+  // Buscar contato do admin e configurações de WhatsApp
   useEffect(() => {
     fetch('/api/public/admin-contact')
       .then(res => res.json())
       .then(data => {
         if (data.success) {
           setAdminContact({ whatsapp: data.whatsapp, nome: data.nome });
+        }
+      })
+      .catch(() => {});
+    
+    // Buscar configurações de WhatsApp (suporte e financeiro) e mensagens de descanso
+    fetch('/api/configuracoes')
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && data.data) {
+          const configs = data.data;
+          const suporte = configs.find((c: any) => c.chave === 'whatsapp_suporte');
+          const financeiro = configs.find((c: any) => c.chave === 'whatsapp_financeiro');
+          const mensagens = configs.find((c: any) => c.chave === 'mensagens_descanso');
+          if (suporte?.valor) setWhatsappSuporte(String(suporte.valor));
+          if (financeiro?.valor) setWhatsappFinanceiro(String(financeiro.valor));
+          if (mensagens?.valor) {
+            try {
+              const msgs = JSON.parse(mensagens.valor);
+              if (Array.isArray(msgs) && msgs.length > 0) {
+                setMensagensDescanso(msgs);
+              }
+            } catch {
+              // mantém as mensagens default
+            }
+          }
         }
       })
       .catch(() => {});
@@ -1281,41 +1327,47 @@ export default function AlunoAreaPage() {
         {aluno.modalidade?.linkWhatsapp && aluno.modalidade.linkWhatsapp.trim() !== '' && !jaEntrouGrupo && (
           <div className="mb-4">
             <div 
-              className="rounded-xl shadow-lg p-4 animate-pulse-gentle"
+              className="rounded-xl shadow-lg p-4"
               style={{ 
-                background: `linear-gradient(135deg, ${aluno.modalidade.cor || '#25D366'} 0%, ${aluno.modalidade.cor || '#25D366'}dd 100%)`,
-                animation: 'pulse-gentle 2s ease-in-out infinite'
+                background: `linear-gradient(135deg, #25D366 0%, #25D366 60%, ${aluno.modalidade.cor || '#128C7E'} 100%)`
               }}
             >
               <style jsx>{`
-                @keyframes pulse-gentle {
-                  0%, 100% { box-shadow: 0 4px 15px rgba(37, 211, 102, 0.3); }
-                  50% { box-shadow: 0 4px 25px rgba(37, 211, 102, 0.6); }
+                @keyframes shake-loop {
+                  0%, 85%, 100% { transform: translateX(0); }
+                  87%, 91%, 95% { transform: translateX(-3px); }
+                  89%, 93%, 97% { transform: translateX(3px); }
                 }
               `}</style>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col gap-3">
+                {/* Título com ícone grande */}
                 <div className="flex items-center gap-3">
-                  <div className="bg-white/20 rounded-full p-2.5">
-                    <i className="fab fa-whatsapp text-white text-xl"></i>
-                  </div>
+                  <i className="fab fa-whatsapp text-white text-3xl"></i>
                   <div>
-                    <h3 className="text-white font-bold">Grupo {aluno.modalidade.nome}</h3>
-                    <p className="text-white/80 text-xs">Entre para avisos e comunicados</p>
+                    <h3 className="text-white font-bold text-base">Grupo do WhatsApp</h3>
+                    <p className="text-white/80 text-xs">{aluno.modalidade.nome} • Avisos e comunicados</p>
                   </div>
                 </div>
+                
+                {/* Botão de entrar */}
                 <a 
                   href={aluno.modalidade.linkWhatsapp}
                   target="_blank" 
                   rel="noopener noreferrer"
-                  className="flex items-center gap-2 bg-white/20 hover:bg-white/30 rounded-lg px-4 py-2 transition-colors"
+                  className="flex items-center justify-center gap-2 bg-white hover:bg-gray-100 rounded-xl py-3 px-4 transition-colors font-bold text-sm shadow-lg w-full"
+                  style={{ 
+                    animation: 'shake-loop 4s ease-in-out infinite',
+                    color: aluno.modalidade.cor || '#128C7E'
+                  }}
                 >
-                  <span className="text-white font-semibold text-sm">Entrar no Grupo</span>
-                  <i className="fas fa-arrow-right text-white text-xs"></i>
+                  <i className="fab fa-whatsapp text-lg"></i>
+                  <span>Entrar no Grupo</span>
                 </a>
               </div>
+              
               <button
                 onClick={() => setShowConfirmGrupo(true)}
-                className="w-full mt-3 text-center text-sm text-white/70 hover:text-white py-1 transition-colors border-t border-white/20 pt-3"
+                className="w-full mt-3 text-center text-xs text-white/60 hover:text-white py-1 transition-colors border-t border-white/20 pt-3"
               >
                 <i className="fas fa-check-circle mr-1"></i>
                 Já entrei no grupo
@@ -1404,7 +1456,7 @@ export default function AlunoAreaPage() {
                   ? 'fa-times' 
                   : aulasHoje.length > 0 
                     ? 'fa-check'
-                    : 'fa-minus'
+                    : 'fa-couch'
               } text-xl`}></i>
             </div>
             <div className="flex-1">
@@ -1418,6 +1470,9 @@ export default function AlunoAreaPage() {
                     : 'Sem aulas hoje'
                 }
               </h3>
+              {!temCancelamentoHoje && aulasHoje.length === 0 && (
+                <p className="text-sm text-gray-500">{mensagensDescanso[mensagemDescansoHoje % mensagensDescanso.length]}</p>
+              )}
               {!temCancelamentoHoje && aulasHoje.length > 0 && (
                 <div className="text-sm text-green-600">
                   {aulasHoje.map((a, idx) => (
@@ -1791,27 +1846,21 @@ export default function AlunoAreaPage() {
                       </div>
                     </div>
                     <div className="flex gap-2">
-                      {adminContact && (
-                        <a
-                          href={`https://wa.me/${adminContact.whatsapp}?text=${encodeURIComponent(`Olá! Sou ${aluno.nome}, aluno do Studio Superação.\n\n`)}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex-1 py-2.5 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors text-center"
-                        >
-                          <i className="fas fa-headset mr-1.5"></i>
-                          Suporte / Financeiro
-                        </a>
-                      )}
-                      {horarios.length > 0 && horarios[0].professorId?.telefone && (
-                        <a
-                          href={`https://wa.me/${horarios[0].professorId.telefone.replace(/\D/g, '')}?text=${encodeURIComponent(`Olá professor(a) ${horarios[0].professorId.nome}! Sou ${aluno.nome}, aluno do Studio Superação.\n\n`)}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                      <button
+                        onClick={() => setShowSuporteModal(true)}
+                        className="flex-1 py-2.5 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors text-center"
+                      >
+                        <i className="fas fa-headset mr-1.5"></i>
+                        Suporte / Financeiro
+                      </button>
+                      {horarios.length > 0 && (
+                        <button
+                          onClick={() => setShowProfessorModal(true)}
                           className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors text-center"
                         >
                           <i className="fas fa-user-tie mr-1.5"></i>
                           Professor
-                        </a>
+                        </button>
                       )}
                     </div>
                   </div>
@@ -3276,6 +3325,164 @@ export default function AlunoAreaPage() {
                 {enviandoAlteracao ? <><i className="fas fa-spinner fa-spin mr-2"></i>Enviando...</> : 'Solicitar Alteração'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Suporte/Financeiro */}
+      {showSuporteModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl p-6 max-w-sm w-full shadow-xl">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-gray-900">Contato</h3>
+              <button onClick={() => setShowSuporteModal(false)} className="text-gray-400 hover:text-gray-600">
+                <i className="fas fa-times"></i>
+              </button>
+            </div>
+            
+            <p className="text-sm text-gray-600 mb-4">Escolha o setor que deseja contatar:</p>
+            
+            <div className="space-y-3">
+              {whatsappSuporte && (
+                <a
+                  href={`https://wa.me/${whatsappSuporte}?text=${encodeURIComponent(`Olá! Sou ${aluno.nome}, aluno do Studio Superação.\n\nPreciso de suporte com:\n`)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => setShowSuporteModal(false)}
+                  className="flex items-center gap-3 p-4 bg-green-50 hover:bg-green-100 border border-green-200 rounded-lg transition-colors"
+                >
+                  <div className="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center">
+                    <i className="fas fa-headset text-white text-xl"></i>
+                  </div>
+                  <div>
+                    <p className="font-medium text-green-800">Suporte</p>
+                    <p className="text-xs text-green-600">Dúvidas, horários, informações</p>
+                  </div>
+                  <i className="fab fa-whatsapp text-green-600 text-2xl ml-auto"></i>
+                </a>
+              )}
+              
+              {whatsappFinanceiro && (
+                <a
+                  href={`https://wa.me/${whatsappFinanceiro}?text=${encodeURIComponent(`Olá! Sou ${aluno.nome}, aluno do Studio Superação.\n\nPreciso de informações sobre:\n`)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => setShowSuporteModal(false)}
+                  className="flex items-center gap-3 p-4 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg transition-colors"
+                >
+                  <div className="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center">
+                    <i className="fas fa-dollar-sign text-white text-xl"></i>
+                  </div>
+                  <div>
+                    <p className="font-medium text-blue-800">Financeiro</p>
+                    <p className="text-xs text-blue-600">Pagamentos, boletos, planos</p>
+                  </div>
+                  <i className="fab fa-whatsapp text-blue-600 text-2xl ml-auto"></i>
+                </a>
+              )}
+              
+              {!whatsappSuporte && !whatsappFinanceiro && adminContact && (
+                <a
+                  href={`https://wa.me/${adminContact.whatsapp}?text=${encodeURIComponent(`Olá! Sou ${aluno.nome}, aluno do Studio Superação.\n\n`)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => setShowSuporteModal(false)}
+                  className="flex items-center gap-3 p-4 bg-green-50 hover:bg-green-100 border border-green-200 rounded-lg transition-colors"
+                >
+                  <div className="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center">
+                    <i className="fas fa-headset text-white text-xl"></i>
+                  </div>
+                  <div>
+                    <p className="font-medium text-green-800">Atendimento</p>
+                    <p className="text-xs text-green-600">Fale com a recepção</p>
+                  </div>
+                  <i className="fab fa-whatsapp text-green-600 text-2xl ml-auto"></i>
+                </a>
+              )}
+              
+              {!whatsappSuporte && !whatsappFinanceiro && !adminContact && (
+                <div className="text-center py-4 text-gray-500">
+                  <i className="fas fa-exclamation-circle text-2xl mb-2"></i>
+                  <p className="text-sm">Contatos não configurados</p>
+                </div>
+              )}
+            </div>
+            
+            <button
+              onClick={() => setShowSuporteModal(false)}
+              className="w-full mt-4 px-4 py-2 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50"
+            >
+              Fechar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Professor */}
+      {showProfessorModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl p-6 max-w-sm w-full shadow-xl">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-gray-900">Falar com Professor</h3>
+              <button onClick={() => setShowProfessorModal(false)} className="text-gray-400 hover:text-gray-600">
+                <i className="fas fa-times"></i>
+              </button>
+            </div>
+            
+            <p className="text-sm text-gray-600 mb-4">Selecione o professor que deseja contatar:</p>
+            
+            <div className="space-y-3 max-h-64 overflow-y-auto">
+              {(() => {
+                // Pegar professores únicos dos horários
+                const professoresUnicos = horarios
+                  .filter(h => h.professorId?.telefone)
+                  .reduce((acc: any[], h) => {
+                    const prof = h.professorId;
+                    if (prof && !acc.find(p => p._id === prof._id)) {
+                      acc.push(prof);
+                    }
+                    return acc;
+                  }, []);
+                
+                if (professoresUnicos.length === 0) {
+                  return (
+                    <div className="text-center py-4 text-gray-500">
+                      <i className="fas fa-user-slash text-2xl mb-2"></i>
+                      <p className="text-sm">Nenhum professor com telefone cadastrado</p>
+                    </div>
+                  );
+                }
+                
+                return professoresUnicos.map((prof: any) => (
+                  <a
+                    key={prof._id}
+                    href={`https://wa.me/${prof.telefone.replace(/\D/g, '')}?text=${encodeURIComponent(`Olá professor(a) ${prof.nome}! Sou ${aluno.nome}, aluno do Studio Superação.\n\n`)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => setShowProfessorModal(false)}
+                    className="flex items-center gap-3 p-4 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg transition-colors"
+                  >
+                    <div className="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center">
+                      <i className="fas fa-user-tie text-white text-xl"></i>
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-medium text-blue-800">{prof.nome}</p>
+                      <p className="text-xs text-blue-600">
+                        {horarios.filter(h => h.professorId?._id === prof._id).map(h => h.modalidadeId?.nome).filter((v, i, a) => a.indexOf(v) === i).join(', ')}
+                      </p>
+                    </div>
+                    <i className="fab fa-whatsapp text-blue-600 text-2xl"></i>
+                  </a>
+                ));
+              })()}
+            </div>
+            
+            <button
+              onClick={() => setShowProfessorModal(false)}
+              className="w-full mt-4 px-4 py-2 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50"
+            >
+              Fechar
+            </button>
           </div>
         </div>
       )}

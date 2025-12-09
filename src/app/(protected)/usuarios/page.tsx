@@ -94,7 +94,7 @@ export default function UsuariosPage() {
     // Comunicação
     'avisos',
     // Sistema
-    'relatorios', 'backup', 'diagnostico',
+    'relatorios', 'backup', 'diagnostico', 'configuracoes',
     // Professor
     ...professorTabs
   ];
@@ -116,6 +116,7 @@ export default function UsuariosPage() {
     'relatorios': 'fa-chart-line',
     'backup': 'fa-database',
     'diagnostico': 'fa-stethoscope',
+    'configuracoes': 'fa-cog',
     'professor:minhaagenda': 'fa-calendar-alt',
     'professor:alunos': 'fa-user-graduate',
     'professor:aulas': 'fa-clipboard-list'
@@ -138,6 +139,7 @@ export default function UsuariosPage() {
     'relatorios': 'Relatórios',
     'backup': 'Backups',
     'diagnostico': 'Diagnóstico',
+    'configuracoes': 'Configurações',
     'professor:minhaagenda': 'P: Minha Agenda',
     'professor:alunos': 'P: Meus Alunos',
     'professor:aulas': 'P: Minhas Aulas'
@@ -148,7 +150,7 @@ export default function UsuariosPage() {
     admin: ['calendario', 'horarios', 'alunos', 'usuarios', 'modalidades', 'aulas', 'aulas-experimentais', 'avisos', 'reagendamentos', 'creditos', 'reposicao-faltas', 'relatorios', 'alteracoes-horario'],
     professor: ['professor:minhaagenda', 'professor:alunos', 'professor:aulas', 'aulas-experimentais', 'calendario'],
     vendedor: ['calendario', 'horarios', 'alunos', 'aulas-experimentais'],
-    root: ['calendario', 'horarios', 'alunos', 'usuarios', 'modalidades', 'aulas', 'aulas-experimentais', 'avisos', 'reagendamentos', 'creditos', 'reposicao-faltas', 'relatorios', 'backup', 'diagnostico', 'alteracoes-horario']
+    root: ['calendario', 'horarios', 'alunos', 'usuarios', 'modalidades', 'aulas', 'aulas-experimentais', 'avisos', 'reagendamentos', 'creditos', 'reposicao-faltas', 'relatorios', 'backup', 'diagnostico', 'configuracoes', 'alteracoes-horario']
   };
 
   // Permissões padrão por tipo
@@ -416,7 +418,25 @@ export default function UsuariosPage() {
     setFormData(prev => ({...prev, email: e.target.value}));
   }, []);
   const handleTelefoneChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData(prev => ({...prev, telefone: e.target.value}));
+    // Aplica máscara de telefone (xx) xxxxx-xxxx ou (xx) xxxx-xxxx
+    let value = e.target.value.replace(/\D/g, ''); // Remove tudo que não é dígito
+    if (value.length > 11) value = value.slice(0, 11); // Limita a 11 dígitos
+    
+    if (value.length > 0) {
+      value = '(' + value;
+    }
+    if (value.length > 3) {
+      value = value.slice(0, 3) + ') ' + value.slice(3);
+    }
+    if (value.length > 10) {
+      // Celular com 9 dígitos: (xx) xxxxx-xxxx
+      value = value.slice(0, 10) + '-' + value.slice(10);
+    } else if (value.length > 9) {
+      // Fixo com 8 dígitos: (xx) xxxx-xxxx
+      value = value.slice(0, 9) + '-' + value.slice(9);
+    }
+    
+    setFormData(prev => ({...prev, telefone: value}));
   }, []);
   const handleAtivoChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData(prev => ({...prev, ativo: e.target.checked}));
@@ -1237,6 +1257,7 @@ export default function UsuariosPage() {
                         { key: 'relatorios', label: 'Relatórios', icon: 'fa-chart-line' },
                         { key: 'backup', label: 'Backups', icon: 'fa-database' },
                         { key: 'diagnostico', label: 'Diagnóstico', icon: 'fa-stethoscope' },
+                        { key: 'configuracoes', label: 'Configurações', icon: 'fa-cog' },
                         // Professor (condicional)
                         ...(formData.tipo === 'professor' ? [
                           { key: 'professor:minhaagenda', label: 'P: Minha Agenda', icon: 'fa-calendar-alt' },

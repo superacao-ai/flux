@@ -474,7 +474,7 @@ export default function AppShell({ children }: AppShellProps) {
         )}
 
         {/* Seção Sistema */}
-        {(hasAccess('relatorios') || hasAccess('backup') || hasAccess('diagnostico')) && (
+        {(hasAccess('relatorios') || hasAccess('backup') || hasAccess('diagnostico') || hasAccess('configuracoes')) && (
           <div className="mb-2 animate-in fade-in slide-in-from-left-2 duration-500 delay-250">
             <div className="px-2 text-[10px] font-semibold uppercase text-gray-400 tracking-wide">Sistema</div>
             <div className="mt-1 space-y-0.5">
@@ -486,6 +486,9 @@ export default function AppShell({ children }: AppShellProps) {
               )}
               {hasAccess('diagnostico') && (
                 <Link href="/diagnostico" className={`flex items-center gap-2 px-2 py-1.5 rounded-md text-sm font-medium transition-all duration-200 hover:translate-x-1 ${pathname?.startsWith('/diagnostico') ? 'bg-primary-50 text-primary-700 shadow-sm' : 'text-gray-600 hover:bg-gray-100'}`}><i className="fas fa-stethoscope w-4 text-sm text-gray-400" aria-hidden="true" /> <span>Diagnóstico</span></Link>
+              )}
+              {hasAccess('configuracoes') && (
+                <Link href="/configuracoes" className={`flex items-center gap-2 px-2 py-1.5 rounded-md text-sm font-medium transition-all duration-200 hover:translate-x-1 ${pathname?.startsWith('/configuracoes') ? 'bg-primary-50 text-primary-700 shadow-sm' : 'text-gray-600 hover:bg-gray-100'}`}><i className="fas fa-cog w-4 text-sm text-gray-400" aria-hidden="true" /> <span>Configurações</span></Link>
               )}
             </div>
           </div>
