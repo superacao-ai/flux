@@ -686,8 +686,8 @@ export default function AlunosPage() {
       const res = await fetch(`/api/reagendamentos/${reagendamentoId}`, { method: 'DELETE' });
       const data = await res.json();
       if (data && data.success) {
-        // remove marcação de reagendamento das faltas locais
-        setFaltasAlunoSelecionado(prev => prev.map(f => (f.reagendamentoId === reagendamentoId ? { ...f, reagendadoPara: null, reagendamentoId: null, reagendamentoStatus: null } : f)));
+        // recarregar dados para atualizar estado
+        await fetchAlunos();
         toast.success('Reagendamento cancelado com sucesso');
       } else {
         toast.error('Erro ao cancelar reagendamento: ' + (data && (data.error || data.message) ? (data.error || data.message) : 'erro'));
