@@ -102,66 +102,60 @@ export default function InstallAppPrompt() {
   }
 
   return (
-    <div className="fixed inset-0 z-[9999] bg-gradient-to-br from-primary-600 via-primary-700 to-primary-900 flex flex-col items-center justify-center p-6">
+    <div className="fixed inset-0 z-[9999] bg-gradient-to-br from-primary-600 via-primary-700 to-primary-900 flex flex-col items-center justify-center p-4 overflow-y-auto">
       {/* Logo e Branding */}
-      <div className="text-center mb-10">
-        <div className="w-16 h-16 flex items-center justify-center mx-auto mb-4">
+      <div className="text-center mb-4 flex-shrink-0">
+        <div className="w-12 h-12 flex items-center justify-center mx-auto mb-2">
           <img src="/s.png" alt="Logo Superação" className="w-full h-full object-contain drop-shadow-lg" />
         </div>
-        <h1 className="text-2xl font-bold text-white tracking-tight">Studio Superação</h1>
+        <h1 className="text-xl font-bold text-white tracking-tight">Studio Superação</h1>
       </div>
 
       {/* Benefícios */}
-      <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 mb-8 max-w-sm w-full">
-        <h2 className="text-white font-semibold text-lg mb-4 text-center">
+      <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 mb-4 max-w-xs w-full flex-shrink-0">
+        <h2 className="text-white font-semibold text-sm mb-3 text-center">
           Instale o app para uma experiência melhor
         </h2>
-        <ul className="space-y-3">
-          <li className="flex items-center gap-3 text-white/90">
-            <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center flex-shrink-0">
-              <i className="fas fa-bolt text-yellow-300 text-sm"></i>
+        <ul className="space-y-2">
+          <li className="flex items-center gap-2 text-white/90">
+            <div className="w-6 h-6 bg-white/20 rounded-full flex items-center justify-center flex-shrink-0">
+              <i className="fas fa-bolt text-yellow-300 text-xs"></i>
             </div>
-            <span className="text-sm">Acesso rápido direto da tela inicial</span>
+            <span className="text-xs">Acesso rápido da tela inicial</span>
           </li>
-          <li className="flex items-center gap-3 text-white/90">
-            <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center flex-shrink-0">
-              <i className="fas fa-bell text-yellow-300 text-sm"></i>
+          <li className="flex items-center gap-2 text-white/90">
+            <div className="w-6 h-6 bg-white/20 rounded-full flex items-center justify-center flex-shrink-0">
+              <i className="fas fa-bell text-yellow-300 text-xs"></i>
             </div>
-            <span className="text-sm">Receba notificações de suas aulas</span>
+            <span className="text-xs">Notificações de aulas</span>
           </li>
-          <li className="flex items-center gap-3 text-white/90">
-            <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center flex-shrink-0">
-              <i className="fas fa-expand text-yellow-300 text-sm"></i>
+          <li className="flex items-center gap-2 text-white/90">
+            <div className="w-6 h-6 bg-white/20 rounded-full flex items-center justify-center flex-shrink-0">
+              <i className="fas fa-expand text-yellow-300 text-xs"></i>
             </div>
-            <span className="text-sm">Tela cheia sem barra do navegador</span>
-          </li>
-          <li className="flex items-center gap-3 text-white/90">
-            <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center flex-shrink-0">
-              <i className="fas fa-wifi text-yellow-300 text-sm"></i>
-            </div>
-            <span className="text-sm">Funciona mesmo offline</span>
+            <span className="text-xs">Tela cheia sem barra do navegador</span>
           </li>
         </ul>
       </div>
 
       {/* Botão de instalação */}
       {isIOS ? (
-        <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl mb-6">
-          <h3 className="font-semibold text-gray-900 mb-4 text-center">
+        <div className="bg-white rounded-xl p-4 max-w-xs w-full shadow-2xl mb-3 flex-shrink-0">
+          <h3 className="font-semibold text-gray-900 mb-3 text-center text-sm">
             Como instalar no iPhone/iPad:
           </h3>
-          <ol className="space-y-3 text-sm text-gray-600">
-            <li className="flex items-start gap-3">
-              <span className="w-6 h-6 bg-primary-100 text-primary-700 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-xs">1</span>
-              <span>Toque no botão <i className="fas fa-share-from-square text-blue-500"></i> compartilhar na barra inferior</span>
+          <ol className="space-y-2 text-xs text-gray-600">
+            <li className="flex items-start gap-2">
+              <span className="w-5 h-5 bg-primary-100 text-primary-700 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-[10px]">1</span>
+              <span>Toque em <i className="fas fa-share-from-square text-blue-500"></i> compartilhar</span>
             </li>
-            <li className="flex items-start gap-3">
-              <span className="w-6 h-6 bg-primary-100 text-primary-700 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-xs">2</span>
-              <span>Role e toque em <strong>&quot;Adicionar à Tela de Início&quot;</strong></span>
+            <li className="flex items-start gap-2">
+              <span className="w-5 h-5 bg-primary-100 text-primary-700 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-[10px]">2</span>
+              <span>Toque em <strong>&quot;Adicionar à Tela de Início&quot;</strong></span>
             </li>
-            <li className="flex items-start gap-3">
-              <span className="w-6 h-6 bg-primary-100 text-primary-700 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-xs">3</span>
-              <span>Toque em <strong>&quot;Adicionar&quot;</strong> no canto superior direito</span>
+            <li className="flex items-start gap-2">
+              <span className="w-5 h-5 bg-primary-100 text-primary-700 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-[10px]">3</span>
+              <span>Toque em <strong>&quot;Adicionar&quot;</strong></span>
             </li>
           </ol>
           <button
@@ -169,16 +163,16 @@ export default function InstallAppPrompt() {
               localStorage.setItem('appInstalled', 'true');
               setShowPrompt(false);
             }}
-            className="w-full mt-4 py-3 bg-primary-600 text-white rounded-xl font-semibold hover:bg-primary-700 transition"
+            className="w-full mt-3 py-2.5 bg-primary-600 text-white rounded-lg font-semibold hover:bg-primary-700 transition text-sm"
           >
             <i className="fas fa-check mr-2"></i>
-            Entendi, vou instalar!
+            Entendi!
           </button>
         </div>
       ) : (
         <button
           onClick={handleInstall}
-          className="w-full max-w-sm py-4 bg-white text-primary-700 rounded-2xl font-bold text-lg shadow-2xl hover:bg-gray-50 transition flex items-center justify-center gap-3 mb-6"
+          className="w-full max-w-xs py-3 bg-white text-primary-700 rounded-xl font-bold text-base shadow-2xl hover:bg-gray-50 transition flex items-center justify-center gap-2 mb-3 flex-shrink-0"
         >
           <i className="fas fa-download"></i>
           Instalar Aplicativo
@@ -188,7 +182,7 @@ export default function InstallAppPrompt() {
       {/* Link discreto para continuar no navegador */}
       <button
         onClick={handleDismiss}
-        className="text-white/40 text-xs hover:text-white/60 transition underline"
+        className="text-white/50 text-xs hover:text-white/70 transition underline flex-shrink-0"
       >
         continuar no navegador
       </button>

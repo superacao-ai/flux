@@ -225,7 +225,8 @@ export default function AlunoLoginPage() {
                     required
                     value={dataNascimento}
                     onChange={e => setDataNascimento(e.target.value)}
-                    className="block w-full pl-9 pr-3 py-3 text-base border border-gray-200 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all"
+                    className="block w-full max-w-full pl-9 pr-3 py-3 text-base border border-gray-200 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all appearance-none [&::-webkit-calendar-picker-indicator]:opacity-100 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
+                    style={{ minWidth: 0 }}
                   />
                 </div>
               </div>
