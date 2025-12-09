@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import AulaRealizada from '@/models/AulaRealizada';
 import { Reagendamento } from '@/models/Reagendamento';
+import Feriado from '@/models/Feriado';
+import { getFeriadosNacionais } from '@/lib/feriados';
 import mongoose from 'mongoose';
 
 // GET /api/alunos/[id]/faltas - Buscar faltas de um aluno com status de reposição
@@ -19,6 +21,22 @@ export async function GET(
         { success: false, error: 'ID do aluno inválido' },
         { status: 400 }
       );
+    }
+
+    // Buscar feriados para exclusão
+    const feriadosPersonalizados = await Feriado.find({}).lean();
+    const anoAtual = new Date().getFullYear();
+    const feriadosNacionais = getFeriadosNacionais(anoAtual);
+    
+    // Criar set de datas de feriados (formato YYYY-MM-DD)
+    const feriadosSet = new Set<string>();
+    for (const f of feriadosPersonalizados) {
+      const d = new Date(f.data);
+      feriadosSet.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+    }
+    for (const f of feriadosNacionais) {
+      const d = new Date(f.data);
+      feriadosSet.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
     }
 
     const alunoObjectId = new mongoose.Types.ObjectId(alunoId);
@@ -56,7 +74,14 @@ export async function GET(
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
 
-    const faltas = aulasComFalta.map((aula: any) => {
+    const faltas = aulasComFalta
+      .filter((aula: any) => {
+        // Excluir faltas em feriados
+        const dataFalta = new Date(aula.data);
+        const dataKey = `${dataFalta.getFullYear()}-${String(dataFalta.getMonth() + 1).padStart(2, '0')}-${String(dataFalta.getDate()).padStart(2, '0')}`;
+        return !feriadosSet.has(dataKey);
+      })
+      .map((aula: any) => {
       const dataFalta = new Date(aula.data);
       dataFalta.setHours(0, 0, 0, 0);
       

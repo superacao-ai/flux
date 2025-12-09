@@ -23,12 +23,18 @@ export async function GET(request: NextRequest) {
       .select('-__v')
       .lean();
     
-    console.log('[API Modalidades] Total encontradas:', modalidades.length);
-    if (modalidades.length > 0) {
-      console.log('[API Modalidades] Primeira modalidade:', JSON.stringify(modalidades[0]));
+    // Converter ObjectIds de modalidadesVinculadas para strings
+    const modalidadesNormalized = modalidades.map((m: any) => ({
+      ...m,
+      modalidadesVinculadas: (m.modalidadesVinculadas || []).map((id: any) => id.toString())
+    }));
+    
+    console.log('[API Modalidades] Total encontradas:', modalidadesNormalized.length);
+    if (modalidadesNormalized.length > 0) {
+      console.log('[API Modalidades] Primeira modalidade:', JSON.stringify(modalidadesNormalized[0]));
     }
     
-    return NextResponse.json({ success: true, data: modalidades });
+    return NextResponse.json({ success: true, data: modalidadesNormalized });
   } catch (error) {
     console.error('Erro ao buscar modalidades:', error);
     return NextResponse.json(
@@ -81,7 +87,7 @@ export async function POST(request: NextRequest) {
 
   // Se não for ação específica, tratar como criação de nova modalidade
   try {
-    const { nome, descricao, cor, duracao, limiteAlunos, diasSemana, horarioFuncionamento, horariosDisponiveis } = body;
+    const { nome, descricao, cor, duracao, limiteAlunos, diasSemana, horarioFuncionamento, horariosDisponiveis, linkWhatsapp, modalidadesVinculadas } = body;
 
     if (!nome || typeof nome !== 'string') {
       return NextResponse.json({ success: false, error: 'Nome é obrigatório' }, { status: 400 });
@@ -107,6 +113,8 @@ export async function POST(request: NextRequest) {
       limiteAlunos: limiteAlunos || 5,
       diasSemana: diasSemana || [],
       horarioFuncionamento: hf,
+      linkWhatsapp: linkWhatsapp?.trim() || '',
+      modalidadesVinculadas: Array.isArray(modalidadesVinculadas) ? modalidadesVinculadas : [],
       ativo: true
     };
 
@@ -118,6 +126,14 @@ export async function POST(request: NextRequest) {
     let created;
     try {
       created = await Modalidade.create(createObj);
+      
+      // Sincronização bidirecional: adicionar esta modalidade às modalidades vinculadas
+      if (Array.isArray(modalidadesVinculadas) && modalidadesVinculadas.length > 0) {
+        await Modalidade.updateMany(
+          { _id: { $in: modalidadesVinculadas } },
+          { $addToSet: { modalidadesVinculadas: created._id } }
+        );
+      }
     } catch (createErr: any) {
       // Handle duplicate key error more gracefully
       if (createErr && createErr.code === 11000) {

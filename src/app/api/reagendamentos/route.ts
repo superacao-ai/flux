@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import { Reagendamento } from '@/models/Reagendamento';
+import { HorarioFixo } from '@/models/HorarioFixo';
+import { Modalidade } from '@/models/Modalidade';
 import { User } from '@/models/User';
 import fs from 'fs';
 import path from 'path';
@@ -129,6 +131,49 @@ export async function POST(request: NextRequest) {
     } catch (logErr:any) {
       console.warn('Failed to write debug log for POST /api/reagendamentos', String(logErr?.message || logErr));
     }
+
+    // ========== VERIFICAÇÃO DE CONFLITO ENTRE MODALIDADES VINCULADAS ==========
+    // Buscar o horário destino para verificar conflitos de modalidades vinculadas
+    if (novoHorarioFixoId) {
+      try {
+        const novoHorario = await HorarioFixo.findById(novoHorarioFixoId);
+        
+        if (novoHorario?.modalidadeId) {
+          const modalidade = await Modalidade.findById(novoHorario.modalidadeId).lean();
+          const vinculadas = (modalidade as any)?.modalidadesVinculadas || [];
+          
+          if (vinculadas.length > 0) {
+            // Calcular o dia da semana da nova data
+            const novaDataObj = new Date(novaData);
+            const diaSemanaNovaData = novaDataObj.getDay();
+            
+            // Buscar aulas nas modalidades vinculadas no mesmo dia e horário
+            const conflitoVinculada = await HorarioFixo.findOne({
+              modalidadeId: { $in: vinculadas },
+              diaSemana: diaSemanaNovaData,
+              ativo: true,
+              $or: [
+                { horarioInicio: { $lt: novoHorarioFim }, horarioFim: { $gt: novoHorarioInicio } }
+              ]
+            }).populate('modalidadeId', 'nome');
+            
+            if (conflitoVinculada) {
+              const nomeModalidadeConflito = (conflitoVinculada.modalidadeId as any)?.nome || 'outra modalidade';
+              return NextResponse.json(
+                {
+                  success: false,
+                  error: `Conflito de espaço: já existe aula de "${nomeModalidadeConflito}" neste horário. As modalidades compartilham o mesmo espaço físico.`
+                },
+                { status: 400 }
+              );
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Erro ao verificar conflito de modalidades vinculadas:', err);
+      }
+    }
+    // ========== FIM VERIFICAÇÃO DE CONFLITO ==========
 
     // Criar reagendamento
     const novoReagendamentoData: any = {

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Logo from '@/components/Logo';
 import Link from 'next/link';
+import InstallAppPrompt from '@/components/InstallAppPrompt';
 
 export default function AlunoLoginPage() {
   const [cpf, setCpf] = useState('');
@@ -92,7 +93,11 @@ export default function AlunoLoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex overflow-x-hidden">
+    <>
+      {/* Prompt de instalação do app - aparece antes do login */}
+      <InstallAppPrompt />
+      
+      <div className="min-h-screen flex overflow-x-hidden">
       {/* Lado esquerdo - Hero com informações */}
       <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-primary-600 via-primary-700 to-primary-900 relative overflow-hidden">
         {/* Elementos decorativos de fundo */}
@@ -352,5 +357,6 @@ export default function AlunoLoginPage() {
         </div>
       )}
     </div>
+    </>
   );
 }

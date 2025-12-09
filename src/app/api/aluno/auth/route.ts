@@ -93,7 +93,7 @@ export async function POST(req: NextRequest) {
     const aluno = await Aluno.findOne({ 
       cpf: cpfLimpo,
       ativo: true 
-    }).populate('modalidadeId', 'nome cor');
+    }).populate('modalidadeId', 'nome cor linkWhatsapp');
     
     console.log('[API Aluno Auth] Aluno encontrado:', aluno ? { id: aluno._id, nome: aluno.nome, cpf: aluno.cpf, dataNascimento: aluno.dataNascimento } : null);
     
@@ -166,7 +166,8 @@ export async function POST(req: NextRequest) {
         modalidade: aluno.modalidadeId ? {
           _id: (aluno.modalidadeId as any)._id,
           nome: (aluno.modalidadeId as any).nome,
-          cor: (aluno.modalidadeId as any).cor
+          cor: (aluno.modalidadeId as any).cor,
+          linkWhatsapp: (aluno.modalidadeId as any).linkWhatsapp || ''
         } : null,
         congelado: aluno.congelado,
         ausente: aluno.ausente,

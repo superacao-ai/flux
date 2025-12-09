@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 export default function ProfessorSidebar() {
   const [hydrated, setHydrated] = useState(false);
   const [user, setUser] = useState<any | null>(null);
+  const [loggingOut, setLoggingOut] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -26,12 +27,27 @@ export default function ProfessorSidebar() {
   if (!user || user.tipo !== 'professor') return null;
 
   const handleLogout = () => {
-    try {
-      localStorage.removeItem('user');
-      localStorage.removeItem('token');
-    } catch (e) {}
-    router.push('/admin/login');
+    // Esconder conteúdo imediatamente para evitar flash
+    setLoggingOut(true);
+    // Redirecionar imediatamente ANTES de limpar o estado
+    router.replace('/admin/login');
+    // Limpar estado após iniciar navegação
+    setTimeout(() => {
+      try {
+        localStorage.removeItem('user');
+        localStorage.removeItem('token');
+      } catch (e) {}
+    }, 100);
   };
+
+  // Se está fazendo logout, mostra uma tela em branco
+  if (loggingOut) {
+    return (
+      <div className="flex flex-col h-full bg-gray-100 items-center justify-center">
+        <div className="text-gray-500 text-sm">Saindo...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full bg-dark-900 text-gray-100">

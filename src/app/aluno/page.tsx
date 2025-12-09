@@ -14,6 +14,7 @@ interface Aluno {
     _id: string;
     nome: string;
     cor: string;
+    linkWhatsapp?: string;
   };
   congelado?: boolean;
   ausente?: boolean;
@@ -33,6 +34,7 @@ interface Horario {
   professorId?: {
     _id: string;
     nome: string;
+    telefone?: string;
   };
 }
 
@@ -94,6 +96,25 @@ interface Estatisticas {
   percentualPresenca: number;
 }
 
+interface CreditoReposicao {
+  _id: string;
+  quantidade: number;
+  quantidadeUsada: number;
+  motivo: string;
+  validade: string;
+  ativo: boolean;
+  criadoEm: string;
+  usos?: {
+    _id: string;
+    dataUso: string;
+    agendamentoId?: {
+      horarioInicio: string;
+      modalidadeId?: { nome: string };
+      professorId?: { nome: string };
+    };
+  }[];
+}
+
 interface AvisoAusencia {
   _id: string;
   dataAusencia: string;
@@ -120,6 +141,37 @@ interface FaltaReposicao {
   modalidade?: { _id: string; nome: string; cor: string };
   temDireitoReposicao: boolean;
   motivo?: string;
+}
+
+interface AlteracaoHorario {
+  _id: string;
+  horarioAtualId: {
+    _id: string;
+    diaSemana: number;
+    horarioInicio: string;
+    horarioFim: string;
+    modalidadeId?: { _id: string; nome: string; cor: string };
+    professorId?: { _id: string; nome: string };
+  };
+  novoHorarioId: {
+    _id: string;
+    diaSemana: number;
+    horarioInicio: string;
+    horarioFim: string;
+    modalidadeId?: { _id: string; nome: string; cor: string };
+    professorId?: { _id: string; nome: string };
+  };
+  motivo?: string;
+  motivoRejeicao?: string;
+  status: 'pendente' | 'aprovado' | 'rejeitado';
+  criadoEm: string;
+}
+
+// Interface para feriado/sem expediente
+interface FeriadoInfo {
+  data: string;
+  nome: string;
+  tipo: 'nacional' | 'municipal' | 'personalizado';
 }
 
 const diasSemana = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
@@ -157,12 +209,17 @@ export default function AlunoAreaPage() {
   const [showHistoricoModal, setShowHistoricoModal] = useState(false);
   const [showAvisarAusenciaModal, setShowAvisarAusenciaModal] = useState(false);
   const [showReposicaoModal, setShowReposicaoModal] = useState(false);
+  const [showAlteracaoHorarioModal, setShowAlteracaoHorarioModal] = useState(false);
+  
+  // Estados de créditos
+  const [creditos, setCreditos] = useState<CreditoReposicao[]>([]);
   
   // Estados de ausência e reposição
   const [avisosAusencia, setAvisosAusencia] = useState<AvisoAusencia[]>([]);
   const [faltasComDireito, setFaltasComDireito] = useState<FaltaReposicao[]>([]);
   const [faltasSemDireito, setFaltasSemDireito] = useState<FaltaReposicao[]>([]);
   const [reposicoesDisponiveis, setReposicoesDisponiveis] = useState(0);
+  const [alteracoesHorario, setAlteracoesHorario] = useState<AlteracaoHorario[]>([]);
   
   // Estados do modal de avisar ausência
   const [ausenciaHorarioId, setAusenciaHorarioId] = useState('');
@@ -175,6 +232,12 @@ export default function AlunoAreaPage() {
   const [reposicaoNovaData, setReposicaoNovaData] = useState('');
   const [reposicaoNovoHorarioId, setReposicaoNovoHorarioId] = useState('');
   const [enviandoReposicao, setEnviandoReposicao] = useState(false);
+  
+  // Estados do modal de alteração de horário fixo
+  const [horarioParaAlterar, setHorarioParaAlterar] = useState<Horario | null>(null);
+  const [novoHorarioFixoId, setNovoHorarioFixoId] = useState('');
+  const [motivoAlteracao, setMotivoAlteracao] = useState('');
+  const [enviandoAlteracao, setEnviandoAlteracao] = useState(false);
   
   // Estados do modal de reagendamento
   const [horarioSelecionado, setHorarioSelecionado] = useState<Horario | null>(null);
@@ -189,7 +252,7 @@ export default function AlunoAreaPage() {
   const [salvandoPerfil, setSalvandoPerfil] = useState(false);
   
   const [adminContact, setAdminContact] = useState<{ whatsapp: string; nome: string } | null>(null);
-  const [abaAtiva, setAbaAtiva] = useState<'hoje' | 'calendario' | 'faltas' | 'reagendamentos'>('hoje');
+  const [abaAtiva, setAbaAtiva] = useState<'hoje' | 'calendario' | 'horarios' | 'faltas' | 'reagendamentos' | 'creditos'>('hoje');
   const router = useRouter();
   
   // Estados do calendário visual
@@ -201,6 +264,34 @@ export default function AlunoAreaPage() {
   const [destinoAno, setDestinoAno] = useState(() => new Date().getFullYear());
   const [horarioDestino, setHorarioDestino] = useState<AulaCalendario | null>(null);
   const [motivoTroca, setMotivoTroca] = useState('');
+  
+  // Estados do calendário de presença
+  const [presencaCalMes, setPresencaCalMes] = useState(() => new Date().getMonth());
+  const [presencaCalAno, setPresencaCalAno] = useState(() => new Date().getFullYear());
+  const [feriados, setFeriados] = useState<FeriadoInfo[]>([]);
+  
+  // Estado para banner do grupo WhatsApp
+  const [jaEntrouGrupo, setJaEntrouGrupo] = useState(false);
+  const [showConfirmGrupo, setShowConfirmGrupo] = useState(false);
+  
+  // Carregar estado de "já entrou no grupo" do localStorage
+  useEffect(() => {
+    const grupoKey = aluno?.modalidade?._id ? `jaEntrouGrupo_${aluno.modalidade._id}` : null;
+    if (grupoKey) {
+      const saved = localStorage.getItem(grupoKey);
+      if (saved === 'true') {
+        setJaEntrouGrupo(true);
+      }
+    }
+  }, [aluno?.modalidade?._id]);
+  
+  const handleConfirmJaEntreiGrupo = () => {
+    if (aluno?.modalidade?._id) {
+      localStorage.setItem(`jaEntrouGrupo_${aluno.modalidade._id}`, 'true');
+      setJaEntrouGrupo(true);
+      setShowConfirmGrupo(false);
+    }
+  };
 
   // Carregar dados do aluno do localStorage
   useEffect(() => {
@@ -228,6 +319,34 @@ export default function AlunoAreaPage() {
       .catch(() => {});
   }, []);
 
+  // Buscar feriados/sem expediente para o calendário de presenças
+  useEffect(() => {
+    const fetchFeriados = async () => {
+      try {
+        // Buscar feriados do banco de dados (sem expediente personalizados)
+        const inicioAno = `${presencaCalAno}-01-01`;
+        const fimAno = `${presencaCalAno}-12-31`;
+        const res = await fetch(`/api/feriados?inicio=${inicioAno}&fim=${fimAno}`);
+        
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success && Array.isArray(json.data)) {
+            const feriadosPersonalizados: FeriadoInfo[] = json.data.map((f: any) => ({
+              data: new Date(f.data).toISOString().split('T')[0],
+              nome: f.motivo || 'Sem Expediente',
+              tipo: 'personalizado' as const
+            }));
+            setFeriados(feriadosPersonalizados);
+          }
+        }
+      } catch (err) {
+        console.error('Erro ao buscar feriados:', err);
+      }
+    };
+    
+    fetchFeriados();
+  }, [presencaCalAno]);
+
   // Buscar todos os dados
   const fetchDados = useCallback(async () => {
     if (!aluno?._id) return;
@@ -248,8 +367,8 @@ export default function AlunoAreaPage() {
         setReagendamentos(data.reagendamentos || []);
       }
 
-      // Buscar horários disponíveis
-      const dispRes = await fetch(`/api/aluno/horarios-disponiveis`);
+      // Buscar horários disponíveis (todos, para alteração de horário fixo)
+      const dispRes = await fetch(`/api/aluno/horarios-disponiveis?todos=true`);
       if (dispRes.ok) {
         const data = await dispRes.json();
         setHorariosDisponiveis(data.horarios || []);
@@ -257,18 +376,14 @@ export default function AlunoAreaPage() {
 
       // Buscar avisos
       const avisosRes = await fetch(`/api/aluno/avisos`);
-      console.log('[Aluno Page] Resposta avisos:', avisosRes.status);
       if (avisosRes.ok) {
         const data = await avisosRes.json();
-        console.log('[Aluno Page] Avisos recebidos:', data);
         setAvisos(data.avisos || []);
         setTemCancelamentoHoje(data.temCancelamentoHoje || false);
-      } else {
-        console.log('[Aluno Page] Erro ao buscar avisos:', await avisosRes.text());
       }
 
-      // Buscar histórico de presenças
-      const presencasRes = await fetch(`/api/aluno/presencas?limite=30`);
+      // Buscar histórico de presenças (limite maior para calendário)
+      const presencasRes = await fetch(`/api/aluno/presencas?limite=100`);
       if (presencasRes.ok) {
         const data = await presencasRes.json();
         setPresencas(data.historico || []);
@@ -291,6 +406,20 @@ export default function AlunoAreaPage() {
         setReposicoesDisponiveis(data.totalReposicoesDisponiveis || 0);
       }
 
+      // Buscar créditos de reposição do aluno
+      const creditosRes = await fetch(`/api/aluno/creditos`);
+      if (creditosRes.ok) {
+        const data = await creditosRes.json();
+        setCreditos(data.creditos || []);
+      }
+
+      // Buscar solicitações de alteração de horário
+      const alteracoesRes = await fetch(`/api/aluno/alterar-horario`);
+      if (alteracoesRes.ok) {
+        const data = await alteracoesRes.json();
+        setAlteracoesHorario(data.solicitacoes || []);
+      }
+
     } catch (error) {
       console.error('Erro ao buscar dados:', error);
     } finally {
@@ -309,6 +438,7 @@ export default function AlunoAreaPage() {
       await fetch('/api/aluno/auth', { method: 'DELETE' });
       localStorage.removeItem('aluno');
       localStorage.removeItem('alunoToken');
+      localStorage.removeItem('pwa-prompt-dismissed'); // Reset para mostrar prompt de instalação novamente
     } catch {
       // ignorar
     }
@@ -559,6 +689,111 @@ export default function AlunoAreaPage() {
     }
   };
 
+  // Abrir modal de alteração de horário fixo
+  const abrirModalAlteracaoHorario = (horario: Horario) => {
+    setHorarioParaAlterar(horario);
+    setNovoHorarioFixoId('');
+    setMotivoAlteracao('');
+    setShowAlteracaoHorarioModal(true);
+  };
+
+  // Enviar solicitação de alteração de horário fixo
+  const enviarAlteracaoHorario = async () => {
+    if (!horarioParaAlterar || !novoHorarioFixoId) {
+      alert('Selecione o novo horário');
+      return;
+    }
+
+    setEnviandoAlteracao(true);
+    try {
+      const res = await fetch('/api/aluno/alterar-horario', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          horarioAtualId: horarioParaAlterar._id,
+          novoHorarioId: novoHorarioFixoId,
+          motivo: motivoAlteracao || 'Solicitação de alteração de horário fixo'
+        })
+      });
+
+      const data = await res.json();
+      
+      if (res.ok) {
+        alert(data.message);
+        setShowAlteracaoHorarioModal(false);
+        fetchDados();
+      } else {
+        alert(data.error || 'Erro ao solicitar alteração');
+      }
+    } catch {
+      alert('Erro ao enviar solicitação');
+    } finally {
+      setEnviandoAlteracao(false);
+    }
+  };
+
+  // Cancelar solicitação de alteração de horário
+  const cancelarAlteracaoHorario = async (solicitacaoId: string) => {
+    if (!confirm('Deseja cancelar esta solicitação?')) return;
+    
+    try {
+      const res = await fetch(`/api/aluno/alterar-horario?id=${solicitacaoId}`, {
+        method: 'DELETE'
+      });
+
+      const data = await res.json();
+      
+      if (res.ok) {
+        alert(data.message);
+        fetchDados();
+      } else {
+        alert(data.error || 'Erro ao cancelar');
+      }
+    } catch {
+      alert('Erro ao cancelar solicitação');
+    }
+  };
+
+  // Horários disponíveis da mesma modalidade para alteração
+  const horariosParaAlteracao = useMemo(() => {
+    if (!horarioParaAlterar) return [];
+    
+    // Suporta tanto _id quanto id (a API pode retornar ambos)
+    const modalidadeObj = horarioParaAlterar.modalidadeId;
+    const modalidadeAtualId = (modalidadeObj?._id || (modalidadeObj as any)?.id)?.toString();
+    
+    if (!modalidadeAtualId) {
+      console.log('[Alteração Horário] Modalidade atual não encontrada:', modalidadeObj);
+      return [];
+    }
+    
+    // Filtrar horários da mesma modalidade (exceto o atual) e com vaga
+    const resultado = horariosDisponiveis.filter(h => {
+      // Suporta tanto _id quanto id
+      const modalidadeIdDisp = (h.modalidade?._id || (h.modalidade as any)?.id)?.toString();
+      const horarioIdAtual = horarioParaAlterar._id?.toString();
+      const horarioIdDisp = h._id?.toString();
+      
+      const modalidadeMatch = modalidadeIdDisp === modalidadeAtualId;
+      const naoEhAtual = horarioIdDisp !== horarioIdAtual;
+      const temVagaOk = h.temVaga === true;
+      
+      return modalidadeMatch && naoEhAtual && temVagaOk;
+    });
+    
+    // Ordenar por dia da semana e depois por horário
+    resultado.sort((a, b) => {
+      // Primeiro por dia da semana (1=segunda, 2=terça, ..., 0=domingo no final)
+      const diaA = a.diaSemana === 0 ? 7 : a.diaSemana;
+      const diaB = b.diaSemana === 0 ? 7 : b.diaSemana;
+      if (diaA !== diaB) return diaA - diaB;
+      // Depois por horário
+      return a.horarioInicio.localeCompare(b.horarioInicio);
+    });
+    
+    return resultado;
+  }, [horarioParaAlterar, horariosDisponiveis]);
+
   // Filtrar horários disponíveis pelo dia da semana da data selecionada E mesma modalidade da falta
   const horariosParaReposicao = useMemo(() => {
     if (!reposicaoNovaData) return [];
@@ -615,6 +850,92 @@ export default function AlunoAreaPage() {
       month: 'long' 
     });
   };
+
+  // Calendário de presença - dados do mês
+  const calendarioPresenca = useMemo(() => {
+    const primeiroDia = new Date(presencaCalAno, presencaCalMes, 1);
+    const ultimoDia = new Date(presencaCalAno, presencaCalMes + 1, 0);
+    const diasNoMes = ultimoDia.getDate();
+    const primeiroDiaSemana = primeiroDia.getDay();
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    
+    // Mapear presenças por data
+    const presencasPorData: Record<string, { presente: boolean | null; count: number; reposicao: boolean }> = {};
+    presencas.forEach(p => {
+      const dataKey = p.data.split('T')[0];
+      if (!presencasPorData[dataKey]) {
+        presencasPorData[dataKey] = { presente: p.presente, count: 1, reposicao: p.eraReagendamento };
+      } else {
+        presencasPorData[dataKey].count++;
+        // Se tiver mais de uma aula no dia, prioriza falta
+        if (p.presente === false) {
+          presencasPorData[dataKey].presente = false;
+        }
+      }
+    });
+
+    // Mapear feriados por data
+    const feriadosPorData: Record<string, string> = {};
+    feriados.forEach(f => {
+      feriadosPorData[f.data] = f.nome;
+    });
+
+    // Verificar quais dias da semana o aluno tem aula
+    const diasSemanaComAula = new Set(horarios.map(h => h.diaSemana));
+    
+    const dias: { 
+      data: Date; 
+      diaDoMes: number; 
+      mesAtual: boolean;
+      presenca?: { presente: boolean | null; count: number; reposicao: boolean };
+      temAulaFutura?: boolean;
+      feriado?: string;
+    }[] = [];
+    
+    // Dias do mês anterior
+    for (let i = primeiroDiaSemana - 1; i >= 0; i--) {
+      const data = new Date(presencaCalAno, presencaCalMes, -i);
+      dias.push({ data, diaDoMes: data.getDate(), mesAtual: false });
+    }
+    
+    // Dias do mês atual
+    for (let d = 1; d <= diasNoMes; d++) {
+      const data = new Date(presencaCalAno, presencaCalMes, d);
+      data.setHours(0, 0, 0, 0);
+      const dataKey = data.toISOString().split('T')[0];
+      const diaSemana = data.getDay();
+      const isFuturo = data >= hoje;
+      
+      dias.push({ 
+        data, 
+        diaDoMes: d, 
+        mesAtual: true,
+        presenca: presencasPorData[dataKey],
+        temAulaFutura: isFuturo && diasSemanaComAula.has(diaSemana),
+        feriado: feriadosPorData[dataKey]
+      });
+    }
+    
+    // Preencher até completar 6 semanas
+    const diasFaltando = 42 - dias.length;
+    for (let i = 1; i <= diasFaltando; i++) {
+      const data = new Date(presencaCalAno, presencaCalMes + 1, i);
+      dias.push({ data, diaDoMes: i, mesAtual: false });
+    }
+    
+    return dias;
+  }, [presencaCalAno, presencaCalMes, presencas, horarios, feriados]);
+
+  // Estatísticas do mês do calendário de presença
+  const estatisticasMes = useMemo(() => {
+    const mesStr = `${presencaCalAno}-${String(presencaCalMes + 1).padStart(2, '0')}`;
+    const presencasMes = presencas.filter(p => p.data.startsWith(mesStr));
+    const presentes = presencasMes.filter(p => p.presente === true).length;
+    const faltas = presencasMes.filter(p => p.presente === false).length;
+    const reposicoes = presencasMes.filter(p => p.eraReagendamento).length;
+    return { total: presencasMes.length, presentes, faltas, reposicoes };
+  }, [presencaCalAno, presencaCalMes, presencas]);
 
   // Gerar dias do calendário do mês
   const diasCalendario = useMemo(() => {
@@ -736,16 +1057,63 @@ export default function AlunoAreaPage() {
     });
   }, [horariosDisponiveis, aulaSelecionada]);
 
+  // Verificar se a aula pode ser reagendada (mínimo 15 minutos de antecedência)
+  const podeReagendarAula = useCallback((aula: AulaCalendario): { pode: boolean; motivo?: string } => {
+    const agora = new Date();
+    const [horaAula, minutoAula] = aula.horarioInicio.split(':').map(Number);
+    const dataAula = new Date(aula.dataStr + 'T00:00:00');
+    dataAula.setHours(horaAula, minutoAula, 0, 0);
+    
+    // Calcular diferença em minutos
+    const diffMs = dataAula.getTime() - agora.getTime();
+    const diffMinutos = Math.floor(diffMs / (1000 * 60));
+    
+    if (diffMinutos < 15) {
+      return { 
+        pode: false, 
+        motivo: diffMinutos < 0 
+          ? 'Esta aula já começou' 
+          : `Faltam apenas ${diffMinutos} minutos para a aula. É necessário no mínimo 15 minutos de antecedência.`
+      };
+    }
+    
+    return { pode: true };
+  }, []);
+
   // Abrir modal de troca de aula
   const iniciarTrocaAula = (aula: AulaCalendario) => {
+    // Verificar antecedência mínima de 15 minutos
+    const { pode, motivo } = podeReagendarAula(aula);
+    if (!pode) {
+      alert(motivo);
+      return;
+    }
+    
     setAulaSelecionada(aula);
     setEtapaReagendamento('selecionar');
     setHorarioDestino(null);
     setMotivoTroca('');
   };
 
+  // Verificar se uma data é válida para destino (não pode ser o mesmo dia da aula original)
+  const podeEscolherDestino = useCallback((dataDestino: Date, aulaOriginal: AulaCalendario | null): boolean => {
+    if (!aulaOriginal) return true;
+    
+    const dataOriginalStr = aulaOriginal.dataStr;
+    const dataDestinoStr = `${dataDestino.getFullYear()}-${String(dataDestino.getMonth() + 1).padStart(2, '0')}-${String(dataDestino.getDate()).padStart(2, '0')}`;
+    
+    // Não pode reagendar para o mesmo dia
+    return dataOriginalStr !== dataDestinoStr;
+  }, []);
+
   // Selecionar horário de destino
   const selecionarDestino = (data: Date, horario: HorarioDisponivel) => {
+    // Verificar se não é o mesmo dia
+    if (!podeEscolherDestino(data, aulaSelecionada)) {
+      alert('Não é possível reagendar para o mesmo dia. Escolha outro dia.');
+      return;
+    }
+    
     const dataStr = `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, '0')}-${String(data.getDate()).padStart(2, '0')}`;
     setHorarioDestino({
       _id: horario._id,
@@ -870,49 +1238,122 @@ export default function AlunoAreaPage() {
 
       {/* Conteúdo */}
       <main className="max-w-4xl mx-auto px-4 py-4">
-        {/* Card de Boas Vindas */}
-        <div className="bg-gradient-to-r from-primary-600 to-primary-700 rounded-xl p-4 text-white mb-4">
+        {/* Saudação simples */}
+        <div className="mb-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
-                <span className="text-lg font-bold">{aluno.nome.charAt(0).toUpperCase()}</span>
-              </div>
-              <div>
-                <h1 className="text-lg font-bold">Olá, {aluno.nome.split(' ')[0]}!</h1>
-                <p className="text-primary-100 text-xs">
-                  {new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
-                </p>
-              </div>
+            <div>
+              <h1 className="text-xl font-bold text-gray-800">Olá, {aluno.nome.split(' ')[0]}!</h1>
+              <p className="text-gray-500 text-sm">
+                {new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
+              </p>
             </div>
             
             {estatisticas && estatisticas.totalAulas > 0 && (
               <div className="text-right">
-                <p className="text-2xl font-bold">{estatisticas.percentualPresenca}%</p>
-                <p className="text-xs text-primary-100">frequência</p>
+                <p className="text-2xl font-bold text-primary-600">{estatisticas.percentualPresenca}%</p>
+                <p className="text-xs text-gray-500">frequência</p>
               </div>
             )}
           </div>
           
           {(aluno.congelado || aluno.ausente || aluno.emEspera) && (
-            <div className="mt-3 flex flex-wrap gap-2">
+            <div className="mt-2 flex flex-wrap gap-2">
               {aluno.congelado && (
-                <span className="px-2 py-1 bg-blue-500/30 text-white text-xs font-medium rounded-full">
+                <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded-full">
                   <i className="fas fa-snowflake mr-1"></i> Congelado
                 </span>
               )}
               {aluno.ausente && (
-                <span className="px-2 py-1 bg-red-500/30 text-white text-xs font-medium rounded-full">
+                <span className="px-2 py-1 bg-red-100 text-red-700 text-xs font-medium rounded-full">
                   <i className="fas fa-user-slash mr-1"></i> Ausente
                 </span>
               )}
               {aluno.emEspera && (
-                <span className="px-2 py-1 bg-yellow-500/30 text-white text-xs font-medium rounded-full">
+                <span className="px-2 py-1 bg-yellow-100 text-yellow-700 text-xs font-medium rounded-full">
                   <i className="fas fa-clock mr-1"></i> Em Espera
                 </span>
               )}
             </div>
           )}
         </div>
+
+        {/* Banner WhatsApp do Grupo da Modalidade */}
+        {aluno.modalidade?.linkWhatsapp && aluno.modalidade.linkWhatsapp.trim() !== '' && !jaEntrouGrupo && (
+          <div className="mb-4">
+            <div 
+              className="rounded-xl shadow-lg p-4 animate-pulse-gentle"
+              style={{ 
+                background: `linear-gradient(135deg, ${aluno.modalidade.cor || '#25D366'} 0%, ${aluno.modalidade.cor || '#25D366'}dd 100%)`,
+                animation: 'pulse-gentle 2s ease-in-out infinite'
+              }}
+            >
+              <style jsx>{`
+                @keyframes pulse-gentle {
+                  0%, 100% { box-shadow: 0 4px 15px rgba(37, 211, 102, 0.3); }
+                  50% { box-shadow: 0 4px 25px rgba(37, 211, 102, 0.6); }
+                }
+              `}</style>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="bg-white/20 rounded-full p-2.5">
+                    <i className="fab fa-whatsapp text-white text-xl"></i>
+                  </div>
+                  <div>
+                    <h3 className="text-white font-bold">Grupo {aluno.modalidade.nome}</h3>
+                    <p className="text-white/80 text-xs">Entre para avisos e comunicados</p>
+                  </div>
+                </div>
+                <a 
+                  href={aluno.modalidade.linkWhatsapp}
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 bg-white/20 hover:bg-white/30 rounded-lg px-4 py-2 transition-colors"
+                >
+                  <span className="text-white font-semibold text-sm">Entrar no Grupo</span>
+                  <i className="fas fa-arrow-right text-white text-xs"></i>
+                </a>
+              </div>
+              <button
+                onClick={() => setShowConfirmGrupo(true)}
+                className="w-full mt-3 text-center text-sm text-white/70 hover:text-white py-1 transition-colors border-t border-white/20 pt-3"
+              >
+                <i className="fas fa-check-circle mr-1"></i>
+                Já entrei no grupo
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de confirmação - Já entrei no grupo */}
+        {showConfirmGrupo && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl p-6 max-w-sm w-full shadow-2xl">
+              <div className="text-center mb-4">
+                <div className="bg-green-100 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-3">
+                  <i className="fab fa-whatsapp text-green-600 text-3xl"></i>
+                </div>
+                <h3 className="text-lg font-bold text-gray-800">Confirmar entrada no grupo</h3>
+                <p className="text-gray-600 text-sm mt-2">
+                  Você realmente já entrou no grupo do WhatsApp? Este aviso não aparecerá novamente.
+                </p>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowConfirmGrupo(false)}
+                  className="flex-1 py-2.5 px-4 rounded-lg border border-gray-300 text-gray-700 font-medium hover:bg-gray-50 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleConfirmJaEntreiGrupo}
+                  className="flex-1 py-2.5 px-4 rounded-lg bg-green-600 text-white font-medium hover:bg-green-700 transition-colors"
+                >
+                  Sim, já entrei
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Avisos importantes */}
         {avisos.length > 0 && (
@@ -1004,33 +1445,55 @@ export default function AlunoAreaPage() {
             <div className="flex gap-1 mb-4 bg-gray-100 p-1 rounded-lg overflow-x-auto">
               <button
                 onClick={() => setAbaAtiva('hoje')}
-                className={`flex-1 min-w-0 px-2 py-2 text-xs font-medium rounded-md transition-colors ${
+                className={`flex-1 min-w-0 px-2 py-2 text-xs font-medium rounded-md transition-colors flex flex-col items-center ${
                   abaAtiva === 'hoje' 
                     ? 'bg-white text-primary-600 shadow-sm' 
                     : 'text-gray-600 hover:text-gray-900'
                 }`}
               >
-                <i className="fas fa-home mr-1"></i>Início
+                <i className="fas fa-home text-base mb-1"></i>
+                <span>Início</span>
               </button>
               <button
                 onClick={() => setAbaAtiva('calendario')}
-                className={`flex-1 min-w-0 px-2 py-2 text-xs font-medium rounded-md transition-colors ${
+                className={`flex-1 min-w-0 px-2 py-2 text-xs font-medium rounded-md transition-colors flex flex-col items-center ${
                   abaAtiva === 'calendario' 
                     ? 'bg-white text-primary-600 shadow-sm' 
                     : 'text-gray-600 hover:text-gray-900'
                 }`}
               >
-                <i className="fas fa-calendar-alt mr-1"></i>Calendário
+                <i className="fas fa-calendar-alt text-base mb-1"></i>
+                <span>Reagendar</span>
+                <span>Aula</span>
+              </button>
+              <button
+                onClick={() => setAbaAtiva('horarios')}
+                className={`flex-1 min-w-0 px-2 py-2 text-xs font-medium rounded-md transition-colors relative flex flex-col items-center ${
+                  abaAtiva === 'horarios' 
+                    ? 'bg-white text-primary-600 shadow-sm' 
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                <i className="fas fa-clock text-base mb-1"></i>
+                <span>Meu</span>
+                <span>Horário</span>
+                {alteracoesHorario.filter(a => a.status === 'pendente').length > 0 && (
+                  <span className="absolute -top-1 -right-1 w-5 h-5 bg-orange-500 text-white text-xs rounded-full flex items-center justify-center">
+                    {alteracoesHorario.filter(a => a.status === 'pendente').length}
+                  </span>
+                )}
               </button>
               <button
                 onClick={() => setAbaAtiva('faltas')}
-                className={`flex-1 min-w-0 px-2 py-2 text-xs font-medium rounded-md transition-colors relative ${
+                className={`flex-1 min-w-0 px-2 py-2 text-xs font-medium rounded-md transition-colors relative flex flex-col items-center ${
                   abaAtiva === 'faltas' 
                     ? 'bg-white text-primary-600 shadow-sm' 
                     : 'text-gray-600 hover:text-gray-900'
                 }`}
               >
-                <i className="fas fa-user-clock mr-1"></i>Faltas
+                <i className="fas fa-redo text-base mb-1"></i>
+                <span>Repor</span>
+                <span>Falta</span>
                 {reposicoesDisponiveis > 0 && (
                   <span className="absolute -top-1 -right-1 w-5 h-5 bg-green-500 text-white text-xs rounded-full flex items-center justify-center">
                     {reposicoesDisponiveis}
@@ -1038,17 +1501,18 @@ export default function AlunoAreaPage() {
                 )}
               </button>
               <button
-                onClick={() => setAbaAtiva('reagendamentos')}
-                className={`flex-1 min-w-0 px-2 py-2 text-xs font-medium rounded-md transition-colors relative ${
-                  abaAtiva === 'reagendamentos' 
+                onClick={() => setAbaAtiva('creditos')}
+                className={`flex-1 min-w-0 px-2 py-2 text-xs font-medium rounded-md transition-colors relative flex flex-col items-center ${
+                  abaAtiva === 'creditos' 
                     ? 'bg-white text-primary-600 shadow-sm' 
                     : 'text-gray-600 hover:text-gray-900'
                 }`}
               >
-                <i className="fas fa-exchange-alt mr-1"></i>Reposições
-                {reagendamentos.filter(r => r.status === 'pendente').length > 0 && (
-                  <span className="absolute -top-1 -right-1 w-5 h-5 bg-yellow-500 text-white text-xs rounded-full flex items-center justify-center">
-                    {reagendamentos.filter(r => r.status === 'pendente').length}
+                <i className="fas fa-star text-base mb-1"></i>
+                <span>Créditos</span>
+                {creditos.reduce((sum, c) => sum + (c.quantidade - c.quantidadeUsada), 0) > 0 && (
+                  <span className="absolute -top-1 -right-1 w-5 h-5 bg-teal-500 text-white text-xs rounded-full flex items-center justify-center">
+                    {creditos.reduce((sum, c) => sum + (c.quantidade - c.quantidadeUsada), 0)}
                   </span>
                 )}
               </button>
@@ -1059,54 +1523,64 @@ export default function AlunoAreaPage() {
               <div className="space-y-4">
                 {/* Próximas aulas */}
                 <section>
-                  <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wide mb-3">
+                  <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wide mb-2">
+                    <i className="fas fa-clock mr-2 text-gray-400"></i>
                     Próximas Aulas
                   </h2>
                   {proximasAulas.length === 0 ? (
-                    <div className="bg-white rounded-xl border border-gray-200 p-6 text-center">
-                      <i className="fas fa-calendar-times text-gray-300 text-3xl mb-2"></i>
-                      <p className="text-gray-500 text-sm">Nenhum horário cadastrado</p>
+                    <div className="bg-white rounded-lg border border-gray-200 p-4 text-center">
+                      <i className="fas fa-calendar-times text-gray-300 text-2xl mb-1"></i>
+                      <p className="text-gray-500 text-xs">Nenhum horário cadastrado</p>
                     </div>
                   ) : (
-                    <div className="space-y-2">
+                    <div className="space-y-1.5">
                       {proximasAulas.map((aula, idx) => (
                         <div
                           key={aula._id}
-                          className={`bg-white rounded-xl border p-4 flex items-center gap-4 ${
+                          className={`bg-white rounded-lg border p-2.5 flex items-center gap-3 ${
                             idx === 0 ? 'border-primary-200 bg-primary-50/30' : 'border-gray-200'
                           }`}
                         >
                           <div 
-                            className="w-14 h-14 rounded-lg flex flex-col items-center justify-center text-white font-bold"
+                            className="w-10 h-10 rounded-md flex flex-col items-center justify-center text-white font-bold flex-shrink-0"
                             style={{ backgroundColor: aula.modalidadeId?.cor || '#6B7280' }}
                           >
-                            <span className="text-xs">{diasSemanaAbrev[aula.diaSemana]}</span>
-                            <span className="text-lg">{aula.dataAula.getDate()}</span>
+                            <span className="text-[9px] leading-none">{diasSemanaAbrev[aula.diaSemana]}</span>
+                            <span className="text-sm leading-none">{aula.dataAula.getDate()}</span>
                           </div>
-                          <div className="flex-1">
-                            <p className="font-semibold text-gray-900">
-                              {diasSemana[aula.diaSemana]}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-medium text-sm text-gray-900 truncate">
+                                {aula.horarioInicio} - {aula.horarioFim}
+                              </span>
                               {aula.diasAte === 0 && (
-                                <span className="ml-2 px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full">Hoje</span>
+                                <span className="px-1.5 py-0.5 bg-green-100 text-green-700 text-[10px] rounded-full flex-shrink-0">Hoje</span>
                               )}
                               {aula.diasAte === 1 && (
-                                <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full">Amanhã</span>
+                                <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-[10px] rounded-full flex-shrink-0">Amanhã</span>
                               )}
-                            </p>
-                            <p className="text-sm text-gray-500">{aula.horarioInicio} - {aula.horarioFim}</p>
-                            {aula.modalidadeId && (
-                              <span 
-                                className="inline-block mt-1 px-2 py-0.5 text-xs font-medium rounded text-white"
-                                style={{ backgroundColor: aula.modalidadeId.cor || '#6B7280' }}
-                              >
-                                {aula.modalidadeId.nome}
-                              </span>
-                            )}
-                            {aula.professorId && (
-                              <p className="text-xs text-gray-500 mt-1">
-                                <i className="fas fa-user-tie mr-1"></i>Prof. {aula.professorId.nome}
-                              </p>
-                            )}
+                            </div>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              {aula.modalidadeId && (
+                                <span className="text-xs text-gray-600">{aula.modalidadeId.nome}</span>
+                              )}
+                              {aula.professorId && (
+                                <>
+                                  <span className="text-xs text-gray-400">• Prof. {aula.professorId.nome}</span>
+                                  {aula.professorId.telefone && (
+                                    <a
+                                      href={`https://wa.me/${aula.professorId.telefone.replace(/\D/g, '')}?text=${encodeURIComponent(`Olá professor(a) ${aula.professorId.nome}! Sou ${aluno.nome}, aluno do Studio Superação.\n\n`)}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-green-600 hover:text-green-700 transition-colors"
+                                      title="Falar com professor"
+                                    >
+                                      <i className="fab fa-whatsapp text-sm"></i>
+                                    </a>
+                                  )}
+                                </>
+                              )}
+                            </div>
                           </div>
                         </div>
                       ))}
@@ -1114,88 +1588,200 @@ export default function AlunoAreaPage() {
                   )}
                 </section>
 
-                {/* Histórico resumido */}
-                <section>
-                  <div className="flex items-center justify-between mb-3">
-                    <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wide">
-                      Últimas Presenças
-                    </h2>
-                    {presencas.length > 0 && (
-                      <button
-                        onClick={() => setShowHistoricoModal(true)}
-                        className="text-xs text-primary-600 hover:text-primary-700 font-medium"
-                      >
-                        Ver tudo <i className="fas fa-arrow-right ml-1"></i>
-                      </button>
-                    )}
-                  </div>
+                {/* Calendário de Presença */}
+                <section className="mt-8">
+                  <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wide mb-3">
+                    <i className="fas fa-calendar-check mr-2 text-gray-400"></i>
+                    Calendário de Presenças
+                  </h2>
                   
-                  {presencas.length === 0 ? (
-                    <div className="bg-white rounded-xl border border-gray-200 p-6 text-center">
-                      <i className="fas fa-clipboard-list text-gray-300 text-3xl mb-2"></i>
-                      <p className="text-gray-500 text-sm">Nenhum registro ainda</p>
+                  <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                    {/* Header do calendário */}
+                    <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-primary-500 to-primary-600">
+                      <button
+                        onClick={() => {
+                          if (presencaCalMes === 0) {
+                            setPresencaCalMes(11);
+                            setPresencaCalAno(presencaCalAno - 1);
+                          } else {
+                            setPresencaCalMes(presencaCalMes - 1);
+                          }
+                        }}
+                        className="p-1.5 hover:bg-white/20 rounded-lg transition-colors text-white"
+                      >
+                        <i className="fas fa-chevron-left"></i>
+                      </button>
+                      
+                      <h3 className="text-white font-bold capitalize">
+                        {new Date(presencaCalAno, presencaCalMes).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
+                      </h3>
+                      
+                      <button
+                        onClick={() => {
+                          if (presencaCalMes === 11) {
+                            setPresencaCalMes(0);
+                            setPresencaCalAno(presencaCalAno + 1);
+                          } else {
+                            setPresencaCalMes(presencaCalMes + 1);
+                          }
+                        }}
+                        className="p-1.5 hover:bg-white/20 rounded-lg transition-colors text-white"
+                      >
+                        <i className="fas fa-chevron-right"></i>
+                      </button>
                     </div>
-                  ) : (
-                    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                      {presencas.slice(0, 5).map((p, idx) => (
-                        <div 
-                          key={p._id}
-                          className={`flex items-center gap-3 p-3 ${idx !== 0 ? 'border-t border-gray-100' : ''}`}
-                        >
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                            p.presente === true ? 'bg-green-100 text-green-600' :
-                            p.presente === false ? 'bg-red-100 text-red-600' :
-                            'bg-gray-100 text-gray-400'
-                          }`}>
-                            <i className={`fas ${
-                              p.presente === true ? 'fa-check' :
-                              p.presente === false ? 'fa-times' :
-                              'fa-minus'
-                            }`}></i>
+
+                    {/* Dias da semana */}
+                    <div className="grid grid-cols-7 bg-gray-50 border-b border-gray-200">
+                      {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((dia, i) => (
+                        <div key={i} className="py-2 text-center text-xs font-semibold text-gray-500">
+                          {dia}
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Grid de dias */}
+                    <div className="grid grid-cols-7">
+                      {calendarioPresenca.map((dia, idx) => {
+                        const hoje = new Date();
+                        hoje.setHours(0, 0, 0, 0);
+                        const isHoje = dia.data.toDateString() === hoje.toDateString();
+                        const isFalta = dia.mesAtual && dia.presenca?.presente === false;
+                        const isPresente = dia.mesAtual && dia.presenca?.presente === true;
+                        const isFeriado = dia.mesAtual && dia.feriado;
+                        
+                        return (
+                          <div
+                            key={idx}
+                            className={`relative aspect-square flex items-center justify-center border-b border-r border-gray-100 ${
+                              !dia.mesAtual ? 'bg-gray-100' :
+                              isFeriado ? 'bg-gray-200' :
+                              isPresente ? 'bg-green-100' :
+                              isFalta ? 'bg-red-100' : ''
+                            }`}
+                            title={dia.feriado || undefined}
+                          >
+                            {/* Número do dia */}
+                            <span className={`text-sm flex items-center justify-center w-7 h-7 rounded-full ${
+                              isHoje && dia.mesAtual 
+                                ? 'bg-green-500 text-white font-bold shadow-sm' 
+                                : !dia.mesAtual
+                                  ? 'text-gray-300'
+                                  : isFeriado
+                                    ? 'text-gray-500 font-medium'
+                                    : isPresente
+                                      ? 'text-green-700 font-medium'
+                                      : isFalta 
+                                        ? 'text-red-700 font-medium'
+                                        : 'text-gray-700'
+                            }`}>
+                              {dia.diaDoMes}
+                            </span>
+                            
+                            {/* Ícone de feriado/sem expediente centralizado embaixo */}
+                            {isFeriado && (
+                              <span className="absolute bottom-1 left-1/2 -translate-x-1/2">
+                                <i className="fas fa-ban text-gray-500 text-[10px]"></i>
+                              </span>
+                            )}
+                            
+                            {/* Ícone de presença (check) centralizado embaixo */}
+                            {isPresente && !isHoje && !isFeriado && (
+                              <span className="absolute bottom-1 left-1/2 -translate-x-1/2">
+                                <i className="fas fa-check text-green-600 text-[10px]"></i>
+                              </span>
+                            )}
+                            
+                            {/* Ícone de falta (X) centralizado embaixo */}
+                            {isFalta && !isFeriado && (
+                              <span className="absolute bottom-1 left-1/2 -translate-x-1/2">
+                                <i className="fas fa-times text-red-600 text-[10px]"></i>
+                              </span>
+                            )}
+                            
+                            {/* Pequeno dot no canto para aula futura */}
+                            {dia.mesAtual && !dia.presenca && dia.temAulaFutura && !isFeriado && (
+                              <span className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 bg-gray-400 rounded-full"></span>
+                            )}
+                            
+                            {/* Indicador de reposição */}
+                            {dia.presenca?.reposicao && (
+                              <span className="absolute top-0.5 right-0.5 w-2 h-2 bg-purple-500 rounded-full"></span>
+                            )}
                           </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-gray-900 truncate">
-                              {formatarData(p.data)} - {p.horarioInicio}
-                            </p>
-                            <p className="text-xs text-gray-500">{p.modalidade}</p>
-                          </div>
-                          {p.eraReagendamento && (
-                            <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs rounded-full">
-                              Reposição
+                        );
+                      })}
+                    </div>
+
+                    {/* Legenda e estatísticas do mês */}
+                    <div className="px-4 py-3 bg-gray-50 border-t border-gray-200">
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                        <div className="flex items-center gap-1">
+                          <i className="fas fa-check text-green-600 text-[10px]"></i>
+                          <span className="text-gray-600">Presente</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <i className="fas fa-times text-red-600 text-[10px]"></i>
+                          <span className="text-gray-600">Falta</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <i className="fas fa-ban text-gray-500 text-[10px]"></i>
+                          <span className="text-gray-600">Sem expediente</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-gray-400"></span>
+                          <span className="text-gray-600">Próxima aula</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span className="w-2 h-2 rounded-full bg-purple-500"></span>
+                          <span className="text-gray-600">Reposição</span>
+                        </div>
+                      </div>
+                      
+                      {estatisticasMes.total > 0 && (
+                        <div className="mt-2 pt-2 border-t border-gray-200 flex items-center justify-between">
+                          <span className="text-xs text-gray-500">
+                            Este mês: <span className="font-semibold text-green-600">{estatisticasMes.presentes}</span> presenças, 
+                            <span className="font-semibold text-red-600 ml-1">{estatisticasMes.faltas}</span> faltas
+                          </span>
+                          {estatisticasMes.total > 0 && (
+                            <span className={`text-sm font-bold ${
+                              (estatisticasMes.presentes / estatisticasMes.total) >= 0.8 ? 'text-green-600' :
+                              (estatisticasMes.presentes / estatisticasMes.total) >= 0.5 ? 'text-yellow-600' :
+                              'text-red-600'
+                            }`}>
+                              {Math.round((estatisticasMes.presentes / estatisticasMes.total) * 100)}%
                             </span>
                           )}
                         </div>
-                      ))}
+                      )}
+                      
+                      {/* Mensagem motivacional */}
+                      {estatisticasMes.total > 0 && (
+                        <div className={`mt-2 p-2 rounded-lg text-xs text-center ${
+                          (estatisticasMes.presentes / estatisticasMes.total) >= 0.8 
+                            ? 'bg-green-100 text-green-700' 
+                            : (estatisticasMes.presentes / estatisticasMes.total) >= 0.5 
+                              ? 'bg-yellow-100 text-yellow-700'
+                              : 'bg-red-100 text-red-700'
+                        }`}>
+                          {(estatisticasMes.presentes / estatisticasMes.total) >= 0.8 ? (
+                            <>🎉 Excelente frequência! Continue assim!</>
+                          ) : (estatisticasMes.presentes / estatisticasMes.total) >= 0.5 ? (
+                            <>💪 Você está indo bem! Tente não faltar nas próximas aulas!</>
+                          ) : (
+                            <>⚠️ Sua frequência está baixa. Cada aula conta para seu progresso!</>
+                          )}
+                        </div>
+                      )}
                     </div>
-                  )}
-
-                  {/* Estatísticas */}
-                  {estatisticas && estatisticas.totalAulas > 0 && (
-                    <div className="grid grid-cols-4 gap-2 mt-3">
-                      <div className="bg-white rounded-lg border border-gray-200 p-3 text-center">
-                        <p className="text-lg font-bold text-gray-900">{estatisticas.totalAulas}</p>
-                        <p className="text-xs text-gray-500">Total</p>
-                      </div>
-                      <div className="bg-green-50 rounded-lg border border-green-200 p-3 text-center">
-                        <p className="text-lg font-bold text-green-600">{estatisticas.presencas}</p>
-                        <p className="text-xs text-green-600">Presenças</p>
-                      </div>
-                      <div className="bg-red-50 rounded-lg border border-red-200 p-3 text-center">
-                        <p className="text-lg font-bold text-red-600">{estatisticas.faltas}</p>
-                        <p className="text-xs text-red-600">Faltas</p>
-                      </div>
-                      <div className="bg-purple-50 rounded-lg border border-purple-200 p-3 text-center">
-                        <p className="text-lg font-bold text-purple-600">{estatisticas.reagendamentos}</p>
-                        <p className="text-xs text-purple-600">Reposições</p>
-                      </div>
-                    </div>
-                  )}
+                  </div>
                 </section>
 
                 {/* Contato */}
-                <section className="mt-4">
-                  <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
+                <section className="mt-8">
+                  <div className="bg-white rounded-xl border border-gray-200 p-4">
+                    <div className="flex items-center gap-3 mb-3">
                       <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
                         <i className="fab fa-whatsapp text-green-600 text-xl"></i>
                       </div>
@@ -1204,16 +1790,30 @@ export default function AlunoAreaPage() {
                         <p className="text-xs text-gray-500">Fale pelo WhatsApp</p>
                       </div>
                     </div>
-                    {adminContact && (
-                      <a
-                        href={`https://wa.me/${adminContact.whatsapp}?text=${encodeURIComponent(`Olá! Sou ${aluno.nome}, aluno do Studio Superação.\n\n`)}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors"
-                      >
-                        Contato
-                      </a>
-                    )}
+                    <div className="flex gap-2">
+                      {adminContact && (
+                        <a
+                          href={`https://wa.me/${adminContact.whatsapp}?text=${encodeURIComponent(`Olá! Sou ${aluno.nome}, aluno do Studio Superação.\n\n`)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex-1 py-2.5 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors text-center"
+                        >
+                          <i className="fas fa-headset mr-1.5"></i>
+                          Suporte / Financeiro
+                        </a>
+                      )}
+                      {horarios.length > 0 && horarios[0].professorId?.telefone && (
+                        <a
+                          href={`https://wa.me/${horarios[0].professorId.telefone.replace(/\D/g, '')}?text=${encodeURIComponent(`Olá professor(a) ${horarios[0].professorId.nome}! Sou ${aluno.nome}, aluno do Studio Superação.\n\n`)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors text-center"
+                        >
+                          <i className="fas fa-user-tie mr-1.5"></i>
+                          Professor
+                        </a>
+                      )}
+                    </div>
                   </div>
                 </section>
               </div>
@@ -1255,18 +1855,6 @@ export default function AlunoAreaPage() {
                   >
                     <i className="fas fa-chevron-right text-gray-600"></i>
                   </button>
-                </div>
-
-                {/* Legenda */}
-                <div className="flex items-center gap-4 text-xs text-gray-500">
-                  <div className="flex items-center gap-1">
-                    <div className="w-3 h-3 rounded-full bg-primary-500"></div>
-                    <span>Sua aula</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <div className="w-3 h-3 rounded-full bg-gray-300"></div>
-                    <span>Sem aula</span>
-                  </div>
                 </div>
 
                 {/* Dias da semana */}
@@ -1342,33 +1930,221 @@ export default function AlunoAreaPage() {
                     Clique em uma aula para <strong>avisar ausência</strong> ou <strong>trocar a data</strong>.
                   </p>
                 </div>
+
+                {/* Histórico de Reagendamentos */}
+                <section className="mt-6">
+                  <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wide mb-3">
+                    <i className="fas fa-history mr-2"></i>Minhas Solicitações
+                  </h2>
+                  
+                  {reagendamentos.length === 0 ? (
+                    <div className="bg-white rounded-xl border border-gray-200 p-6 text-center">
+                      <i className="fas fa-exchange-alt text-gray-300 text-3xl mb-2"></i>
+                      <p className="text-gray-500 text-sm">Nenhum reagendamento solicitado</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {reagendamentos.map(reag => (
+                        <div
+                          key={reag._id}
+                          className="bg-white rounded-xl border border-gray-200 p-4"
+                        >
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <i className="fas fa-calendar text-gray-400"></i>
+                              <p className="font-medium text-gray-900">
+                                {formatarData(reag.dataOriginal)} → {formatarData(reag.novaData)}
+                              </p>
+                            </div>
+                            {getStatusBadge(reag.status)}
+                          </div>
+                          <p className="text-sm text-gray-500">
+                            <i className="fas fa-clock mr-1"></i>
+                            {reag.novoHorarioInicio} - {reag.novoHorarioFim}
+                          </p>
+                          {reag.motivo && (
+                            <p className="text-xs text-gray-400 mt-2">
+                              <i className="fas fa-comment mr-1"></i> {reag.motivo}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
+              </div>
+            )}
+
+            {/* Aba Meus Horários */}
+            {abaAtiva === 'horarios' && (
+              <div className="space-y-6">
+                {/* Meus horários fixos */}
+                <section>
+                  <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wide mb-3">
+                    <i className="fas fa-clock mr-2"></i>Meus Horários Fixos
+                  </h2>
+                  
+                  {horarios.length === 0 ? (
+                    <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
+                      <i className="fas fa-calendar-times text-gray-300 text-4xl mb-3"></i>
+                      <p className="text-gray-600 font-medium">Nenhum horário cadastrado</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {horarios.map(horario => (
+                        <div 
+                          key={horario._id}
+                          className="bg-white rounded-xl border border-gray-200 p-4"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-4">
+                              <div 
+                                className="w-14 h-14 rounded-lg flex flex-col items-center justify-center text-white font-bold"
+                                style={{ backgroundColor: horario.modalidadeId?.cor || '#6B7280' }}
+                              >
+                                <span className="text-xs">{diasSemanaAbrev[horario.diaSemana]}</span>
+                                <span className="text-sm">{horario.horarioInicio}</span>
+                              </div>
+                              <div>
+                                <p className="font-semibold text-gray-900">
+                                  {diasSemana[horario.diaSemana]}
+                                </p>
+                                <p className="text-sm text-gray-500">
+                                  {horario.horarioInicio} - {horario.horarioFim}
+                                </p>
+                                {horario.modalidadeId && (
+                                  <span 
+                                    className="inline-block mt-1 px-2 py-0.5 text-xs font-medium rounded text-white"
+                                    style={{ backgroundColor: horario.modalidadeId.cor || '#6B7280' }}
+                                  >
+                                    {horario.modalidadeId.nome}
+                                  </span>
+                                )}
+                                {horario.professorId && (
+                                  <p className="text-xs text-gray-500 mt-1">
+                                    <i className="fas fa-user-tie mr-1"></i>Prof. {horario.professorId.nome}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                            
+                            <button
+                              onClick={() => abrirModalAlteracaoHorario(horario)}
+                              className="px-3 py-2 bg-primary-50 hover:bg-primary-100 text-primary-700 font-medium rounded-lg text-sm transition-colors"
+                              title="Alterar para outro horário"
+                            >
+                              <i className="fas fa-exchange-alt mr-1"></i>
+                              Alterar
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
+
+                {/* Solicitações de alteração pendentes */}
+                {alteracoesHorario.filter(a => a.status === 'pendente').length > 0 && (
+                  <section>
+                    <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wide mb-3">
+                      <i className="fas fa-hourglass-half text-orange-500 mr-2"></i>Alterações Pendentes
+                    </h2>
+                    <div className="space-y-2">
+                      {alteracoesHorario.filter(a => a.status === 'pendente').map(alt => (
+                        <div key={alt._id} className="bg-orange-50 border border-orange-200 rounded-xl p-4">
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1">
+                              <p className="font-semibold text-gray-900">
+                                {alt.horarioAtualId?.diaSemana !== undefined && diasSemana[alt.horarioAtualId.diaSemana]} {alt.horarioAtualId?.horarioInicio}
+                                <i className="fas fa-arrow-right mx-2 text-orange-500"></i>
+                                {alt.novoHorarioId?.diaSemana !== undefined && diasSemana[alt.novoHorarioId.diaSemana]} {alt.novoHorarioId?.horarioInicio}
+                              </p>
+                              <p className="text-sm text-gray-500 mt-1">
+                                {alt.novoHorarioId?.modalidadeId?.nome} • Prof. {alt.novoHorarioId?.professorId?.nome}
+                              </p>
+                              {alt.motivo && (
+                                <p className="text-xs text-gray-400 mt-1">
+                                  <i className="fas fa-comment mr-1"></i>{alt.motivo}
+                                </p>
+                              )}
+                            </div>
+                            <button
+                              onClick={() => cancelarAlteracaoHorario(alt._id)}
+                              className="ml-2 p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                              title="Cancelar solicitação"
+                            >
+                              <i className="fas fa-times"></i>
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                )}
+
+                {/* Histórico de alterações (aprovadas/rejeitadas) */}
+                {alteracoesHorario.filter(a => a.status !== 'pendente').length > 0 && (
+                  <section>
+                    <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wide mb-3">
+                      <i className="fas fa-history mr-2"></i>Histórico de Alterações
+                    </h2>
+                    <div className="space-y-2">
+                      {alteracoesHorario.filter(a => a.status !== 'pendente').slice(0, 10).map(alt => (
+                        <div 
+                          key={alt._id} 
+                          className={`rounded-xl border p-4 ${
+                            alt.status === 'aprovado' 
+                              ? 'bg-green-50 border-green-200' 
+                              : 'bg-red-50 border-red-200'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1">
+                              <p className="font-semibold text-gray-900">
+                                {alt.horarioAtualId?.diaSemana !== undefined && diasSemana[alt.horarioAtualId.diaSemana]} {alt.horarioAtualId?.horarioInicio}
+                                <i className={`fas fa-arrow-right mx-2 ${alt.status === 'aprovado' ? 'text-green-500' : 'text-red-500'}`}></i>
+                                {alt.novoHorarioId?.diaSemana !== undefined && diasSemana[alt.novoHorarioId.diaSemana]} {alt.novoHorarioId?.horarioInicio}
+                              </p>
+                              {alt.status === 'rejeitado' && alt.motivoRejeicao && (
+                                <p className="text-sm text-red-600 mt-1">
+                                  <i className="fas fa-exclamation-circle mr-1"></i>{alt.motivoRejeicao}
+                                </p>
+                              )}
+                            </div>
+                            {getStatusBadge(alt.status)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                )}
+
+                {/* Dica */}
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <p className="text-sm text-blue-700">
+                    <i className="fas fa-info-circle mr-2"></i>
+                    Alterações de horário fixo precisam ser aprovadas pela administração. 
+                    Você só pode trocar para horários da mesma modalidade que tenham vaga disponível.
+                  </p>
+                </div>
               </div>
             )}
 
             {/* Aba Faltas e Reposições */}
             {abaAtiva === 'faltas' && (
               <div className="space-y-6">
-                {/* Dica para usar o calendário */}
-                <div className="bg-gradient-to-r from-blue-50 to-blue-100 rounded-xl p-4 border border-blue-200">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-blue-200 rounded-lg flex items-center justify-center flex-shrink-0">
-                      <i className="fas fa-calendar-alt text-blue-600"></i>
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-blue-800">Vai faltar?</h3>
-                      <p className="text-sm text-blue-600">
-                        Acesse o <strong>Calendário</strong> e clique na aula para avisar sua ausência com antecedência
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
+                {/* Título da seção */}
+                <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wide mb-3">
+                  <i className="fas fa-redo text-gray-400 mr-2"></i>
+                  Minhas Faltas e Reposições
+                </h2>
+                
                 {/* Ausências pendentes (ainda não ocorreram) */}
                 {avisosAusencia.filter(a => a.status === 'pendente').length > 0 && (
                   <section>
-                    <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wide mb-3">
+                    <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wide mb-3">
                       Ausências Agendadas
-                    </h2>
+                    </h3>
                     <div className="space-y-2">
                       {avisosAusencia.filter(a => a.status === 'pendente').map(aviso => (
                         <div key={aviso._id} className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
@@ -1483,45 +2259,120 @@ export default function AlunoAreaPage() {
               </div>
             )}
 
-            {/* Aba Reagendamentos */}
-            {abaAtiva === 'reagendamentos' && (
+            {/* Aba Créditos */}
+            {abaAtiva === 'creditos' && (
               <section>
                 <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wide mb-3">
-                  Minhas Solicitações
+                  <i className="fas fa-star text-gray-400 mr-2"></i>
+                  Meus Créditos de Reposição
                 </h2>
                 
-                {reagendamentos.length === 0 ? (
+                {creditos.length === 0 ? (
                   <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
-                    <i className="fas fa-exchange-alt text-gray-300 text-4xl mb-3"></i>
-                    <p className="text-gray-500">Nenhum reagendamento solicitado</p>
+                    <i className="fas fa-ticket text-gray-300 text-4xl mb-3"></i>
+                    <p className="text-gray-500">Nenhum crédito disponível</p>
+                    <p className="text-xs text-gray-400 mt-2">
+                      Créditos são concedidos pela administração para aulas de reposição
+                    </p>
                   </div>
                 ) : (
-                  <div className="space-y-3">
-                    {reagendamentos.map(reag => (
-                      <div
-                        key={reag._id}
-                        className="bg-white rounded-xl border border-gray-200 p-4"
-                      >
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <i className="fas fa-calendar text-gray-400"></i>
-                            <p className="font-medium text-gray-900">
-                              {formatarData(reag.dataOriginal)} → {formatarData(reag.novaData)}
-                            </p>
+                  <div className="space-y-4">
+                    {/* Resumo */}
+                    <div className="bg-teal-50 rounded-xl border border-teal-200 p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="w-12 h-12 rounded-full bg-teal-500 text-white flex items-center justify-center">
+                            <i className="fas fa-ticket text-xl"></i>
                           </div>
-                          {getStatusBadge(reag.status)}
+                          <div>
+                            <p className="text-2xl font-bold text-teal-700">
+                              {creditos.reduce((sum, c) => sum + (c.quantidade - c.quantidadeUsada), 0)}
+                            </p>
+                            <p className="text-sm text-teal-600">créditos disponíveis</p>
+                          </div>
                         </div>
-                        <p className="text-sm text-gray-500">
-                          <i className="fas fa-clock mr-1"></i>
-                          {reag.novoHorarioInicio} - {reag.novoHorarioFim}
-                        </p>
-                        {reag.motivo && (
-                          <p className="text-xs text-gray-400 mt-2">
-                            <i className="fas fa-comment mr-1"></i> {reag.motivo}
-                          </p>
-                        )}
+                        <div className="text-right text-sm text-teal-600">
+                          <p>{creditos.reduce((sum, c) => sum + c.quantidadeUsada, 0)} usados</p>
+                          <p>{creditos.reduce((sum, c) => sum + c.quantidade, 0)} total</p>
+                        </div>
                       </div>
-                    ))}
+                    </div>
+                    
+                    {/* Lista de créditos */}
+                    {creditos.map(credito => {
+                      const disponivel = credito.quantidade - credito.quantidadeUsada;
+                      const expirado = new Date(credito.validade) < new Date();
+                      
+                      return (
+                        <div
+                          key={credito._id}
+                          className={`bg-white rounded-xl border p-4 ${
+                            expirado ? 'border-gray-200 opacity-60' : disponivel > 0 ? 'border-teal-200' : 'border-gray-200'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-2">
+                              <span className={`px-2 py-1 rounded-full text-xs font-bold ${
+                                expirado 
+                                  ? 'bg-gray-100 text-gray-500'
+                                  : disponivel > 0 
+                                    ? 'bg-teal-100 text-teal-700' 
+                                    : 'bg-orange-100 text-orange-700'
+                              }`}>
+                                {expirado ? 'EXPIRADO' : disponivel > 0 ? `${disponivel} DISPONÍVEL` : 'ESGOTADO'}
+                              </span>
+                            </div>
+                            <span className="text-xs text-gray-400">
+                              <i className="fas fa-calendar-alt mr-1"></i>
+                              Válido até {new Date(credito.validade).toLocaleDateString('pt-BR')}
+                            </span>
+                          </div>
+                          
+                          <p className="text-sm text-gray-700 mb-2">
+                            <i className="fas fa-info-circle mr-1 text-gray-400"></i>
+                            {credito.motivo}
+                          </p>
+                          
+                          <div className="flex items-center gap-4 text-xs text-gray-500">
+                            <span>
+                              <i className="fas fa-ticket mr-1"></i>
+                              {credito.quantidadeUsada}/{credito.quantidade} usados
+                            </span>
+                            <span>
+                              <i className="fas fa-calendar-plus mr-1"></i>
+                              Concedido em {new Date(credito.criadoEm).toLocaleDateString('pt-BR')}
+                            </span>
+                          </div>
+                          
+                          {/* Usos */}
+                          {credito.usos && credito.usos.length > 0 && (
+                            <div className="mt-3 pt-3 border-t border-gray-100">
+                              <p className="text-xs font-medium text-gray-500 mb-2">Histórico de uso:</p>
+                              <div className="space-y-1">
+                                {credito.usos.map(uso => (
+                                  <div key={uso._id} className="text-xs text-gray-500 flex items-center gap-2">
+                                    <i className="fas fa-check-circle text-green-500"></i>
+                                    <span>
+                                      {new Date(uso.dataUso).toLocaleDateString('pt-BR')}
+                                      {uso.agendamentoId && (
+                                        <> - {uso.agendamentoId.horarioInicio} 
+                                        {uso.agendamentoId.modalidadeId && ` (${uso.agendamentoId.modalidadeId.nome})`}
+                                        </>
+                                      )}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                    
+                    <p className="text-xs text-gray-400 text-center mt-4">
+                      <i className="fas fa-info-circle mr-1"></i>
+                      Para usar seus créditos, entre em contato com a administração
+                    </p>
                   </div>
                 )}
               </section>
@@ -1702,6 +2553,9 @@ export default function AlunoAreaPage() {
                     const diaObjDate = new Date(diaObj.data);
                     diaObjDate.setHours(0, 0, 0, 0);
                     
+                    // Verificar se é o mesmo dia da aula original (não permitido)
+                    const isMesmoDia = aulaSelecionada && diaObj.data.toDateString() === new Date(aulaSelecionada.dataStr + 'T12:00:00').toDateString();
+                    
                     // Não permitir datas passadas (antes de hoje)
                     const isPassado = diaObjDate < hoje;
                     // Não permitir datas antes da aula selecionada
@@ -1709,7 +2563,7 @@ export default function AlunoAreaPage() {
                     // Não permitir datas mais de 7 dias após a aula
                     const isForaDoLimite = diaObjDate > limiteMaximo;
                     
-                    const horariosDisp = diaObj.mesAtual && !isPassado && !isAntesDoLimite && !isForaDoLimite ? getHorariosDisponiveisNoDia(diaObj.data) : [];
+                    const horariosDisp = diaObj.mesAtual && !isPassado && !isAntesDoLimite && !isForaDoLimite && !isMesmoDia ? getHorariosDisponiveisNoDia(diaObj.data) : [];
                     const temHorario = horariosDisp.length > 0;
                     
                     return (
@@ -1719,8 +2573,10 @@ export default function AlunoAreaPage() {
                           min-h-[40px] p-1 rounded-lg border transition-all text-center
                           ${!diaObj.mesAtual ? 'bg-gray-50 opacity-40' : 'bg-white'}
                           ${(isPassado || isAntesDoLimite || isForaDoLimite) && diaObj.mesAtual ? 'opacity-40' : ''}
+                          ${isMesmoDia ? 'bg-red-50 border-red-300 opacity-60' : ''}
                           ${temHorario ? 'border-green-300 bg-green-50 cursor-pointer hover:bg-green-100' : 'border-gray-200'}
                         `}
+                        title={isMesmoDia ? 'Não é possível reagendar para o mesmo dia' : undefined}
                       >
                         <div className={`text-xs font-semibold ${temHorario ? 'text-green-700' : 'text-gray-500'}`}>
                           {diaObj.diaDoMes}
@@ -1750,7 +2606,7 @@ export default function AlunoAreaPage() {
                 
                 <div className="text-xs text-gray-500 text-center">
                   <i className="fas fa-info-circle mr-1"></i>
-                  Escolha uma data até 7 dias após a aula selecionada. Dias verdes têm vagas.
+                  Escolha uma data até 7 dias após a aula (não pode ser no mesmo dia). Dias verdes têm vagas.
                 </div>
               </>
             )}
@@ -2286,6 +3142,138 @@ export default function AlunoAreaPage() {
                 className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg disabled:opacity-50"
               >
                 {enviandoReposicao ? <><i className="fas fa-spinner fa-spin mr-2"></i>Enviando...</> : 'Solicitar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Alteração de Horário Fixo */}
+      {showAlteracaoHorarioModal && horarioParaAlterar && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl p-6 max-w-md w-full shadow-xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-gray-900">Alterar Horário Fixo</h3>
+              <button onClick={() => setShowAlteracaoHorarioModal(false)} className="text-gray-400 hover:text-gray-600">
+                <i className="fas fa-times"></i>
+              </button>
+            </div>
+
+            {/* Horário atual */}
+            <div className="bg-gray-50 rounded-lg p-4 mb-4">
+              <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Horário Atual</p>
+              <div className="flex items-center gap-3">
+                <div 
+                  className="w-12 h-12 rounded-lg flex flex-col items-center justify-center text-white font-bold"
+                  style={{ backgroundColor: horarioParaAlterar.modalidadeId?.cor || '#6B7280' }}
+                >
+                  <span className="text-[10px]">{diasSemanaAbrev[horarioParaAlterar.diaSemana]}</span>
+                  <span className="text-sm">{horarioParaAlterar.horarioInicio}</span>
+                </div>
+                <div>
+                  <p className="font-semibold text-gray-900">
+                    {diasSemana[horarioParaAlterar.diaSemana]}
+                  </p>
+                  <p className="text-sm text-gray-500">
+                    {horarioParaAlterar.horarioInicio} - {horarioParaAlterar.horarioFim}
+                  </p>
+                  {horarioParaAlterar.professorId && (
+                    <p className="text-xs text-gray-500">
+                      Prof. {horarioParaAlterar.professorId.nome}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Seleção do novo horário */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Novo Horário <span className="text-red-500">*</span>
+              </label>
+              
+              {horariosParaAlteracao.length === 0 ? (
+                <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <p className="text-sm text-yellow-700">
+                    <i className="fas fa-exclamation-triangle mr-2"></i>
+                    Não há outros horários disponíveis para esta modalidade no momento.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {horariosParaAlteracao.map(h => (
+                    <label
+                      key={h._id}
+                      className={`flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-colors ${
+                        novoHorarioFixoId === h._id 
+                          ? 'border-primary-500 bg-primary-50' 
+                          : 'border-gray-200 hover:bg-gray-50'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="novoHorarioFixo"
+                        value={h._id}
+                        checked={novoHorarioFixoId === h._id}
+                        onChange={e => setNovoHorarioFixoId(e.target.value)}
+                        className="text-primary-600"
+                      />
+                      <div 
+                        className="w-10 h-10 rounded-lg flex flex-col items-center justify-center text-white text-xs font-bold"
+                        style={{ backgroundColor: h.modalidade?.cor || '#6B7280' }}
+                      >
+                        <span className="text-[8px]">{diasSemanaAbrev[h.diaSemana]}</span>
+                        <span>{h.horarioInicio}</span>
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-medium text-gray-900">
+                          {diasSemana[h.diaSemana]} - {h.horarioInicio}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {h.horarioInicio} - {h.horarioFim} • Prof. {h.professor?.nome || 'A definir'}
+                        </p>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Motivo */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Motivo (opcional)
+              </label>
+              <textarea
+                value={motivoAlteracao}
+                onChange={e => setMotivoAlteracao(e.target.value)}
+                placeholder="Ex: Mudança de horário no trabalho..."
+                rows={2}
+                maxLength={300}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 resize-none"
+              />
+            </div>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+              <p className="text-sm text-blue-700">
+                <i className="fas fa-info-circle mr-2"></i>
+                Esta alteração é <strong>permanente</strong>. Seu horário fixo será alterado após aprovação da administração.
+              </p>
+            </div>
+
+            <div className="flex gap-3">
+              <button 
+                onClick={() => setShowAlteracaoHorarioModal(false)} 
+                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={enviarAlteracaoHorario} 
+                disabled={enviandoAlteracao || !novoHorarioFixoId}
+                className="flex-1 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white font-medium rounded-lg disabled:opacity-50"
+              >
+                {enviandoAlteracao ? <><i className="fas fa-spinner fa-spin mr-2"></i>Enviando...</> : 'Solicitar Alteração'}
               </button>
             </div>
           </div>

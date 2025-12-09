@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { toast } from 'react-toastify';
 import Swal from 'sweetalert2';
 import ProtectedPage from '@/components/ProtectedPage';
+import { refreshPendingCounts } from '@/lib/events';
 
 interface AulaExperimental {
   _id: string;
@@ -147,6 +148,7 @@ export default function AulasExperimentaisPage() {
       if (data.success) {
         toast.success('Status atualizado!');
         carregarAulas();
+        refreshPendingCounts();
       } else {
         toast.error(data.error || 'Erro ao atualizar');
       }
@@ -261,7 +263,9 @@ export default function AulasExperimentaisPage() {
   };
 
   const formatarData = (dataStr: string) => {
-    const data = new Date(dataStr);
+    // Evitar problema de fuso horário - adicionar T12:00:00 para garantir que a data não mude
+    const dataISO = dataStr.includes('T') ? dataStr : `${dataStr.split('T')[0]}T12:00:00`;
+    const data = new Date(dataISO);
     return data.toLocaleDateString('pt-BR', {
       day: '2-digit',
       month: '2-digit',
@@ -270,14 +274,18 @@ export default function AulasExperimentaisPage() {
   };
 
   const isAulaPassada = (dataStr: string) => {
-    const dataAula = new Date(dataStr);
+    // Evitar problema de fuso horário
+    const dataISO = dataStr.includes('T') ? dataStr : `${dataStr.split('T')[0]}T12:00:00`;
+    const dataAula = new Date(dataISO);
     dataAula.setHours(23, 59, 59, 999);
     const hoje = new Date();
     return dataAula < hoje;
   };
 
   const isAulaHoje = (dataStr: string) => {
-    const dataAula = new Date(dataStr);
+    // Evitar problema de fuso horário
+    const dataISO = dataStr.includes('T') ? dataStr : `${dataStr.split('T')[0]}T12:00:00`;
+    const dataAula = new Date(dataISO);
     const hoje = new Date();
     return dataAula.toDateString() === hoje.toDateString();
   };
@@ -576,10 +584,9 @@ export default function AulasExperimentaisPage() {
                       {/* Data e Modalidade */}
                       <div className="flex items-center gap-2 mb-2 flex-wrap">
                         <span className={`text-xs font-medium ${
-                          situacaoResolvida ? 'text-gray-400' :
-                          passada && aula.status !== 'realizada' ? 'text-red-600' : 'text-gray-700'
+                          situacaoResolvida ? 'text-gray-400' : 'text-gray-600'
                         }`}>
-                          <i className={`fas fa-calendar text-[10px] mr-1 ${situacaoResolvida ? 'text-gray-400' : ''}`}></i>
+                          <i className={`fas fa-calendar text-[10px] mr-1 text-gray-400`}></i>
                           {formatarData(aula.data)}
                         </span>
                         {aula.horario && (
@@ -600,7 +607,7 @@ export default function AulasExperimentaisPage() {
                       {/* Professor */}
                       {aula.horario?.professorId && (
                         <div className={`text-xs mb-2 ${situacaoResolvida ? 'text-gray-400' : 'text-gray-600'}`}>
-                          <i className={`fas fa-user-tie text-[10px] mr-1 ${situacaoResolvida ? 'text-gray-400' : 'text-primary-500'}`}></i>
+                          <i className={`fas fa-user-tie text-[10px] mr-1 text-gray-400`}></i>
                           <span className="font-medium">Prof:</span> {aula.horario.professorId.nome}
                         </div>
                       )}
@@ -775,8 +782,7 @@ export default function AulasExperimentaisPage() {
                       <div className="flex items-center gap-4 text-sm">
                         <div className="text-center min-w-[80px]">
                           <p className={`font-semibold ${
-                            situacaoResolvida ? 'text-gray-400' :
-                            passada && aula.status !== 'realizada' ? 'text-red-600' : 'text-gray-900'
+                            situacaoResolvida ? 'text-gray-400' : 'text-gray-700'
                           }`}>
                             {formatarData(aula.data)}
                           </p>
@@ -801,8 +807,8 @@ export default function AulasExperimentaisPage() {
                         {professor && (
                           <div className="text-center min-w-[100px]">
                             <p className={`text-xs ${situacaoResolvida ? 'text-gray-400' : 'text-gray-500'}`}>Professor</p>
-                            <p className="font-medium text-gray-900 text-sm">
-                              <i className={`fas fa-user-tie mr-1 ${situacaoResolvida ? 'text-gray-400' : 'text-primary-500'}`}></i>
+                            <p className={`font-medium text-sm ${situacaoResolvida ? 'text-gray-400' : 'text-gray-700'}`}>
+                              <i className="fas fa-user-tie mr-1 text-gray-400"></i>
                               {professor.nome}
                             </p>
                           </div>

@@ -6,11 +6,20 @@ import { BlockedSlot } from '@/models/BlockedSlot';
 export async function GET(request: NextRequest) {
   try {
     await connectDB();
-    const all = await BlockedSlot.find({}).lean();
+    const { searchParams } = new URL(request.url);
+    const modalidadeId = searchParams.get('modalidadeId');
+    
+    // Filtrar por modalidade se fornecido
+    const query: any = {};
+    if (modalidadeId) {
+      query.modalidadeId = modalidadeId;
+    }
+    
+    const all = await BlockedSlot.find(query).lean();
     // Return as map for easier client consumption
     const map: Record<string, any> = {};
     for (const b of all) {
-      map[b.slotKey] = { horarioSlot: b.horarioSlot, dayIndex: b.dayIndex, criadoEm: b.criadoEm };
+      map[b.slotKey] = { horarioSlot: b.horarioSlot, dayIndex: b.dayIndex, modalidadeId: b.modalidadeId, criadoEm: b.criadoEm };
     }
     return NextResponse.json({ success: true, data: map });
   } catch (e:any) {
@@ -23,20 +32,23 @@ export async function POST(request: NextRequest) {
   try {
     await connectDB();
     const body = await request.json();
-    const { slotKey, horarioSlot, dayIndex } = body || {};
+    const { slotKey, horarioSlot, dayIndex, modalidadeId } = body || {};
     if (!slotKey || !horarioSlot || typeof dayIndex !== 'number') {
       return NextResponse.json({ success: false, error: 'slotKey, horarioSlot and dayIndex required' }, { status: 400 });
     }
-    // Upsert (create if not exists)
+    // Upsert (create if not exists) - use $set explicitly to ensure modalidadeId is saved
+    const updateData: any = { slotKey, horarioSlot, dayIndex };
+    if (modalidadeId) updateData.modalidadeId = modalidadeId;
+    
     const created = await BlockedSlot.findOneAndUpdate(
       { slotKey },
-      { slotKey, horarioSlot, dayIndex },
+      { $set: updateData },
       { upsert: true, new: true, setDefaultsOnInsert: true }
-    ).lean() as { slotKey: string; horarioSlot: string; dayIndex: number } | null;
+    ).lean() as { slotKey: string; horarioSlot: string; dayIndex: number; modalidadeId?: string } | null;
     if (!created) {
       return NextResponse.json({ success: false, error: 'Failed to create blocked slot' }, { status: 500 });
     }
-    return NextResponse.json({ success: true, data: { slotKey: created.slotKey, horarioSlot: created.horarioSlot, dayIndex: created.dayIndex } }, { status: 201 });
+    return NextResponse.json({ success: true, data: { slotKey: created.slotKey, horarioSlot: created.horarioSlot, dayIndex: created.dayIndex, modalidadeId: created.modalidadeId } }, { status: 201 });
   } catch (e:any) {
     console.error('POST /api/blocked-slots error', e);
     return NextResponse.json({ success: false, error: String(e?.message || e) }, { status: 500 });

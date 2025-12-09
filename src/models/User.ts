@@ -1,14 +1,40 @@
 import mongoose, { Schema, model, models } from 'mongoose';
 
+// Interface para permissões granulares por módulo
+export interface IPermissoes {
+  calendario?: {
+    verDetalhes?: boolean;
+    registrarPresenca?: boolean;
+    registrarFalta?: boolean;
+    reagendar?: boolean;
+    reposicao?: boolean;
+    aulaExperimental?: boolean;
+  };
+  horarios?: {
+    gerenciarTurmas?: boolean;
+    adicionarAluno?: boolean;
+    removerAluno?: boolean;
+    bloquearHorarios?: boolean;
+    importarLote?: boolean;
+  };
+  alunos?: {
+    criar?: boolean;
+    editar?: boolean;
+    excluir?: boolean;
+    verDetalhes?: boolean;
+  };
+}
+
 // Interface para o Usuário
 export interface IUser {
   _id?: string;
   nome: string;
   email: string;
   senha: string;
-  tipo: 'admin' | 'professor' | 'root';
+  tipo: 'admin' | 'professor' | 'root' | 'vendedor';
   ativo: boolean;
   abas?: string[];
+  permissoes?: IPermissoes;
   telefone?: string;
   cor?: string;
   especialidades?: string[];
@@ -16,6 +42,31 @@ export interface IUser {
   criadoEm?: Date;
   atualizadoEm?: Date;
 }
+
+// Schema de permissões
+const PermissoesSchema = new Schema({
+  calendario: {
+    verDetalhes: { type: Boolean, default: true },
+    registrarPresenca: { type: Boolean, default: true },
+    registrarFalta: { type: Boolean, default: true },
+    reagendar: { type: Boolean, default: true },
+    reposicao: { type: Boolean, default: true },
+    aulaExperimental: { type: Boolean, default: true }
+  },
+  horarios: {
+    gerenciarTurmas: { type: Boolean, default: true },
+    adicionarAluno: { type: Boolean, default: true },
+    removerAluno: { type: Boolean, default: true },
+    bloquearHorarios: { type: Boolean, default: true },
+    importarLote: { type: Boolean, default: true }
+  },
+  alunos: {
+    criar: { type: Boolean, default: true },
+    editar: { type: Boolean, default: true },
+    excluir: { type: Boolean, default: true },
+    verDetalhes: { type: Boolean, default: true }
+  }
+}, { _id: false });
 
 // Schema do Usuário
 const UserSchema = new Schema<IUser>({
@@ -41,17 +92,20 @@ const UserSchema = new Schema<IUser>({
   tipo: {
     type: String,
     required: [true, 'Tipo de usuário é obrigatório'],
-    enum: ['admin', 'professor', 'root'],
+    enum: ['admin', 'professor', 'root', 'vendedor'],
     default: 'professor'
   },
   ativo: {
     type: Boolean,
     default: true
-  }
-  ,
+  },
   abas: {
     type: [String],
     default: []
+  },
+  permissoes: {
+    type: PermissoesSchema,
+    default: () => ({})
   },
   telefone: {
     type: String,

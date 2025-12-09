@@ -22,6 +22,7 @@ function hasTabAccess(user: any, tab: string): boolean {
 
 export default function Layout({ children, title = 'Superação Flux', fullWidth = false }: LayoutProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
   const pathname = usePathname();
   // do NOT read localStorage during render to avoid SSR/CSR mismatch
   const [user, setUser] = useState<any | null>(null);
@@ -32,17 +33,23 @@ export default function Layout({ children, title = 'Superação Flux', fullWidth
   const router = useRouter();
 
   const handleLogout = () => {
-    try {
-      localStorage.removeItem('user');
-      localStorage.removeItem('token');
-      // call server to clear auth cookie as well
-      try { fetch('/api/auth/logout', { method: 'POST' }); } catch(e) {}
-    } catch (e) {
-      // ignore
-    }
-    // clear displayed name immediately to prevent stale greeting
-    try { setDisplayName(''); } catch (e) {}
-    router.push('/admin/login');
+    // Esconder conteúdo imediatamente para evitar flash
+    setLoggingOut(true);
+    // Redirecionar imediatamente ANTES de limpar o estado
+    router.replace('/admin/login');
+    // Limpar estado após iniciar navegação
+    setTimeout(() => {
+      try {
+        localStorage.removeItem('user');
+        localStorage.removeItem('token');
+        // call server to clear auth cookie as well
+        try { fetch('/api/auth/logout', { method: 'POST' }); } catch(e) {}
+      } catch (e) {
+        // ignore
+      }
+      // clear displayed name immediately to prevent stale greeting
+      try { setDisplayName(''); } catch (e) {}
+    }, 100);
   };
 
   // Keep storage sync so opening a new tab or login/logout updates sidebar
@@ -210,6 +217,15 @@ export default function Layout({ children, title = 'Superação Flux', fullWidth
       </div>
     </div>
   );
+
+  // Se está fazendo logout, mostra uma tela em branco com fundo
+  if (loggingOut) {
+    return (
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+        <div className="text-gray-500 text-sm">Saindo...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">

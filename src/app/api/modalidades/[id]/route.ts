@@ -11,7 +11,7 @@ export async function PUT(
     await connectDB();
     const { id } = await params;
     const body = await request.json();
-  const { nome, descricao, cor, duracao, preco, diasSemana, limiteAlunos, horarioFuncionamento, horariosDisponiveis } = body;
+  const { nome, descricao, cor, duracao, preco, diasSemana, limiteAlunos, horarioFuncionamento, horariosDisponiveis, linkWhatsapp, modalidadesVinculadas } = body;
 
     // Build update object conditionally so PUT can be used to toggle `ativo` without requiring other fields
     const updateObj: any = {};
@@ -64,6 +64,43 @@ export async function PUT(
       } catch (e) {
         // ignore normalization errors and don't set the field
       }
+    }
+
+    // Link do grupo do WhatsApp
+    if (typeof linkWhatsapp !== 'undefined') {
+      updateObj.linkWhatsapp = linkWhatsapp?.trim() || '';
+    }
+
+    // Modalidades vinculadas (mesmo espaço físico) - sincronização bidirecional
+    if (Array.isArray(modalidadesVinculadas)) {
+      // Buscar vinculações anteriores para saber quais remover
+      const modalidadeAtual = await Modalidade.findById(id).lean();
+      const vinculacoesAnteriores: string[] = ((modalidadeAtual as any)?.modalidadesVinculadas || []).map((v: any) => v.toString());
+      const novasVinculacoes: string[] = modalidadesVinculadas.map((v: any) => v.toString());
+      
+      // Modalidades que foram removidas da vinculação
+      const removidas = vinculacoesAnteriores.filter(v => !novasVinculacoes.includes(v));
+      
+      // Modalidades que foram adicionadas à vinculação
+      const adicionadas = novasVinculacoes.filter(v => !vinculacoesAnteriores.includes(v));
+      
+      // Remover esta modalidade das modalidades que não estão mais vinculadas
+      if (removidas.length > 0) {
+        await Modalidade.updateMany(
+          { _id: { $in: removidas } },
+          { $pull: { modalidadesVinculadas: id } }
+        );
+      }
+      
+      // Adicionar esta modalidade às novas modalidades vinculadas
+      if (adicionadas.length > 0) {
+        await Modalidade.updateMany(
+          { _id: { $in: adicionadas } },
+          { $addToSet: { modalidadesVinculadas: id } }
+        );
+      }
+      
+      updateObj.modalidadesVinculadas = modalidadesVinculadas;
     }
 
     // Allow caller to set ativo flag when provided (reactivate/activate)

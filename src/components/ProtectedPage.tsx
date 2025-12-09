@@ -11,6 +11,13 @@ interface ProtectedPageProps {
   customLoading?: boolean; // Se true, a página filha gerencia seu próprio loading
 }
 
+// Mapeamento de abas com compatibilidade retroativa
+// Chave: aba atual, Valor: aba legada que também dá acesso
+const tabAliases: Record<string, string> = {
+  'creditos': 'creditos-reposicao',
+  'reposicao-faltas': 'creditos-reposicao'
+};
+
 export default function ProtectedPage({ children, tab, title, fullWidth, customLoading }: ProtectedPageProps) {
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [mounted, setMounted] = useState(false);
@@ -22,7 +29,19 @@ export default function ProtectedPage({ children, tab, title, fullWidth, customL
       const user = raw ? JSON.parse(raw) : null;
       if (user) {
         const abas = user.abas || [];
-        setHasPermission(abas.includes(tab));
+        const tipoLower = (user.tipo || '').toLowerCase();
+        const isAdmin = tipoLower === 'root' || tipoLower === 'adm' || tipoLower === 'admin';
+        
+        // Tab "diagnostico" é especial - só precisa ser admin
+        if (tab === 'diagnostico') {
+          setHasPermission(isAdmin);
+        } else {
+          // Verificar aba atual ou alias para compatibilidade retroativa
+          const hasTab = abas.includes(tab);
+          const alias = tabAliases[tab];
+          const hasAlias = alias ? abas.includes(alias) : false;
+          setHasPermission(hasTab || hasAlias);
+        }
       } else {
         setHasPermission(false);
       }

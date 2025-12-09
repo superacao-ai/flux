@@ -30,7 +30,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     const updates: any = {};
-  const allowed = ['professorId', 'diaSemana', 'horarioInicio', 'horarioFim', 'observacoes', 'observacaoTurma'];
+  const allowed = ['professorId', 'diaSemana', 'horarioInicio', 'horarioFim', 'observacoes', 'observacaoTurma', 'limiteAlunos'];
     for (const key of allowed) {
       if (body[key] !== undefined) {
         if (key === 'professorId') {
@@ -38,13 +38,33 @@ export async function PATCH(request: NextRequest) {
             return NextResponse.json({ success: false, error: 'professorId inválido' }, { status: 400 });
           }
           updates[key] = new mongoose.Types.ObjectId(body[key]);
+        } else if (key === 'limiteAlunos') {
+          // Se limiteAlunos for vazio ou null, remover o campo; senão definir o valor
+          if (body[key] === '' || body[key] === null) {
+            updates.$unset = updates.$unset || {};
+            updates.$unset.limiteAlunos = 1;
+          } else {
+            updates[key] = Number(body[key]);
+          }
         } else {
           updates[key] = body[key];
         }
       }
     }
 
-    await HorarioFixo.updateMany(filter, { $set: updates });
+    // Separar $set de $unset se necessário
+    const updateOp: any = {};
+    if (updates.$unset) {
+      updateOp.$unset = updates.$unset;
+      delete updates.$unset;
+    }
+    if (Object.keys(updates).length > 0) {
+      updateOp.$set = updates;
+    }
+
+    if (Object.keys(updateOp).length > 0) {
+      await HorarioFixo.updateMany(filter, updateOp);
+    }
 
     // Return updated docs
     const updated = await HorarioFixo.find(filter).populate('alunoId', 'nome email periodoTreino parceria observacoes').populate('professorId', 'nome especialidade');

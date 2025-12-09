@@ -70,6 +70,7 @@ export async function POST(request: NextRequest) {
       email: user.email,
       tipo: user.tipo,
       abas: user.abas || [],
+      permissoes: user.permissoes || {},
       cor: user.cor || '#3B82F6'
     };
 

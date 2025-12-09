@@ -67,7 +67,7 @@ export async function PUT(request: NextRequest, context: any) {
     if (body.nome !== undefined) update.nome = String(body.nome).trim();
     if (body.email !== undefined) update.email = String(body.email).toLowerCase().trim();
     if (body.tipo !== undefined) {
-      const allowedTipos = ['admin', 'professor', 'root'];
+      const allowedTipos = ['admin', 'professor', 'root', 'vendedor'];
       update.tipo = allowedTipos.includes(body.tipo) ? body.tipo : 'professor';
     }
     if (body.ativo !== undefined) update.ativo = Boolean(body.ativo);
@@ -75,6 +75,10 @@ export async function PUT(request: NextRequest, context: any) {
     if (body.telefone !== undefined) update.telefone = String(body.telefone).trim();
     if (Array.isArray(body.especialidades)) update.especialidades = body.especialidades.map(String);
     if (body.modalidadeId !== undefined) update.modalidadeId = body.modalidadeId || null;
+    if (body.permissoes !== undefined) {
+      console.log('📥 Salvando permissões:', JSON.stringify(body.permissoes, null, 2));
+      update.permissoes = body.permissoes;
+    }
     if (body.cor !== undefined) {
       let corVal = String(body.cor).trim();
       if (corVal && !corVal.startsWith('#')) corVal = `#${corVal}`;

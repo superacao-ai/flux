@@ -8,6 +8,15 @@ import AulaRealizada from '@/models/AulaRealizada';
 import { Reagendamento } from '@/models/Reagendamento';
 import { User } from '@/models/User';
 import { Matricula } from '@/models/Matricula';
+import CreditoReposicaoModel from '@/models/CreditoReposicao';
+import UsoCreditoModel from '@/models/UsoCredito';
+import { Falta } from '@/models/Falta';
+import { AvisoAusencia } from '@/models/AvisoAusencia';
+import { AlteracaoHorario } from '@/models/AlteracaoHorario';
+import FeriadoModel from '@/models/Feriado';
+import { BlockedSlot } from '@/models/BlockedSlot';
+import { Aviso } from '@/models/Aviso';
+import PresencaModel from '@/models/Presenca';
 
 // GET - Exportar backup completo do banco
 export async function GET(request: NextRequest) {
@@ -65,6 +74,51 @@ export async function GET(request: NextRequest) {
     if (includeAll || collections.includes('matriculas')) {
       backup.matriculas = await Matricula.find({}).lean();
       metadata.collections.push('matriculas');
+    }
+
+    if (includeAll || collections.includes('creditos')) {
+      backup.creditos = await CreditoReposicaoModel.find({}).lean();
+      metadata.collections.push('creditos');
+    }
+
+    if (includeAll || collections.includes('usosCredito')) {
+      backup.usosCredito = await UsoCreditoModel.find({}).lean();
+      metadata.collections.push('usosCredito');
+    }
+
+    if (includeAll || collections.includes('faltas')) {
+      backup.faltas = await Falta.find({}).lean();
+      metadata.collections.push('faltas');
+    }
+
+    if (includeAll || collections.includes('avisosAusencia')) {
+      backup.avisosAusencia = await AvisoAusencia.find({}).lean();
+      metadata.collections.push('avisosAusencia');
+    }
+
+    if (includeAll || collections.includes('alteracoesHorario')) {
+      backup.alteracoesHorario = await AlteracaoHorario.find({}).lean();
+      metadata.collections.push('alteracoesHorario');
+    }
+
+    if (includeAll || collections.includes('feriados')) {
+      backup.feriados = await FeriadoModel.find({}).lean();
+      metadata.collections.push('feriados');
+    }
+
+    if (includeAll || collections.includes('blockedSlots')) {
+      backup.blockedSlots = await BlockedSlot.find({}).lean();
+      metadata.collections.push('blockedSlots');
+    }
+
+    if (includeAll || collections.includes('avisos')) {
+      backup.avisos = await Aviso.find({}).lean();
+      metadata.collections.push('avisos');
+    }
+
+    if (includeAll || collections.includes('presencas')) {
+      backup.presencas = await PresencaModel.find({}).lean();
+      metadata.collections.push('presencas');
     }
 
     // Contar registros
@@ -246,6 +300,195 @@ export async function POST(request: NextRequest) {
           results.matriculas.imported++;
         } catch (e) {
           results.matriculas.errors++;
+        }
+      }
+    }
+
+    // Créditos de Reposição
+    if (data.creditos && Array.isArray(data.creditos)) {
+      results.creditos = { imported: 0, errors: 0 };
+      if (mode === 'replace') {
+        await CreditoReposicaoModel.deleteMany({});
+      }
+      for (const item of data.creditos) {
+        try {
+          const { _id, ...rest } = item;
+          if (mode === 'merge') {
+            await CreditoReposicaoModel.findByIdAndUpdate(_id, rest, { upsert: true });
+          } else {
+            await CreditoReposicaoModel.create({ _id, ...rest });
+          }
+          results.creditos.imported++;
+        } catch (e) {
+          results.creditos.errors++;
+        }
+      }
+    }
+
+    // Usos de Crédito
+    if (data.usosCredito && Array.isArray(data.usosCredito)) {
+      results.usosCredito = { imported: 0, errors: 0 };
+      if (mode === 'replace') {
+        await UsoCreditoModel.deleteMany({});
+      }
+      for (const item of data.usosCredito) {
+        try {
+          const { _id, ...rest } = item;
+          if (mode === 'merge') {
+            await UsoCreditoModel.findByIdAndUpdate(_id, rest, { upsert: true });
+          } else {
+            await UsoCreditoModel.create({ _id, ...rest });
+          }
+          results.usosCredito.imported++;
+        } catch (e) {
+          results.usosCredito.errors++;
+        }
+      }
+    }
+
+    // Faltas
+    if (data.faltas && Array.isArray(data.faltas)) {
+      results.faltas = { imported: 0, errors: 0 };
+      if (mode === 'replace') {
+        await Falta.deleteMany({});
+      }
+      for (const item of data.faltas) {
+        try {
+          const { _id, ...rest } = item;
+          if (mode === 'merge') {
+            await Falta.findByIdAndUpdate(_id, rest, { upsert: true });
+          } else {
+            await Falta.create({ _id, ...rest });
+          }
+          results.faltas.imported++;
+        } catch (e) {
+          results.faltas.errors++;
+        }
+      }
+    }
+
+    // Avisos de Ausência
+    if (data.avisosAusencia && Array.isArray(data.avisosAusencia)) {
+      results.avisosAusencia = { imported: 0, errors: 0 };
+      if (mode === 'replace') {
+        await AvisoAusencia.deleteMany({});
+      }
+      for (const item of data.avisosAusencia) {
+        try {
+          const { _id, ...rest } = item;
+          if (mode === 'merge') {
+            await AvisoAusencia.findByIdAndUpdate(_id, rest, { upsert: true });
+          } else {
+            await AvisoAusencia.create({ _id, ...rest });
+          }
+          results.avisosAusencia.imported++;
+        } catch (e) {
+          results.avisosAusencia.errors++;
+        }
+      }
+    }
+
+    // Alterações de Horário
+    if (data.alteracoesHorario && Array.isArray(data.alteracoesHorario)) {
+      results.alteracoesHorario = { imported: 0, errors: 0 };
+      if (mode === 'replace') {
+        await AlteracaoHorario.deleteMany({});
+      }
+      for (const item of data.alteracoesHorario) {
+        try {
+          const { _id, ...rest } = item;
+          if (mode === 'merge') {
+            await AlteracaoHorario.findByIdAndUpdate(_id, rest, { upsert: true });
+          } else {
+            await AlteracaoHorario.create({ _id, ...rest });
+          }
+          results.alteracoesHorario.imported++;
+        } catch (e) {
+          results.alteracoesHorario.errors++;
+        }
+      }
+    }
+
+    // Feriados Personalizados
+    if (data.feriados && Array.isArray(data.feriados)) {
+      results.feriados = { imported: 0, errors: 0 };
+      if (mode === 'replace') {
+        await FeriadoModel.deleteMany({});
+      }
+      for (const item of data.feriados) {
+        try {
+          const { _id, ...rest } = item;
+          if (mode === 'merge') {
+            await FeriadoModel.findByIdAndUpdate(_id, rest, { upsert: true });
+          } else {
+            await FeriadoModel.create({ _id, ...rest });
+          }
+          results.feriados.imported++;
+        } catch (e) {
+          results.feriados.errors++;
+        }
+      }
+    }
+
+    // Slots Bloqueados
+    if (data.blockedSlots && Array.isArray(data.blockedSlots)) {
+      results.blockedSlots = { imported: 0, errors: 0 };
+      if (mode === 'replace') {
+        await BlockedSlot.deleteMany({});
+      }
+      for (const item of data.blockedSlots) {
+        try {
+          const { _id, ...rest } = item;
+          if (mode === 'merge') {
+            await BlockedSlot.findByIdAndUpdate(_id, rest, { upsert: true });
+          } else {
+            await BlockedSlot.create({ _id, ...rest });
+          }
+          results.blockedSlots.imported++;
+        } catch (e) {
+          results.blockedSlots.errors++;
+        }
+      }
+    }
+
+    // Avisos do Sistema
+    if (data.avisos && Array.isArray(data.avisos)) {
+      results.avisos = { imported: 0, errors: 0 };
+      if (mode === 'replace') {
+        await Aviso.deleteMany({});
+      }
+      for (const item of data.avisos) {
+        try {
+          const { _id, ...rest } = item;
+          if (mode === 'merge') {
+            await Aviso.findByIdAndUpdate(_id, rest, { upsert: true });
+          } else {
+            await Aviso.create({ _id, ...rest });
+          }
+          results.avisos.imported++;
+        } catch (e) {
+          results.avisos.errors++;
+        }
+      }
+    }
+
+    // Presenças
+    if (data.presencas && Array.isArray(data.presencas)) {
+      results.presencas = { imported: 0, errors: 0 };
+      if (mode === 'replace') {
+        await PresencaModel.deleteMany({});
+      }
+      for (const item of data.presencas) {
+        try {
+          const { _id, ...rest } = item;
+          if (mode === 'merge') {
+            await PresencaModel.findByIdAndUpdate(_id, rest, { upsert: true });
+          } else {
+            await PresencaModel.create({ _id, ...rest });
+          }
+          results.presencas.imported++;
+        } catch (e) {
+          results.presencas.errors++;
         }
       }
     }

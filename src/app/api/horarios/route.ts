@@ -380,6 +380,71 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Verificar se já existe uma turma (HorarioFixo) com o mesmo professor, dia e horário
+    // Isso evita criar turmas duplicadas quando não tem alunoId
+    const turmaExistenteQuery: any = {
+      professorId,
+      diaSemana,
+      horarioInicio,
+      horarioFim,
+      ativo: true
+    };
+    if (modalidadeId) turmaExistenteQuery.modalidadeId = modalidadeId;
+    
+    const turmaExistente = await HorarioFixo.findOne(turmaExistenteQuery);
+    if (turmaExistente) {
+      // Se a turma já existe e não estamos tentando adicionar um aluno, retornar erro
+      if (!alunoId) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Já existe uma turma neste horário com este professor'
+          },
+          { status: 400 }
+        );
+      }
+      // Se estamos tentando adicionar um aluno a uma turma existente, deixar continuar
+      // (o código abaixo vai tratar isso)
+    }
+
+    // ========== VERIFICAÇÃO DE CONFLITO ENTRE MODALIDADES VINCULADAS ==========
+    // Se a modalidade tem modalidades vinculadas (compartilham espaço físico),
+    // verificar se há aulas no mesmo dia/horário nessas modalidades
+    if (modalidadeId) {
+      try {
+        const modalidade = await Modalidade.findById(modalidadeId).lean();
+        const vinculadas = (modalidade as any)?.modalidadesVinculadas || [];
+        
+        if (vinculadas.length > 0) {
+          // Buscar aulas nas modalidades vinculadas no mesmo dia e horário
+          const conflitoVinculada = await HorarioFixo.findOne({
+            modalidadeId: { $in: vinculadas },
+            diaSemana,
+            ativo: true,
+            $or: [
+              // Horário sobrepõe: início está dentro do intervalo
+              { horarioInicio: { $lt: horarioFim }, horarioFim: { $gt: horarioInicio } }
+            ]
+          }).populate('modalidadeId', 'nome');
+          
+          if (conflitoVinculada) {
+            const nomeModalidadeConflito = (conflitoVinculada.modalidadeId as any)?.nome || 'outra modalidade';
+            return NextResponse.json(
+              {
+                success: false,
+                error: `Conflito de espaço: já existe aula de "${nomeModalidadeConflito}" neste horário (${conflitoVinculada.horarioInicio}-${conflitoVinculada.horarioFim}). As modalidades compartilham o mesmo espaço físico.`
+              },
+              { status: 400 }
+            );
+          }
+        }
+      } catch (err) {
+        console.warn('Erro ao verificar conflito de modalidades vinculadas:', err);
+        // Não bloquear a criação por erro na verificação
+      }
+    }
+    // ========== FIM VERIFICAÇÃO DE CONFLITO ==========
+
     // Se alunoId foi fornecido, fazemos validações específicas de conflito para o aluno
   if (alunoId) {
       // Build base query for conflicts including modalidadeId if provided.

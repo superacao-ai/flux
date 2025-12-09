@@ -57,13 +57,25 @@ export default function AulasRealizadasPage() {
     horario: string;
     modalidade: string;
     professor: string;
+    professorId: string;
     horarioFixoId: string;
   }>>([]);
+  const [pendenteCancelar, setPendenteCancelar] = useState<{
+    data: string;
+    horario: string;
+    modalidade: string;
+    professor: string;
+    professorId: string;
+    horarioFixoId: string;
+  } | null>(null);
+  const [motivoCancelamento, setMotivoCancelamento] = useState('');
+  const [aulaCanceladaParaDesfazer, setAulaCanceladaParaDesfazer] = useState<AulaRealizada | null>(null);
 
   // Pagination state
   const ITENS_POR_PAGINA = 8;
   const [pendentesPage, setPendentesPage] = useState(1);
   const [realizadasPage, setRealizadasPage] = useState(1);
+  const [canceladasPage, setCanceladasPage] = useState(1);
 
   // Marcar como montado
   useEffect(() => {
@@ -79,8 +91,12 @@ export default function AulasRealizadasPage() {
 
   const getProfessorColor = (idOrName: string) => {
     if (!idOrName) return '#9CA3AF';
-    const prof = professores.find(p => String(p._id) === String(idOrName) || String((p.nome || '').toLowerCase()) === String((idOrName || '').toLowerCase()));
-    return (prof && (prof.cor || prof.color)) || '#9CA3AF';
+    const searchValue = String(idOrName || '').toLowerCase().trim();
+    const prof = professores.find(p => 
+      String(p._id) === String(idOrName) || 
+      String((p.nome || '')).toLowerCase().trim() === searchValue
+    );
+    return (prof && prof.cor) || '#9CA3AF';
   };
 
   const getProfessorName = (aula: any) => {
@@ -261,7 +277,7 @@ export default function AulasRealizadasPage() {
       else if (usuariosData && usuariosData.data) usuariosList = usuariosData.data;
       const professoresList = usuariosList
         .filter((u: any) => String(u.tipo || '').toLowerCase() === 'professor')
-        .map((u: any) => ({ _id: u._id, nome: u.nome, cor: u.cor || '#3B82F6' , ...u }));
+        .map((u: any) => ({ _id: u._id, nome: u.nome, cor: u.cor, ...u }));
       setProfessores(professoresList || []);
 
       // Buscar modalidades
@@ -298,6 +314,7 @@ export default function AulasRealizadasPage() {
         horario: string;
         modalidade: string;
         professor: string;
+        professorId: string;
         horarioFixoId: string;
       }> = [];
 
@@ -365,6 +382,7 @@ export default function AulasRealizadasPage() {
                 horario: horarioTexto,
                 modalidade: modalidadeNome,
                 professor: professorNome,
+                professorId: professorId,
                 horarioFixoId: horario._id
               });
             }
@@ -404,7 +422,8 @@ export default function AulasRealizadasPage() {
     }
   };
 
-  const handleExcluir = async () => {
+  // Função para devolver aula realizada (DELETE - remove do banco para voltar como pendente)
+  const handleDevolverAula = async () => {
     if (!aulaParaExcluir) return;
 
     try {
@@ -423,13 +442,93 @@ export default function AulasRealizadasPage() {
       if (response.ok) {
         setAulaParaExcluir(null);
         carregarDados();
-        toast.success('Aula excluída com sucesso!');
+        toast.success('Aula devolvida com sucesso! Ela voltará a aparecer como pendente.');
       } else {
-        toast.error('Erro ao excluir aula');
+        toast.error('Erro ao devolver aula');
       }
     } catch (error) {
-      console.error('Erro ao excluir aula:', error);
-      toast.error('Erro ao excluir aula');
+      console.error('Erro ao devolver aula:', error);
+      toast.error('Erro ao devolver aula');
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  // Função para cancelar aula pendente (gera crédito de reposição para todos os alunos)
+  const handleCancelarPendente = async () => {
+    if (!pendenteCancelar) return;
+
+    try {
+      setSalvando(true);
+      const token = localStorage.getItem('token');
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      };
+
+      // Chamar a API de cancelamento
+      const response = await fetch('/api/aulas-realizadas/cancelar', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          horarioFixoId: pendenteCancelar.horarioFixoId,
+          data: pendenteCancelar.data,
+          motivoCancelamento: motivoCancelamento.trim() || 'Aula cancelada - crédito gerado'
+        })
+      });
+
+      const result = await response.json();
+
+      if (response.ok && result.success) {
+        setPendenteCancelar(null);
+        setMotivoCancelamento('');
+        carregarDados();
+        toast.success(result.message || 'Aula cancelada com sucesso!');
+      } else {
+        toast.error(result.error || 'Erro ao cancelar aula');
+      }
+    } catch (error) {
+      console.error('Erro ao cancelar aula pendente:', error);
+      toast.error('Erro ao cancelar aula');
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  // Função para desfazer cancelamento de aula (remove a aula cancelada e devolve créditos)
+  const handleDesfazerCancelamento = async () => {
+    if (!aulaCanceladaParaDesfazer) return;
+
+    try {
+      setSalvando(true);
+      const token = localStorage.getItem('token');
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      };
+
+      // Deletar a aula cancelada (voltará como pendente)
+      const response = await fetch(`/api/aulas-realizadas/${aulaCanceladaParaDesfazer._id}`, {
+        method: 'DELETE',
+        headers
+      });
+
+      if (response.ok) {
+        // Remover os créditos de reposição gerados pelo cancelamento
+        const resCreditos = await fetch(`/api/creditos-reposicao?aulaRealizadaId=${aulaCanceladaParaDesfazer._id}`, {
+          method: 'DELETE',
+          headers
+        });
+
+        setAulaCanceladaParaDesfazer(null);
+        carregarDados();
+        toast.success('Cancelamento desfeito! A aula voltou a aparecer como pendente.');
+      } else {
+        toast.error('Erro ao desfazer cancelamento');
+      }
+    } catch (error) {
+      console.error('Erro ao desfazer cancelamento:', error);
+      toast.error('Erro ao desfazer cancelamento');
     } finally {
       setSalvando(false);
     }
@@ -614,26 +713,37 @@ export default function AulasRealizadasPage() {
     }
   }, [aulaParaEditar]);
 
-  // Filtrar por tipo de aula
-  const aulasParaExibir = filtros.tipoAula === 'realizadas' ? aulas : 
+  // Filtrar aulas (separando canceladas)
+  const aulasAtivas = aulas.filter((a: any) => !a.cancelada);
+  const aulasCanceladas = aulas.filter((a: any) => a.cancelada);
+  
+  const aulasParaExibir = filtros.tipoAula === 'realizadas' ? aulasAtivas : 
                           filtros.tipoAula === 'pendentes' ? [] : 
-                          aulas;
+                          filtros.tipoAula === 'canceladas' ? [] :
+                          aulasAtivas;
   
   const pendentesFiltradas = filtros.tipoAula === 'pendentes' ? aulasPendentes :
                              filtros.tipoAula === 'todas' ? aulasPendentes :
                              [];
 
+  const canceladasFiltradas = filtros.tipoAula === 'canceladas' ? aulasCanceladas :
+                              filtros.tipoAula === 'todas' ? aulasCanceladas :
+                              [];
+
   // Reset pagination when filters change
   useEffect(() => {
     setPendentesPage(1);
     setRealizadasPage(1);
+    setCanceladasPage(1);
   }, [filtros]);
 
   const totalPendentesPages = Math.max(1, Math.ceil(pendentesFiltradas.length / ITENS_POR_PAGINA));
   const totalRealizadasPages = Math.max(1, Math.ceil(aulasParaExibir.length / ITENS_POR_PAGINA));
+  const totalCanceladasPages = Math.max(1, Math.ceil(canceladasFiltradas.length / ITENS_POR_PAGINA));
 
   const pendentesParaExibir = pendentesFiltradas.slice((pendentesPage - 1) * ITENS_POR_PAGINA, pendentesPage * ITENS_POR_PAGINA);
   const realizadasParaExibir = aulasParaExibir.slice((realizadasPage - 1) * ITENS_POR_PAGINA, realizadasPage * ITENS_POR_PAGINA);
+  const canceladasParaExibir = canceladasFiltradas.slice((canceladasPage - 1) * ITENS_POR_PAGINA, canceladasPage * ITENS_POR_PAGINA);
 
   // Skeleton loading enquanto não está montado ou carregando dados iniciais
   if (!mounted || initialLoading) {
@@ -790,7 +900,7 @@ export default function AulasRealizadasPage() {
                   : 'bg-gray-100 text-gray-700'
               }`}
             >
-              <i className="fas fa-check mr-1"></i>{aulas.length}
+              <i className="fas fa-check mr-1"></i>{aulasAtivas.length}
             </button>
             <button
               onClick={() => setFiltros({ ...filtros, tipoAula: 'pendentes' })}
@@ -801,6 +911,16 @@ export default function AulasRealizadasPage() {
               }`}
             >
               <i className="fas fa-clock mr-1"></i>{aulasPendentes.length}
+            </button>
+            <button
+              onClick={() => setFiltros({ ...filtros, tipoAula: 'canceladas' })}
+              className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                filtros.tipoAula === 'canceladas' 
+                  ? 'bg-red-600 text-white' 
+                  : 'bg-gray-100 text-gray-700'
+              }`}
+            >
+              <i className="fas fa-ban mr-1"></i>{aulasCanceladas.length}
             </button>
           </div>
           <div className="flex gap-2 mt-2">
@@ -851,7 +971,7 @@ export default function AulasRealizadasPage() {
               }`}
             >
               <i className="fas fa-check-circle mr-2"></i>
-              Realizadas ({aulas.length})
+              Realizadas ({aulasAtivas.length})
             </button>
             <button
               onClick={() => setFiltros({ ...filtros, tipoAula: 'pendentes' })}
@@ -863,6 +983,17 @@ export default function AulasRealizadasPage() {
             >
               <i className="fas fa-clock mr-2"></i>
               Pendentes ({aulasPendentes.length})
+            </button>
+            <button
+              onClick={() => setFiltros({ ...filtros, tipoAula: 'canceladas' })}
+              className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+                filtros.tipoAula === 'canceladas' 
+                  ? 'bg-red-600 text-white' 
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              <i className="fas fa-ban mr-2"></i>
+              Canceladas ({aulasCanceladas.length})
             </button>
           </div>
 
@@ -1039,9 +1170,17 @@ export default function AulasRealizadasPage() {
                             {aula.modalidade}
                           </span>
                           <span className="inline-flex items-center gap-1.5 text-xs text-gray-600">
-                            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: getProfessorColor(aula.professor) }}></span>
+                            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: getProfessorColor(aula.professorId || aula.professor) }}></span>
                             {aula.professor}
                           </span>
+                        </div>
+                        <div className="flex justify-end mt-2">
+                          <button
+                            onClick={() => setPendenteCancelar(aula)}
+                            className="inline-flex items-center gap-1 px-2 py-1 text-[10px] rounded-lg bg-red-50 text-red-700 font-medium hover:bg-red-100"
+                          >
+                            <i className="fas fa-ban"></i> Cancelar
+                          </button>
                         </div>
                       </div>
                     </div>
@@ -1074,6 +1213,7 @@ export default function AulasRealizadasPage() {
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Data / Dia / Horário</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Modalidade</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Professor</th>
+                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Ações</th>
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
@@ -1101,9 +1241,19 @@ export default function AulasRealizadasPage() {
                           </td>
                           <td className="px-4 py-3 text-sm text-gray-900">
                             <span className="inline-flex items-center gap-2">
-                              <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: getProfessorColor(aula.professor) }} />
+                              <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: getProfessorColor(aula.professorId || aula.professor) }} />
                               <span>{aula.professor}</span>
                             </span>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-center">
+                            <button
+                              onClick={() => setPendenteCancelar(aula)}
+                              className="inline-flex items-center gap-2 px-2 py-1 text-xs rounded-md border bg-red-50 border-red-100 text-red-800 hover:bg-red-100"
+                              title="Cancelar aula e gerar crédito"
+                            >
+                              <i className="fas fa-ban w-3" aria-hidden="true" />
+                              <span className="hidden sm:inline">Cancelar</span>
+                            </button>
                           </td>
                         </tr>
                       ))}
@@ -1307,6 +1457,181 @@ export default function AulasRealizadasPage() {
               </div>
               </>
             )}
+
+            {/* Aulas Canceladas */}
+            {(filtros.tipoAula === 'canceladas' || filtros.tipoAula === 'todas') && canceladasFiltradas.length > 0 && (
+              <>
+              {/* Cards Mobile - Canceladas */}
+              <div className="md:hidden space-y-3 fade-in-3">
+                <div className="flex items-center gap-2 text-sm font-semibold text-red-800 mb-2">
+                  <i className="fas fa-ban"></i>
+                  Canceladas ({canceladasFiltradas.length})
+                </div>
+                {canceladasParaExibir.map((aula, index) => {
+                  const fadeClass = `fade-in-${Math.min((index % 8) + 1, 8)}`;
+                  return (
+                    <div key={aula._id} className={`bg-white rounded-xl border border-red-200 shadow-sm overflow-hidden ${fadeClass}`}>
+                      <div className="h-1 bg-red-400"></div>
+                      <div className="p-3">
+                        <div className="flex items-start justify-between mb-2">
+                          <div>
+                            <div className="text-sm font-semibold text-gray-900">
+                              {parseLocalDate(aula.data).toLocaleDateString('pt-BR')}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {(() => {
+                                try {
+                                  const d = parseLocalDate(aula.data);
+                                  const wd = d.toLocaleDateString('pt-BR', { weekday: 'long' });
+                                  const hi = (aula as any).horarioInicio || '';
+                                  const hf = (aula as any).horarioFim || '';
+                                  const horarioStr = (hi && hf) ? `${hi} - ${hf}` : (hi || hf || '—');
+                                  return `${wd ? wd.charAt(0).toUpperCase() + wd.slice(1) : ''} • ${horarioStr}`;
+                                } catch (e) { return ''; }
+                              })()}
+                            </div>
+                          </div>
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-red-100 text-red-700">
+                            Cancelada
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap gap-2 mb-2">
+                          <span className="inline-flex items-center gap-1.5 text-xs text-gray-600">
+                            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: getModalidadeColor(aula.modalidade || '') }}></span>
+                            {aula.modalidade || 'Não informada'}
+                          </span>
+                          <span className="inline-flex items-center gap-1.5 text-xs text-gray-600">
+                            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: getProfessorColor(getProfessorLookupKey(aula)) }}></span>
+                            {getProfessorName(aula)}
+                          </span>
+                        </div>
+                        {(aula as any).motivoCancelamento && (
+                          <div className="text-xs text-gray-500 italic mb-2">
+                            <i className="fas fa-info-circle mr-1"></i>
+                            {(aula as any).motivoCancelamento}
+                          </div>
+                        )}
+                        <div className="flex justify-end">
+                          <button
+                            onClick={() => setAulaCanceladaParaDesfazer(aula)}
+                            className="inline-flex items-center gap-1 px-2 py-1 text-[10px] rounded-lg bg-yellow-50 text-yellow-700 font-medium hover:bg-yellow-100"
+                          >
+                            <i className="fas fa-undo"></i> Desfazer
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+                {/* Paginação Mobile Canceladas */}
+                {canceladasFiltradas.length > ITENS_POR_PAGINA && (
+                  <div className="flex items-center justify-between text-xs text-gray-600 pt-2">
+                    <span>{canceladasPage}/{totalCanceladasPages}</span>
+                    <div className="flex gap-1">
+                      <button
+                        disabled={canceladasPage === 1}
+                        onClick={() => setCanceladasPage(p => Math.max(1, p - 1))}
+                        className="px-2 py-1 border border-gray-300 rounded bg-white disabled:opacity-50"
+                      >
+                        <i className="fas fa-chevron-left"></i>
+                      </button>
+                      <button
+                        disabled={canceladasPage >= totalCanceladasPages}
+                        onClick={() => setCanceladasPage(p => Math.min(totalCanceladasPages, p + 1))}
+                        className="px-2 py-1 border border-gray-300 rounded bg-white disabled:opacity-50"
+                      >
+                        <i className="fas fa-chevron-right"></i>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Tabela Desktop - Canceladas */}
+              <div className="hidden md:block bg-white rounded-xl border border-gray-200 overflow-hidden fade-in-3">
+                <div className="p-4 border-b border-gray-200">
+                  <h2 className="font-semibold text-red-800 flex items-center gap-2">
+                    <i className="fas fa-ban"></i>
+                    Aulas Canceladas ({canceladasFiltradas.length})
+                  </h2>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Data</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Modalidade</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Professor</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Motivo</th>
+                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Ação</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {canceladasParaExibir.map(aula => (
+                        <tr key={aula._id} className="hover:bg-gray-50">
+                          <td className="px-4 py-3">
+                            <div className="text-sm font-medium text-gray-900">
+                              {parseLocalDate(aula.data).toLocaleDateString('pt-BR')}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {(() => {
+                                try {
+                                  const d = parseLocalDate(aula.data);
+                                  const wd = d.toLocaleDateString('pt-BR', { weekday: 'long' });
+                                  const hi = (aula as any).horarioInicio || '';
+                                  const hf = (aula as any).horarioFim || '';
+                                  const horarioStr = (hi && hf) ? `${hi} - ${hf}` : (hi || hf || '—');
+                                  return `${wd ? wd.charAt(0).toUpperCase() + wd.slice(1) : ''} • ${horarioStr}`;
+                                } catch (e) { return '' }
+                              })()}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-900">
+                            <span className="inline-flex items-center gap-2">
+                              <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: getModalidadeColor(aula.modalidade || '') }} />
+                              <span>{aula.modalidade || 'Não informada'}</span>
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-900">
+                            <span className="inline-flex items-center gap-2">
+                              <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: getProfessorColor(getProfessorLookupKey(aula)) }} />
+                              <span>{getProfessorName(aula)}</span>
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-500 max-w-xs truncate">
+                            {(aula as any).motivoCancelamento || 'Não informado'}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-center">
+                            <button
+                              onClick={() => setAulaCanceladaParaDesfazer(aula)}
+                              className="inline-flex items-center gap-2 px-2 py-1 text-xs rounded-md border bg-yellow-50 border-yellow-100 text-yellow-800 hover:bg-yellow-100"
+                              title="Desfazer cancelamento"
+                            >
+                              <i className="fas fa-undo w-3" aria-hidden="true" />
+                              <span className="hidden sm:inline">Desfazer</span>
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {/* Paginação Desktop Canceladas */}
+                {canceladasFiltradas.length > ITENS_POR_PAGINA && (
+                  <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-t border-gray-200">
+                    <div className="text-sm text-gray-500">
+                      Mostrando {(canceladasPage - 1) * ITENS_POR_PAGINA + 1} a {Math.min(canceladasPage * ITENS_POR_PAGINA, canceladasFiltradas.length)} de {canceladasFiltradas.length}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button disabled={canceladasPage === 1} onClick={() => setCanceladasPage(p => Math.max(1, p - 1))} className="px-3 py-1 border rounded-md bg-white disabled:opacity-50">Anterior</button>
+                      <div className="text-sm text-gray-700">Página {canceladasPage} de {totalCanceladasPages}</div>
+                      <button disabled={canceladasPage >= totalCanceladasPages} onClick={() => setCanceladasPage(p => Math.min(totalCanceladasPages, p + 1))} className="px-3 py-1 border rounded-md bg-white disabled:opacity-50">Próxima</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+              </>
+            )}
           </div>
         )}
 
@@ -1463,19 +1788,19 @@ export default function AulasRealizadasPage() {
           </div>
         )}
 
-        {/* Modal de Confirmação de Exclusão */}
+        {/* Modal de Confirmação de Devolução */}
         {aulaParaExcluir && (
           <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
             <div className="bg-white rounded-lg shadow-lg border p-4 sm:p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
               <div className="flex items-start justify-between">
                       <div>
                         <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
-                          <i className="fas fa-undo text-primary-600"></i>
-                          Confirmar Devolução
+                          <i className="fas fa-undo text-yellow-600"></i>
+                          Devolver Aula
                         </h3>
                         <div className="text-xs text-gray-500 flex items-center gap-2 mt-1">
                           <i className="fas fa-info-circle text-primary-600"></i>
-                          <span>Esta ação devolverá a aula (removerá o registro de aula realizada).</span>
+                          <span>A aula será removida e voltará a aparecer como pendente.</span>
                         </div>
                       </div>
                 <button
@@ -1487,7 +1812,7 @@ export default function AulasRealizadasPage() {
                 </button>
               </div>
 
-              <div className="p-4">
+              <div className="p-4 space-y-3">
                   <div className="bg-gray-50 p-3 rounded-md text-sm">
                   <p><strong>Data:</strong> {parseLocalDate(aulaParaExcluir.data).toLocaleDateString('pt-BR')}</p>
                   <p><strong>Modalidade:</strong> {aulaParaExcluir.modalidade}</p>
@@ -1504,17 +1829,167 @@ export default function AulasRealizadasPage() {
                   disabled={salvando}
                 >
                   <i className="fas fa-times text-gray-500"></i>
-                  <span>Cancelar</span>
+                  <span>Voltar</span>
                 </button>
                 <button
-                  onClick={handleExcluir}
+                  onClick={handleDevolverAula}
                   className="flex items-center gap-2 px-4 py-2 bg-yellow-600 text-white rounded-md text-sm font-medium hover:bg-yellow-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   disabled={salvando}
                 >
                   {salvando ? (
                     <><i className="fas fa-spinner fa-spin"></i> Devolvendo...</>
                   ) : (
-                    <><i className="fas fa-undo"></i> Devolver</>
+                    <><i className="fas fa-undo"></i> Confirmar Devolução</>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de Cancelamento de Aula Pendente */}
+        {pendenteCancelar && (
+          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
+            <div className="bg-white rounded-lg shadow-lg border p-4 sm:p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
+              <div className="flex items-start justify-between">
+                <div>
+                  <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+                    <i className="fas fa-ban text-red-600"></i>
+                    Cancelar Aula Pendente
+                  </h3>
+                  <div className="text-xs text-gray-500 flex items-center gap-2 mt-1">
+                    <i className="fas fa-info-circle text-primary-600"></i>
+                    <span>A aula será marcada como cancelada e crédito de reposição será gerado para todos os alunos.</span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => { setPendenteCancelar(null); setMotivoCancelamento(''); }}
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                  aria-label="Fechar"
+                >
+                  <i className="fas fa-times text-lg"></i>
+                </button>
+              </div>
+
+              <div className="p-4 space-y-3">
+                <div className="bg-gray-50 p-3 rounded-md text-sm">
+                  <p><strong>Data:</strong> {parseLocalDate(pendenteCancelar.data).toLocaleDateString('pt-BR')}</p>
+                  <p><strong>Modalidade:</strong> {pendenteCancelar.modalidade}</p>
+                  <p><strong>Horário:</strong> {pendenteCancelar.horario}</p>
+                  <p><strong>Professor:</strong> {pendenteCancelar.professor}</p>
+                </div>
+                
+                <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3">
+                  <div className="flex items-start gap-2">
+                    <i className="fas fa-exclamation-triangle text-yellow-600 mt-0.5"></i>
+                    <div className="text-xs text-yellow-800">
+                      <strong>Atenção:</strong> Ao cancelar esta aula, todos os alunos matriculados neste horário receberão um crédito de reposição automaticamente.
+                    </div>
+                  </div>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Motivo do cancelamento <span className="text-gray-400 font-normal">(opcional)</span>
+                  </label>
+                  <textarea
+                    value={motivoCancelamento}
+                    onChange={(e) => setMotivoCancelamento(e.target.value)}
+                    placeholder="Ex.: Professor não compareceu, Feriado não previsto, Problema nas instalações..."
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    rows={2}
+                  />
+                </div>
+              </div>
+
+              <div className="pt-3 border-t flex items-center justify-end gap-3">
+                <button
+                  onClick={() => { setPendenteCancelar(null); setMotivoCancelamento(''); }}
+                  className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                  disabled={salvando}
+                >
+                  <i className="fas fa-times text-gray-500"></i>
+                  <span>Voltar</span>
+                </button>
+                <button
+                  onClick={handleCancelarPendente}
+                  className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-md text-sm font-medium hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={salvando}
+                >
+                  {salvando ? (
+                    <><i className="fas fa-spinner fa-spin"></i> Cancelando...</>
+                  ) : (
+                    <><i className="fas fa-ban"></i> Confirmar Cancelamento</>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de Desfazer Cancelamento */}
+        {aulaCanceladaParaDesfazer && (
+          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
+            <div className="bg-white rounded-lg shadow-lg border p-4 sm:p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
+              <div className="flex items-start justify-between">
+                <div>
+                  <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+                    <i className="fas fa-undo text-yellow-600"></i>
+                    Desfazer Cancelamento
+                  </h3>
+                  <div className="text-xs text-gray-500 flex items-center gap-2 mt-1">
+                    <i className="fas fa-info-circle text-primary-600"></i>
+                    <span>A aula voltará para o status de pendente e os créditos gerados serão removidos.</span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setAulaCanceladaParaDesfazer(null)}
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                  aria-label="Fechar"
+                >
+                  <i className="fas fa-times text-lg"></i>
+                </button>
+              </div>
+
+              <div className="p-4 space-y-3">
+                <div className="bg-gray-50 p-3 rounded-md text-sm">
+                  <p><strong>Data:</strong> {parseLocalDate(aulaCanceladaParaDesfazer.data).toLocaleDateString('pt-BR')}</p>
+                  <p><strong>Modalidade:</strong> {aulaCanceladaParaDesfazer.modalidade || 'Não informada'}</p>
+                  <p><strong>Horário:</strong> {(aulaCanceladaParaDesfazer as any).horarioInicio} - {(aulaCanceladaParaDesfazer as any).horarioFim}</p>
+                  <p><strong>Professor:</strong> {getProfessorName(aulaCanceladaParaDesfazer)}</p>
+                  {(aulaCanceladaParaDesfazer as any).motivoCancelamento && (
+                    <p><strong>Motivo original:</strong> {(aulaCanceladaParaDesfazer as any).motivoCancelamento}</p>
+                  )}
+                </div>
+                
+                <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3">
+                  <div className="flex items-start gap-2">
+                    <i className="fas fa-exclamation-triangle text-yellow-600 mt-0.5"></i>
+                    <div className="text-xs text-yellow-800">
+                      <strong>Atenção:</strong> Ao desfazer o cancelamento, os créditos de reposição gerados para os alunos desta aula serão removidos automaticamente. A aula voltará a aparecer como pendente.
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-3 border-t flex items-center justify-end gap-3">
+                <button
+                  onClick={() => setAulaCanceladaParaDesfazer(null)}
+                  className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                  disabled={salvando}
+                >
+                  <i className="fas fa-times text-gray-500"></i>
+                  <span>Voltar</span>
+                </button>
+                <button
+                  onClick={handleDesfazerCancelamento}
+                  className="flex items-center gap-2 px-4 py-2 bg-yellow-600 text-white rounded-md text-sm font-medium hover:bg-yellow-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={salvando}
+                >
+                  {salvando ? (
+                    <><i className="fas fa-spinner fa-spin"></i> Processando...</>
+                  ) : (
+                    <><i className="fas fa-undo"></i> Confirmar</>
                   )}
                 </button>
               </div>

@@ -50,13 +50,13 @@ export async function GET(request: NextRequest) {
         select: 'nome email modalidadeId periodoTreino parceria observacoes',
         populate: {
           path: 'modalidadeId',
-          select: 'nome cor',
+          select: 'nome cor linkWhatsapp',
           options: { strictPopulate: false }
         },
         options: { strictPopulate: false }
       })
       .populate('professorId', 'nome especialidade')
-      .populate('modalidadeId', 'nome cor') // Adicionar populate da modalidade do horário
+      .populate('modalidadeId', 'nome cor linkWhatsapp') // Adicionar populate da modalidade do horário
       .sort({ diaSemana: 1, horarioInicio: 1 })
       .select('-__v')
       .lean();
@@ -73,13 +73,13 @@ export async function GET(request: NextRequest) {
               select: 'nome email modalidadeId periodoTreino parceria observacoes',
               populate: {
                 path: 'modalidadeId',
-                select: 'nome cor',
+                select: 'nome cor linkWhatsapp',
                 options: { strictPopulate: false }
               },
               options: { strictPopulate: false }
             })
             .populate('professorId', 'nome especialidade')
-            .populate('modalidadeId', 'nome cor') // Adicionar populate da modalidade do horário
+            .populate('modalidadeId', 'nome cor linkWhatsapp') // Adicionar populate da modalidade do horário
             .sort({ diaSemana: 1, horarioInicio: 1 })
             .select('-__v')
             .lean();
@@ -105,7 +105,7 @@ export async function GET(request: NextRequest) {
           select: 'nome email telefone modalidadeId congelado ausente emEspera observacoes periodoTreino parceria',
           populate: {
             path: 'modalidadeId',
-            select: 'nome cor'
+            select: 'nome cor linkWhatsapp'
           }
         })
         .lean();

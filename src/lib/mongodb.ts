@@ -53,7 +53,9 @@ async function connectDB(): Promise<mongoose.Connection> {
       import('@/models/Professor'),
       import('@/models/Especialidade'),
       import('@/models/Modalidade'),
-      import('@/models/HorarioFixo')
+      import('@/models/HorarioFixo'),
+      import('@/models/CreditoReposicao'),
+      import('@/models/UsoCredito')
     ]);
   } catch (err) {
     // Non-fatal: models import failures will surface elsewhere, but log for debugging

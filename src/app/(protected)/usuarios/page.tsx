@@ -5,6 +5,30 @@ import { toast } from 'react-toastify';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import ProtectedPage from '@/components/ProtectedPage';
 
+// Interface para permissões granulares
+interface Permissoes {
+  calendario?: {
+    verDetalhes?: boolean;
+    registrarPresenca?: boolean;
+    registrarFalta?: boolean;
+    reagendar?: boolean;
+    reposicao?: boolean;
+    aulaExperimental?: boolean;
+  };
+  horarios?: {
+    gerenciarTurmas?: boolean;
+    adicionarAluno?: boolean;
+    bloquearHorarios?: boolean;
+    importarLote?: boolean;
+  };
+  alunos?: {
+    criar?: boolean;
+    editar?: boolean;
+    excluir?: boolean;
+    verDetalhes?: boolean;
+  };
+}
+
 interface Usuario {
   _id: string;
   nome: string;
@@ -14,6 +38,7 @@ interface Usuario {
   ativo: boolean;
   tipo?: string;
   abas?: string[];
+  permissoes?: Permissoes;
   criadoEm?: string;
   atualizadoEm?: string;
   especialidades?: { _id: string; nome: string }[];
@@ -28,6 +53,7 @@ interface UsuarioForm {
   senha?: string;
   tipo?: string;
   abas?: string[];
+  permissoes?: Permissoes;
   especialidades?: string[];
 }
 
@@ -53,11 +79,163 @@ export default function UsuariosPage() {
   ];
 
   const professorTabs = ['professor:minhaagenda', 'professor:alunos', 'professor:aulas'];
+  
+  // Ordem das abas igual à sidebar
   const allTabs = [
-    'calendario', 'horarios', 'alunos', 'usuarios', 'modalidades', 'aulas', 'aulas-experimentais', 'avisos', 'reagendamentos', 'relatorios', 'backup',
+    // Agenda
+    'calendario', 'horarios',
+    // Aulas
+    'aulas', 'aulas-experimentais',
+    // Cadastros
+    'alunos', 'usuarios', 'modalidades',
+    // Solicitações
+    'reagendamentos', 'alteracoes-horario', 'creditos', 'reposicao-faltas',
+    // Comunicação
+    'avisos',
+    // Sistema
+    'relatorios', 'backup', 'diagnostico',
+    // Professor
     ...professorTabs
   ];
-  const adminExcludedTabs = ['relatorios', 'backup', 'usuarios'];
+  
+  // Ícones FontAwesome para cada aba
+  const tabIcons: Record<string, string> = {
+    'calendario': 'fa-calendar-alt',
+    'horarios': 'fa-clock',
+    'aulas': 'fa-clipboard-check',
+    'aulas-experimentais': 'fa-user-plus',
+    'alunos': 'fa-user-graduate',
+    'usuarios': 'fa-users-cog',
+    'modalidades': 'fa-layer-group',
+    'reagendamentos': 'fa-exchange-alt',
+    'alteracoes-horario': 'fa-clock',
+    'creditos': 'fa-ticket',
+    'reposicao-faltas': 'fa-history',
+    'avisos': 'fa-bullhorn',
+    'relatorios': 'fa-chart-line',
+    'backup': 'fa-database',
+    'diagnostico': 'fa-stethoscope',
+    'professor:minhaagenda': 'fa-calendar-alt',
+    'professor:alunos': 'fa-user-graduate',
+    'professor:aulas': 'fa-clipboard-list'
+  };
+  
+  // Labels amigáveis para as abas
+  const tabLabels: Record<string, string> = {
+    'calendario': 'Calendário',
+    'horarios': 'Horários',
+    'aulas': 'Aulas Realizadas',
+    'aulas-experimentais': 'Experimentais',
+    'alunos': 'Alunos',
+    'usuarios': 'Usuários',
+    'modalidades': 'Modalidades',
+    'reagendamentos': 'Reagendamentos',
+    'alteracoes-horario': 'Alterações Horário',
+    'creditos': 'Créditos',
+    'reposicao-faltas': 'Reposição de Faltas',
+    'avisos': 'Avisos',
+    'relatorios': 'Relatórios',
+    'backup': 'Backups',
+    'diagnostico': 'Diagnóstico',
+    'professor:minhaagenda': 'P: Minha Agenda',
+    'professor:alunos': 'P: Meus Alunos',
+    'professor:aulas': 'P: Minhas Aulas'
+  };
+
+  // Padrões iniciais para cada tipo de usuário
+  const defaultTabsPorTipo: Record<string, string[]> = {
+    admin: ['calendario', 'horarios', 'alunos', 'usuarios', 'modalidades', 'aulas', 'aulas-experimentais', 'avisos', 'reagendamentos', 'creditos', 'reposicao-faltas', 'relatorios', 'alteracoes-horario'],
+    professor: ['professor:minhaagenda', 'professor:alunos', 'professor:aulas', 'aulas-experimentais', 'calendario'],
+    vendedor: ['calendario', 'horarios', 'alunos', 'aulas-experimentais'],
+    root: ['calendario', 'horarios', 'alunos', 'usuarios', 'modalidades', 'aulas', 'aulas-experimentais', 'avisos', 'reagendamentos', 'creditos', 'reposicao-faltas', 'relatorios', 'backup', 'diagnostico', 'alteracoes-horario']
+  };
+
+  // Permissões padrão por tipo
+  const defaultPermissoesPorTipo: Record<string, Permissoes> = {
+    admin: {
+      calendario: { verDetalhes: true, registrarPresenca: true, registrarFalta: true, reagendar: true, reposicao: true, aulaExperimental: true },
+      horarios: { gerenciarTurmas: true, adicionarAluno: true, bloquearHorarios: true, importarLote: true, removerAluno: true },
+      alunos: { criar: true, editar: true, excluir: true, verDetalhes: true }
+    },
+    professor: {
+      calendario: { verDetalhes: true, registrarPresenca: true, registrarFalta: true, reagendar: true, reposicao: true, aulaExperimental: true },
+      horarios: { gerenciarTurmas: false, adicionarAluno: true, bloquearHorarios: false, importarLote: false, removerAluno: false },
+      alunos: { criar: true, editar: true, excluir: false, verDetalhes: true }
+    },
+    vendedor: {
+      calendario: { verDetalhes: true, registrarPresenca: true, registrarFalta: true, reagendar: false, reposicao: false, aulaExperimental: true },
+      horarios: { gerenciarTurmas: false, adicionarAluno: true, bloquearHorarios: false, importarLote: false, removerAluno: false },
+      alunos: { criar: true, editar: true, excluir: true, verDetalhes: true }
+    },
+    root: {
+      calendario: { verDetalhes: true, registrarPresenca: true, registrarFalta: true, reagendar: true, reposicao: true, aulaExperimental: true },
+      horarios: { gerenciarTurmas: true, adicionarAluno: true, bloquearHorarios: true, importarLote: true, removerAluno: true },
+      alunos: { criar: true, editar: true, excluir: true, verDetalhes: true }
+    }
+  };
+
+  // Estado para configurações de padrões por tipo (carregados do localStorage)
+  const [configPadroes, setConfigPadroes] = useState<Record<string, { abas: string[]; permissoes: Permissoes }>>(
+    () => {
+      if (typeof window === 'undefined') return {};
+      try {
+        const saved = localStorage.getItem('configPadroesUsuarios');
+        if (saved) return JSON.parse(saved);
+      } catch {}
+      return {};
+    }
+  );
+  const [showConfigModal, setShowConfigModal] = useState(false);
+  const [showMenuPadroes, setShowMenuPadroes] = useState(false);
+  const [tipoConfigurando, setTipoConfigurando] = useState<string>('admin');
+  const [configTemp, setConfigTemp] = useState<{ abas: string[]; permissoes: Permissoes }>({ abas: [], permissoes: {} });
+
+  // Função para obter abas padrão de um tipo (considera configuração salva)
+  const getAbasPadrao = (tipo: string): string[] => {
+    if (configPadroes[tipo]?.abas) return configPadroes[tipo].abas;
+    return defaultTabsPorTipo[tipo] || [];
+  };
+
+  // Função para obter permissões padrão de um tipo (considera configuração salva)
+  const getPermissoesPadrao = (tipo: string): Permissoes => {
+    if (configPadroes[tipo]?.permissoes) return configPadroes[tipo].permissoes;
+    return defaultPermissoesPorTipo[tipo] || permissoesPadrao;
+  };
+
+  // Abrir modal de configuração
+  const abrirConfigPadroes = (tipo: string) => {
+    setTipoConfigurando(tipo);
+    setConfigTemp({
+      abas: [...getAbasPadrao(tipo)],
+      permissoes: JSON.parse(JSON.stringify(getPermissoesPadrao(tipo)))
+    });
+    setShowConfigModal(true);
+  };
+
+  // Salvar configuração de padrões
+  const salvarConfigPadroes = () => {
+    const novoConfig = {
+      ...configPadroes,
+      [tipoConfigurando]: configTemp
+    };
+    setConfigPadroes(novoConfig);
+    localStorage.setItem('configPadroesUsuarios', JSON.stringify(novoConfig));
+    toast.success(`Padrões de ${tipoConfigurando} atualizados!`);
+    setShowConfigModal(false);
+  };
+
+  // Resetar para padrões originais
+  const resetarPadroes = (tipo: string) => {
+    const novoConfig = { ...configPadroes };
+    delete novoConfig[tipo];
+    setConfigPadroes(novoConfig);
+    localStorage.setItem('configPadroesUsuarios', JSON.stringify(novoConfig));
+    setConfigTemp({
+      abas: [...defaultTabsPorTipo[tipo]],
+      permissoes: JSON.parse(JSON.stringify(defaultPermissoesPorTipo[tipo]))
+    });
+    toast.info(`Padrões de ${tipo} restaurados!`);
+  };
 
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [especialidades, setEspecialidades] = useState<Especialidade[]>([]);
@@ -70,13 +248,40 @@ export default function UsuariosPage() {
   const [currentUserId, setCurrentUserId] = useState<string>('');
   const [sortBy, setSortBy] = useState<string>('tipo');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+  
+  // Permissões padrão (tudo habilitado)
+  const permissoesPadrao: Permissoes = {
+    calendario: {
+      verDetalhes: true,
+      registrarPresenca: true,
+      registrarFalta: true,
+      reagendar: true,
+      reposicao: true,
+      aulaExperimental: true
+    },
+    horarios: {
+      gerenciarTurmas: true,
+      adicionarAluno: true,
+      bloquearHorarios: true,
+      importarLote: true,
+      removerAluno: true
+    },
+    alunos: {
+      criar: true,
+      editar: true,
+      excluir: true,
+      verDetalhes: true
+    }
+  };
+  
   const [formData, setFormData] = useState<UsuarioForm>({
     nome: '',
     email: '',
     telefone: '',
     cor: '#3B82F6',
     ativo: true,
-    senha: ''
+    senha: '',
+    permissoes: permissoesPadrao
   });
 
   // Verificar permissão de acesso à aba usuarios
@@ -141,14 +346,24 @@ export default function UsuariosPage() {
   // Fechar modal com ESC
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && showModal) {
-        setShowModal(false);
-        setEditingUsuario(null);
+      if (e.key === 'Escape') {
+        if (showMenuPadroes) {
+          setShowMenuPadroes(false);
+          return;
+        }
+        if (showConfigModal) {
+          setShowConfigModal(false);
+          return;
+        }
+        if (showModal) {
+          setShowModal(false);
+          setEditingUsuario(null);
+        }
       }
     };
     window.addEventListener('keydown', handleEsc);
     return () => window.removeEventListener('keydown', handleEsc);
-  }, [showModal]);
+  }, [showModal, showConfigModal, showMenuPadroes]);
 
   const handleEspecialidadeChange = useCallback((especialidadeId: string, checked: boolean) => {
     setFormData(prev => ({
@@ -209,24 +424,19 @@ export default function UsuariosPage() {
 
   const handleTipoChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
     const tipo = e.target.value as any;
-    setFormData(prev => {
-      // when selecting professor, pre-select professor tabs + aulas-experimentais + calendario
-      if (tipo === 'professor') {
-        return { ...prev, tipo, abas: [...professorTabs, 'aulas-experimentais', 'calendario'] };
-      }
-      if (tipo === 'admin') {
-        // select default admin tabs but exclude sensitive tabs (reports, backups, usuarios) + add aulas-experimentais
-        const adminTabs = allTabs.filter(t => !professorTabs.includes(t) && !adminExcludedTabs.includes(t));
-        return { ...prev, tipo, abas: adminTabs };
-      }
-      if (tipo === 'root') {
-        // root should not select professor-only tabs by default (same as admin)
-        const adminTabs = allTabs.filter(t => !professorTabs.includes(t));
-        return { ...prev, tipo, abas: adminTabs };
-      }
-      return { ...prev, tipo };
-    });
-  }, []);
+    if (!tipo) return setFormData(prev => ({ ...prev, tipo }));
+    
+    // Usar padrões configurados
+    const abasPadrao = getAbasPadrao(tipo);
+    const permissoesTipo = getPermissoesPadrao(tipo);
+    
+    setFormData(prev => ({
+      ...prev,
+      tipo,
+      abas: [...abasPadrao],
+      permissoes: JSON.parse(JSON.stringify(permissoesTipo))
+    }));
+  }, [configPadroes]);
 
   const filteredUsuarios = useMemo(() => {
     let result = usuarios;
@@ -283,7 +493,7 @@ export default function UsuariosPage() {
   const abrirModalNovo = () => {
     setEditingId(null);
     // leave tipo blank so user must choose explicitly
-    setFormData({ nome: '', email: '', telefone: '', cor: '#3B82F6', ativo: true, senha: '', tipo: '', abas: [], especialidades: [] });
+    setFormData({ nome: '', email: '', telefone: '', cor: '#3B82F6', ativo: true, senha: '', tipo: '', abas: [], especialidades: [], permissoes: permissoesPadrao });
     setShowModal(true);
   };
 
@@ -309,6 +519,23 @@ export default function UsuariosPage() {
     setEditingId(usuario._id);
     // Extrair IDs das especialidades (que vêm como objetos populados)
     const especialidadesIds = (usuario.especialidades || []).map(e => e._id);
+    
+    // Mesclar permissões do usuário com permissões padrão para garantir que novas permissões tenham valor
+    const permissoesMescladas: Permissoes = {
+      calendario: {
+        ...permissoesPadrao.calendario,
+        ...(usuario.permissoes?.calendario || {})
+      },
+      horarios: {
+        ...permissoesPadrao.horarios,
+        ...(usuario.permissoes?.horarios || {})
+      },
+      alunos: {
+        ...permissoesPadrao.alunos,
+        ...(usuario.permissoes?.alunos || {})
+      }
+    };
+    
     setFormData({ 
       nome: usuario.nome, 
       email: usuario.email || '', 
@@ -317,7 +544,8 @@ export default function UsuariosPage() {
       ativo: usuario.ativo, 
       tipo: (usuario.tipo || 'admin'), 
       abas: usuario.abas || [],
-      especialidades: especialidadesIds
+      especialidades: especialidadesIds,
+      permissoes: permissoesMescladas
     });
     setShowModal(true);
   };
@@ -544,6 +772,17 @@ export default function UsuariosPage() {
             </div>
 
             <div className="flex items-center gap-3">
+              <div className="relative">
+                <button 
+                  type="button" 
+                  onClick={() => setShowMenuPadroes(!showMenuPadroes)}
+                  className="transition-colors duration-200 h-10 inline-flex items-center gap-2 rounded-full border border-gray-300 bg-white text-gray-700 px-4 text-sm font-medium hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  title="Configurar padrões por tipo de usuário"
+                >
+                  <i className="fas fa-sliders-h w-4" aria-hidden="true" />
+                  Padrões
+                </button>
+              </div>
               <div>
                 <button type="button" onClick={abrirModalNovo} className="transition-colors duration-200 h-10 inline-flex items-center gap-2  rounded-full bg-primary-600 text-white px-4 text-sm font-medium hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500">
                   <i className="fas fa-user-plus w-4 text-white " aria-hidden="true" />
@@ -552,6 +791,32 @@ export default function UsuariosPage() {
               </div>
             </div>
           </div>
+
+          {/* Menu dropdown de padrões - Renderizado fora do fluxo normal */}
+          {showMenuPadroes && (
+            <>
+              <div className="fixed inset-0 z-[999]" onClick={() => setShowMenuPadroes(false)} />
+              <div className="fixed top-20 right-8 w-48 bg-white rounded-lg shadow-xl border border-gray-200 py-1 z-[1000]">
+                <div className="px-3 py-2 border-b border-gray-100">
+                  <p className="text-xs font-semibold text-gray-500">Configurar padrões para:</p>
+                </div>
+                {['admin', 'professor', 'vendedor', 'root'].map(tipo => (
+                  <button
+                    key={tipo}
+                    type="button"
+                    onClick={() => {
+                      setShowMenuPadroes(false);
+                      abrirConfigPadroes(tipo);
+                    }}
+                    className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                  >
+                    <i className={`fas ${tipo === 'admin' ? 'fa-user-shield' : tipo === 'professor' ? 'fa-chalkboard-teacher' : tipo === 'vendedor' ? 'fa-user-tie' : 'fa-shield-alt text-amber-500'} text-xs`}></i>
+                    {tipo.charAt(0).toUpperCase() + tipo.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
 
           {/* Header Mobile */}
           <div className="md:hidden mb-4 fade-in-1">
@@ -576,7 +841,7 @@ export default function UsuariosPage() {
                 value={query} 
                 onChange={(e) => setQuery(e.target.value)} 
                 placeholder="Pesquisar usuário..." 
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm" 
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-0 focus:border-gray-300 outline-none text-sm" 
               />
             </div>
           </div>
@@ -606,6 +871,8 @@ export default function UsuariosPage() {
               {filteredUsuarios.map((usuario, idx) => {
                 const isRoot = usuario.tipo === 'root';
                 const isProfessor = usuario.tipo === 'professor';
+                const isVendedor = usuario.tipo === 'vendedor';
+                const tipoLabel = isRoot ? 'ROOT' : isProfessor ? 'Professor' : isVendedor ? 'Vendedor' : 'Admin';
                 const fadeClass = `fade-in-${Math.min((idx % 8) + 1, 8)}`;
                 
                 return (
@@ -614,7 +881,7 @@ export default function UsuariosPage() {
                     className={`bg-white rounded-xl border shadow-sm overflow-hidden ${fadeClass} ${isRoot ? 'border-amber-300' : 'border-gray-200'} ${!usuario.ativo ? 'opacity-60' : ''}`}
                   >
                     {/* Header do Card */}
-                    <div className={`px-4 py-3 ${isRoot ? 'bg-gradient-to-r from-amber-50 to-white' : isProfessor ? 'bg-gradient-to-r from-blue-50 to-white' : 'bg-gradient-to-r from-gray-50 to-white'}`}>
+                    <div className={`px-4 py-3 ${isRoot ? 'bg-gradient-to-r from-amber-50 to-white' : isProfessor ? 'bg-gradient-to-r from-blue-50 to-white' : isVendedor ? 'bg-gradient-to-r from-green-50 to-white' : 'bg-gradient-to-r from-gray-50 to-white'}`}>
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
                           {isRoot ? (
@@ -660,9 +927,9 @@ export default function UsuariosPage() {
                             <i className="fas fa-shield-alt"></i> ROOT
                           </span>
                         ) : (
-                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${isProfessor ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'}`}>
-                            <i className={`fas ${isProfessor ? 'fa-chalkboard-teacher' : 'fa-user-shield'} text-[9px]`}></i>
-                            {isProfessor ? 'Professor' : 'Admin'}
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${isProfessor ? 'bg-blue-100 text-blue-700' : isVendedor ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'}`}>
+                            <i className={`fas ${isProfessor ? 'fa-chalkboard-teacher' : isVendedor ? 'fa-user-tie' : 'fa-user-shield'} text-[9px]`}></i>
+                            {tipoLabel}
                           </span>
                         )}
                       </div>
@@ -769,8 +1036,8 @@ export default function UsuariosPage() {
                                   ROOT
                                 </span>
                               ) : (
-                                <span className={`inline-flex items-center gap-2 justify-center text-sm ${usuario.tipo === 'professor' ? 'text-primary-700' : 'text-gray-700'}`}>
-                                  {usuario.tipo === 'professor' ? 'Professor' : 'Admin'}
+                                <span className={`inline-flex items-center gap-2 justify-center text-sm ${usuario.tipo === 'professor' ? 'text-primary-700' : usuario.tipo === 'vendedor' ? 'text-green-700' : 'text-gray-700'}`}>
+                                  {usuario.tipo === 'professor' ? 'Professor' : usuario.tipo === 'vendedor' ? 'Vendedor' : 'Admin'}
                                 </span>
                               )}
                             </td>
@@ -819,8 +1086,9 @@ export default function UsuariosPage() {
           {/* Modal de Cadastro/Edição */}
           {showModal && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-700 bg-opacity-50 p-3 sm:p-4">
-              <div className="relative w-full max-w-lg mx-auto bg-white rounded-lg shadow-lg border border-gray-200 p-4 sm:p-6 max-h-[90vh] overflow-y-auto">
-                <div className="mb-2 border-b pb-4">
+              <div className="relative w-full max-w-lg mx-auto bg-white rounded-lg shadow-lg border border-gray-200 flex flex-col max-h-[90vh]">
+                {/* Header Fixo */}
+                <div className="flex-shrink-0 p-4 sm:p-6 pb-4 border-b">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       {editingId ? (
@@ -837,7 +1105,10 @@ export default function UsuariosPage() {
                     <span className="text-sm font-medium text-gray-500">Preencha os dados do usuário administrador.</span>
                   </div>
                 </div>
-                <form className="space-y-1" noValidate onSubmit={(e) => { e.preventDefault(); salvarUsuario(); }}>
+                
+                {/* Conteúdo com Scroll */}
+                <div className="flex-1 overflow-y-auto p-4 sm:p-6 pt-4">
+                <form id="formUsuario" className="space-y-4" noValidate onSubmit={(e) => { e.preventDefault(); salvarUsuario(); }}>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Nome *</label>
@@ -855,6 +1126,7 @@ export default function UsuariosPage() {
                         <option value="">— selecione —</option>
                         <option value="admin">Administrador</option>
                         <option value="professor">Professor</option>
+                        <option value="vendedor">Vendedor</option>
                         {currentUserTipo === 'root' && <option value="root">ROOT</option>}
                       </select>
                     </div>
@@ -927,37 +1199,50 @@ export default function UsuariosPage() {
                     <input type="password" value={formData.senha || ''} onChange={(e) => setFormData(prev => ({ ...prev, senha: e.target.value }))} className="block w-full h-10 border border-gray-300 rounded-md px-3 py-2 text-sm font-medium focus:outline-none focus:ring-primary-500 focus:border-primary-500" placeholder={editingId ? 'Deixe em branco para manter a atual' : 'Senha (mín 6 caracteres)'} />
                   </div>
 
-                  <div className="mt-6">
+                  <div>
                     <div className="flex items-center gap-2">
                       <label className="block text-sm font-medium text-gray-700">Cor</label>
-                      <div className="flex flex-wrap gap-1 p-1 bg-gray-50 border border-gray-200 rounded-md">
+                      <div className="flex flex-wrap gap-0.5 p-1 bg-gray-50 border border-gray-200 rounded-md">
                         {coresSugeridas.map((cor) => (
-                          <button key={cor} type="button" onClick={() => setFormData(prev => ({ ...prev, cor: cor }))} className={`relative h-6 w-6 rounded-full border flex items-center justify-center transition-all duration-150 hover:scale-105 hover:border-primary-400 focus:outline-none ${formData.cor === cor ? 'border-primary-600 ring-2 ring-primary-400' : 'border-gray-300'}`} style={{ backgroundColor: cor }} title={cor}>
-                            {formData.cor === cor && (<span className="absolute inset-0 flex items-center justify-center"><i className="fas fa-check text-white text-[10px] drop-shadow" /></span>)}
+                          <button key={cor} type="button" onClick={() => setFormData(prev => ({ ...prev, cor: cor }))} className={`relative h-5 w-5 rounded-full border flex items-center justify-center transition-all duration-150 hover:scale-105 hover:border-primary-400 focus:outline-none ${formData.cor === cor ? 'border-primary-600 ring-2 ring-primary-400' : 'border-gray-300'}`} style={{ backgroundColor: cor }} title={cor}>
+                            {formData.cor === cor && (<span className="absolute inset-0 flex items-center justify-center"><i className="fas fa-check text-white text-[8px] drop-shadow" /></span>)}
                           </button>
                         ))}
                       </div>
                     </div>
                   </div>
 
-                  <fieldset className="mt-6 border border-gray-300 rounded-md px-3 pt-4 pb-3">
+                  <fieldset className="border border-gray-300 rounded-md px-3 pt-4 pb-3">
                     <legend className="text-xs font-medium text-gray-700 px-1 -mx-1">Acesso às abas</legend>
                     <div className="flex flex-wrap gap-2">
                       {[
-                        { key: 'calendario', label: 'Calendário' },
-                        { key: 'horarios', label: 'Horários' },
-                        { key: 'alunos', label: 'Alunos' },
-                        { key: 'usuarios', label: 'Usuários' },
-                        { key: 'modalidades', label: 'Modalidades' },
-                        { key: 'aulas', label: 'Aulas' },
-                        { key: 'aulas-experimentais', label: 'Experimentais' },
-                        { key: 'avisos', label: 'Avisos' },
-                        { key: 'reagendamentos', label: 'Reagendamentos' },
-                        { key: 'relatorios', label: 'Relatórios' },
-                        { key: 'backup', label: 'Backups' },
-                        { key: 'professor:minhaagenda', label: 'P: Minha Agenda' },
-                        { key: 'professor:alunos', label: 'P: Meus Alunos' },
-                        { key: 'professor:aulas', label: 'P: Minhas Aulas' }
+                        // Agenda
+                        { key: 'calendario', label: 'Calendário', icon: 'fa-calendar-alt' },
+                        { key: 'horarios', label: 'Horários', icon: 'fa-clock' },
+                        // Aulas
+                        { key: 'aulas', label: 'Aulas', icon: 'fa-clipboard-check' },
+                        { key: 'aulas-experimentais', label: 'Experimentais', icon: 'fa-user-plus' },
+                        // Cadastros
+                        { key: 'alunos', label: 'Alunos', icon: 'fa-user-graduate' },
+                        { key: 'usuarios', label: 'Usuários', icon: 'fa-users-cog' },
+                        { key: 'modalidades', label: 'Modalidades', icon: 'fa-layer-group' },
+                        // Solicitações
+                        { key: 'reagendamentos', label: 'Reagendamentos', icon: 'fa-exchange-alt' },
+                        { key: 'alteracoes-horario', label: 'Alterações Horário', icon: 'fa-clock' },
+                        { key: 'creditos', label: 'Créditos', icon: 'fa-ticket' },
+                        { key: 'reposicao-faltas', label: 'Reposição de Faltas', icon: 'fa-history' },
+                        // Comunicação
+                        { key: 'avisos', label: 'Avisos', icon: 'fa-bullhorn' },
+                        // Sistema
+                        { key: 'relatorios', label: 'Relatórios', icon: 'fa-chart-line' },
+                        { key: 'backup', label: 'Backups', icon: 'fa-database' },
+                        { key: 'diagnostico', label: 'Diagnóstico', icon: 'fa-stethoscope' },
+                        // Professor (condicional)
+                        ...(formData.tipo === 'professor' ? [
+                          { key: 'professor:minhaagenda', label: 'P: Minha Agenda', icon: 'fa-calendar-alt' },
+                          { key: 'professor:alunos', label: 'P: Meus Alunos', icon: 'fa-user-graduate' },
+                          { key: 'professor:aulas', label: 'P: Minhas Aulas', icon: 'fa-clipboard-list' }
+                        ] : [])
                       ].map(opt => {
                         const selected = Array.isArray(formData.abas) ? formData.abas.includes(opt.key) : false;
                         return (
@@ -974,8 +1259,9 @@ export default function UsuariosPage() {
                               });
                             }}
                             aria-pressed={selected}
-                            className={`inline-flex items-center gap-2 text-xs px-2 py-1 rounded-full transition-colors border ${selected ? 'bg-primary-600 border-primary-600 text-white' : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'}`}
+                            className={`inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-full transition-colors border ${selected ? 'bg-primary-600 border-primary-600 text-white' : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'}`}
                           >
+                            <i className={`fas ${opt.icon} text-[10px] ${selected ? 'text-white' : 'text-gray-400'}`} aria-hidden="true" />
                             {opt.label}
                           </button>
                         );
@@ -984,20 +1270,365 @@ export default function UsuariosPage() {
                     <div className="mt-2 text-xs text-gray-500">Clique para selecionar as abas que o usuário pode acessar.</div>
                   </fieldset>
 
+                  {/* Permissões Granulares */}
+                  <fieldset className="border border-gray-300 rounded-md px-3 pt-4 pb-3">
+                    <legend className="text-xs font-medium text-gray-700 px-1 -mx-1">Permissões por Módulo</legend>
+                    
+                    {/* Calendário */}
+                    {Array.isArray(formData.abas) && formData.abas.includes('calendario') && (
+                      <div className="mb-4">
+                        <p className="text-xs font-semibold text-gray-600 mb-2 flex items-center gap-1">
+                          <i className="fas fa-calendar text-gray-400"></i> Calendário
+                        </p>
+                        <div className="flex flex-wrap gap-2 pl-4">
+                          {[
+                            { key: 'reagendar', label: 'Criar Reagendamento' },
+                            { key: 'reposicao', label: 'Agendar Reposição por Falta' },
+                            { key: 'aulaExperimental', label: 'Agendar Aula Experimental' }
+                          ].map(perm => {
+                            const checked = formData.permissoes?.calendario?.[perm.key as keyof typeof formData.permissoes.calendario] ?? true;
+                            return (
+                              <label key={perm.key} className="inline-flex items-center gap-1.5 text-xs cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={(e) => {
+                                    setFormData(prev => ({
+                                      ...prev,
+                                      permissoes: {
+                                        ...prev.permissoes,
+                                        calendario: {
+                                          ...prev.permissoes?.calendario,
+                                          [perm.key]: e.target.checked
+                                        }
+                                      }
+                                    }));
+                                  }}
+                                  className="w-3.5 h-3.5 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                                />
+                                <span className={checked ? 'text-gray-700' : 'text-gray-400'}>{perm.label}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Horários */}
+                    {Array.isArray(formData.abas) && formData.abas.includes('horarios') && (
+                      <div className="mb-4">
+                        <p className="text-xs font-semibold text-gray-600 mb-2 flex items-center gap-1">
+                          <i className="fas fa-clock text-gray-400"></i> Horários
+                        </p>
+                        <div className="flex flex-wrap gap-2 pl-4">
+                          {[
+                            { key: 'gerenciarTurmas', label: 'Gerenciar Turmas (criar/editar/excluir)' },
+                            { key: 'adicionarAluno', label: 'Adicionar Aluno em Turma' },
+                            { key: 'removerAluno', label: 'Remover Aluno da Turma' },
+                            { key: 'bloquearHorarios', label: 'Bloquear/Desbloquear Horários' },
+                            { key: 'importarLote', label: 'Adicionar Alunos em Lote' }
+                          ].map(perm => {
+                            const checked = formData.permissoes?.horarios?.[perm.key as keyof typeof formData.permissoes.horarios] ?? true;
+                            return (
+                              <label key={perm.key} className="inline-flex items-center gap-1.5 text-xs cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={(e) => {
+                                    setFormData(prev => ({
+                                      ...prev,
+                                      permissoes: {
+                                        ...prev.permissoes,
+                                        horarios: {
+                                          ...prev.permissoes?.horarios,
+                                          [perm.key]: e.target.checked
+                                        }
+                                      }
+                                    }));
+                                  }}
+                                  className="w-3.5 h-3.5 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                                />
+                                <span className={checked ? 'text-gray-700' : 'text-gray-400'}>{perm.label}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Alunos */}
+                    {Array.isArray(formData.abas) && formData.abas.includes('alunos') && (
+                      <div className="mb-2">
+                        <p className="text-xs font-semibold text-gray-600 mb-2 flex items-center gap-1">
+                          <i className="fas fa-users text-gray-400"></i> Alunos
+                        </p>
+                        <div className="flex flex-wrap gap-2 pl-4">
+                          {[
+                            { key: 'criar', label: 'Criar Aluno' },
+                            { key: 'editar', label: 'Editar Aluno' },
+                            { key: 'excluir', label: 'Excluir Aluno' }
+                          ].map(perm => {
+                            const checked = formData.permissoes?.alunos?.[perm.key as keyof typeof formData.permissoes.alunos] ?? true;
+                            return (
+                              <label key={perm.key} className="inline-flex items-center gap-1.5 text-xs cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={(e) => {
+                                    setFormData(prev => ({
+                                      ...prev,
+                                      permissoes: {
+                                        ...prev.permissoes,
+                                        alunos: {
+                                          ...prev.permissoes?.alunos,
+                                          [perm.key]: e.target.checked
+                                        }
+                                      }
+                                    }));
+                                  }}
+                                  className="w-3.5 h-3.5 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                                />
+                                <span className={checked ? 'text-gray-700' : 'text-gray-400'}>{perm.label}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Mensagem se nenhuma aba com permissões está selecionada */}
+                    {(!Array.isArray(formData.abas) || 
+                      (!formData.abas.includes('calendario') && 
+                       !formData.abas.includes('horarios') && 
+                       !formData.abas.includes('alunos'))) && (
+                      <p className="text-xs text-gray-400 italic">
+                        Selecione as abas Calendário, Horários ou Alunos para configurar permissões específicas.
+                      </p>
+                    )}
+                  </fieldset>
+
                   {editingId && (
-                    <div className="flex items-center gap-3 mt-2">
+                    <div className="flex items-center gap-3">
                       <span className="text-sm font-medium text-gray-700">Usuário ativo</span>
                       <button type="button" aria-pressed={formData.ativo} onClick={() => setFormData(prev => ({ ...prev, ativo: !prev.ativo }))} className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none border ${formData.ativo ? 'bg-green-500 border-green-500' : 'bg-gray-300 border-gray-300'}`}>
                         <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform duration-200 ${formData.ativo ? 'translate-x-4' : 'translate-x-0.5'}`} />
                       </button>
                     </div>
                   )}
-
-                  <div className="flex justify-end gap-3 pt-4 border-t mt-2">
-                    <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">Cancelar</button>
-                    <button type="submit" className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700">{editingId ? 'Atualizar' : 'Cadastrar'}</button>
-                  </div>
                 </form>
+                </div>
+
+                {/* Footer Fixo */}
+                <div className="flex-shrink-0 p-4 sm:p-6 pt-4 border-t bg-gray-50 rounded-b-lg">
+                  <div className="flex justify-end gap-3">
+                    <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">Cancelar</button>
+                    <button type="submit" form="formUsuario" className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700">{editingId ? 'Atualizar' : 'Cadastrar'}</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Modal de Configuração de Padrões */}
+          {showConfigModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-700 bg-opacity-50 p-3 sm:p-4">
+              <div className="relative w-full max-w-lg mx-auto bg-white rounded-lg shadow-lg border border-gray-200 flex flex-col max-h-[90vh]">
+                {/* Header */}
+                <div className="flex-shrink-0 p-4 sm:p-6 pb-4 border-b">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <i className="fas fa-sliders-h text-primary-600 text-lg" aria-hidden="true" />
+                      <h3 className="text-base font-semibold text-gray-900">
+                        Padrões para {tipoConfigurando.charAt(0).toUpperCase() + tipoConfigurando.slice(1)}
+                      </h3>
+                    </div>
+                    <button type="button" onClick={() => setShowConfigModal(false)} className="text-gray-400 hover:text-gray-600 focus:outline-none" title="Fechar">
+                      <i className="fas fa-times text-lg" aria-hidden="true" />
+                    </button>
+                  </div>
+                  <p className="text-sm text-gray-500 mt-2">
+                    Configure as abas e permissões padrão para novos usuários do tipo <strong>{tipoConfigurando}</strong>.
+                  </p>
+                </div>
+
+                {/* Conteúdo */}
+                <div className="flex-1 overflow-y-auto p-4 sm:p-6 pt-4 space-y-4">
+                  {/* Abas Padrão */}
+                  <fieldset className="border border-gray-300 rounded-md px-3 pt-4 pb-3">
+                    <legend className="text-xs font-medium text-gray-700 px-1 -mx-1">Abas Padrão</legend>
+                    <div className="flex flex-wrap gap-2">
+                      {allTabs
+                        .filter(t => tipoConfigurando === 'professor' || !professorTabs.includes(t))
+                        .map(tab => {
+                          const selected = configTemp.abas.includes(tab);
+                          const icon = tabIcons[tab];
+                          return (
+                            <button
+                              key={tab}
+                              type="button"
+                              onClick={() => {
+                                setConfigTemp(prev => {
+                                  const abas = [...prev.abas];
+                                  const idx = abas.indexOf(tab);
+                                  if (idx >= 0) abas.splice(idx, 1);
+                                  else abas.push(tab);
+                                  return { ...prev, abas };
+                                });
+                              }}
+                              className={`inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-full transition-colors border ${selected ? 'bg-primary-600 border-primary-600 text-white' : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'}`}
+                            >
+                              {icon && <i className={`fas ${icon} text-[10px] ${selected ? 'text-white' : 'text-gray-400'}`} aria-hidden="true" />}
+                              {tabLabels[tab] || tab}
+                            </button>
+                          );
+                        })}
+                    </div>
+                  </fieldset>
+
+                  {/* Permissões de Calendário */}
+                  {configTemp.abas.includes('calendario') && (
+                  <fieldset className="border border-gray-300 rounded-md px-3 pt-4 pb-3">
+                    <legend className="text-xs font-medium text-gray-700 px-1 -mx-1 flex items-center gap-1">
+                      <i className="fas fa-calendar text-gray-400"></i> Calendário
+                    </legend>
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        { key: 'reagendar', label: 'Criar Reagendamento' },
+                        { key: 'reposicao', label: 'Agendar Reposição por Falta' },
+                        { key: 'aulaExperimental', label: 'Agendar Aula Experimental' }
+                      ].map(perm => {
+                        const checked = configTemp.permissoes?.calendario?.[perm.key as keyof typeof configTemp.permissoes.calendario] ?? true;
+                        return (
+                          <label key={perm.key} className="inline-flex items-center gap-1.5 text-xs cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(e) => {
+                                setConfigTemp(prev => ({
+                                  ...prev,
+                                  permissoes: {
+                                    ...prev.permissoes,
+                                    calendario: {
+                                      ...prev.permissoes?.calendario,
+                                      [perm.key]: e.target.checked
+                                    }
+                                  }
+                                }));
+                              }}
+                              className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                            />
+                            <span className="text-gray-700">{perm.label}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </fieldset>
+                  )}
+
+                  {/* Permissões de Horários */}
+                  {configTemp.abas.includes('horarios') && (
+                  <fieldset className="border border-gray-300 rounded-md px-3 pt-4 pb-3">
+                    <legend className="text-xs font-medium text-gray-700 px-1 -mx-1 flex items-center gap-1">
+                      <i className="fas fa-clock text-gray-400"></i> Horários
+                    </legend>
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        { key: 'gerenciarTurmas', label: 'Gerenciar Turmas (criar/editar/excluir)' },
+                        { key: 'adicionarAluno', label: 'Adicionar Aluno em Turma' },
+                        { key: 'removerAluno', label: 'Remover Aluno da Turma' },
+                        { key: 'bloquearHorarios', label: 'Bloquear/Desbloquear Horários' },
+                        { key: 'importarLote', label: 'Adicionar Alunos em Lote' }
+                      ].map(perm => {
+                        const checked = configTemp.permissoes?.horarios?.[perm.key as keyof typeof configTemp.permissoes.horarios] ?? true;
+                        return (
+                          <label key={perm.key} className="inline-flex items-center gap-1.5 text-xs cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(e) => {
+                                setConfigTemp(prev => ({
+                                  ...prev,
+                                  permissoes: {
+                                    ...prev.permissoes,
+                                    horarios: {
+                                      ...prev.permissoes?.horarios,
+                                      [perm.key]: e.target.checked
+                                    }
+                                  }
+                                }));
+                              }}
+                              className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                            />
+                            <span className="text-gray-700">{perm.label}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </fieldset>
+                  )}
+
+                  {/* Permissões de Alunos */}
+                  {configTemp.abas.includes('alunos') && (
+                  <fieldset className="border border-gray-300 rounded-md px-3 pt-4 pb-3">
+                    <legend className="text-xs font-medium text-gray-700 px-1 -mx-1 flex items-center gap-1">
+                      <i className="fas fa-users text-gray-400"></i> Alunos
+                    </legend>
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        { key: 'criar', label: 'Criar Aluno' },
+                        { key: 'editar', label: 'Editar Aluno' },
+                        { key: 'excluir', label: 'Excluir Aluno' }
+                      ].map(perm => {
+                        const checked = configTemp.permissoes?.alunos?.[perm.key as keyof typeof configTemp.permissoes.alunos] ?? true;
+                        return (
+                          <label key={perm.key} className="inline-flex items-center gap-1.5 text-xs cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(e) => {
+                                setConfigTemp(prev => ({
+                                  ...prev,
+                                  permissoes: {
+                                    ...prev.permissoes,
+                                    alunos: {
+                                      ...prev.permissoes?.alunos,
+                                      [perm.key]: e.target.checked
+                                    }
+                                  }
+                                }));
+                              }}
+                              className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                            />
+                            <span className="text-gray-700">{perm.label}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </fieldset>
+                  )}
+                </div>
+
+                {/* Footer */}
+                <div className="flex-shrink-0 p-4 sm:p-6 pt-4 border-t bg-gray-50 rounded-b-lg">
+                  <div className="flex justify-between">
+                    <button 
+                      type="button" 
+                      onClick={() => resetarPadroes(tipoConfigurando)} 
+                      className="px-3 py-2 text-sm font-medium text-gray-500 hover:text-gray-700 flex items-center gap-1"
+                    >
+                      <i className="fas fa-undo text-xs"></i>
+                      Restaurar Padrões
+                    </button>
+                    <div className="flex gap-3">
+                      <button type="button" onClick={() => setShowConfigModal(false)} className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
+                        Cancelar
+                      </button>
+                      <button type="button" onClick={salvarConfigPadroes} className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700">
+                        Salvar Padrões
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           )}

@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { toast } from 'react-toastify';
 import Swal from 'sweetalert2';
 import ProtectedPage from '@/components/ProtectedPage';
 import ReporFaltaModal from '@/components/ReporFaltaModal';
 import { usePermission } from '@/hooks/usePermission';
-import { getFeriadosPeriodo, getNomeFeriado, isFeriado, type Feriado } from '@/lib/feriados';
+import { getFeriadosPeriodo, fetchFeriadosPersonalizados, adicionarFeriadoAPI, removerFeriadoAPI, type Feriado } from '@/lib/feriados';
+import { permissoesCalendario } from '@/lib/permissoes';
 
 interface Modalidade {
   _id: string;
@@ -105,6 +106,11 @@ export default function CalendarioPage() {
   const [salvandoExperimental, setSalvandoExperimental] = useState(false);
   // Estado para armazenar aulas experimentais
   const [aulasExperimentais, setAulasExperimentais] = useState<any[]>([]);
+  // Estado para armazenar usos de crédito (aulas extras)
+  const [usosCredito, setUsosCredito] = useState<any[]>([]);
+
+  // Verificar se usuário é admin ou root (pode gerenciar feriados)
+  const isAdminOrRoot = currentUser?.tipo === 'admin' || currentUser?.tipo === 'root';
 
   const diasSemana = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
 
@@ -213,18 +219,91 @@ export default function CalendarioPage() {
     }
   }, []);
 
+  // Função para carregar feriados (nacionais + personalizados)
+  const carregarFeriados = useCallback(async () => {
+    if (!mounted) return;
+    
+    const inicio = new Date(year, month, 1);
+    const fim = new Date(year, month + 1, 0);
+    const inicioStr = inicio.toISOString().split('T')[0];
+    const fimStr = fim.toISOString().split('T')[0];
+    
+    // Buscar feriados nacionais
+    const feriadosNacionais = getFeriadosPeriodo(inicioStr, fimStr);
+    
+    // Buscar feriados personalizados da API
+    const feriadosPersonalizados = await fetchFeriadosPersonalizados(inicioStr, fimStr);
+    
+    // Combinar e remover duplicatas
+    const todosOsFeriados = [...feriadosNacionais, ...feriadosPersonalizados];
+    const feriadosUnicos = todosOsFeriados.filter((f, index, self) => 
+      index === self.findIndex(t => t.data === f.data)
+    );
+    
+    setFeriadosDoMes(feriadosUnicos);
+  }, [year, month, mounted]);
+
   // Carregar feriados quando o mês mudar
   useEffect(() => {
-    if (mounted) {
-      const inicio = new Date(year, month, 1);
-      const fim = new Date(year, month + 1, 0);
-      const feriados = getFeriadosPeriodo(
-        inicio.toISOString().split('T')[0],
-        fim.toISOString().split('T')[0]
-      );
-      setFeriadosDoMes(feriados);
+    carregarFeriados();
+  }, [carregarFeriados]);
+
+  // Função para marcar/desmarcar dia como feriado/sem expediente
+  const toggleFeriado = async (data: Date) => {
+    const dataStr = data.toISOString().split('T')[0];
+    const feriadoExistente = feriadosDoMes.find(f => f.data === dataStr && f.tipo === 'personalizado');
+    
+    if (feriadoExistente) {
+      // Remover feriado
+      const { isConfirmed } = await Swal.fire({
+        title: 'Remover dia sem expediente?',
+        text: `Deseja remover a marcação de "${feriadoExistente.nome}" para ${data.toLocaleDateString('pt-BR')}?`,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonColor: '#3B82F6',
+        cancelButtonColor: '#6B7280',
+        confirmButtonText: 'Sim, remover',
+        cancelButtonText: 'Cancelar',
+      });
+      
+      if (isConfirmed) {
+        const success = await removerFeriadoAPI(dataStr);
+        if (success) {
+          toast.success('Dia sem expediente removido');
+          carregarFeriados();
+        } else {
+          toast.error('Erro ao remover dia sem expediente');
+        }
+      }
+    } else {
+      // Adicionar feriado
+      const { value: motivo, isConfirmed } = await Swal.fire({
+        title: 'Marcar como dia sem expediente',
+        html: `
+          <p class="text-sm text-gray-600 mb-3">Data: <strong>${data.toLocaleDateString('pt-BR')}</strong></p>
+          <p class="text-xs text-gray-500 mb-2">Neste dia, as aulas não serão contabilizadas como pendentes.</p>
+        `,
+        input: 'text',
+        inputLabel: 'Motivo (opcional)',
+        inputPlaceholder: 'Ex: Feriado, Recesso, Evento...',
+        showCancelButton: true,
+        confirmButtonColor: '#7C3AED',
+        cancelButtonColor: '#6B7280',
+        confirmButtonText: 'Marcar',
+        cancelButtonText: 'Cancelar',
+      });
+      
+      if (isConfirmed) {
+        const success = await adicionarFeriadoAPI(dataStr, motivo || 'Sem Expediente');
+        if (success) {
+          toast.success('Dia marcado como sem expediente');
+          carregarFeriados();
+        } else {
+          toast.error('Erro ao marcar dia sem expediente');
+        }
+      }
     }
-  }, [year, month, mounted]);
+  };
 
   // Fechar modais com ESC
   useEffect(() => {
@@ -415,11 +494,29 @@ export default function CalendarioPage() {
         console.error('[Calendario] Erro ao buscar aulas experimentais:', e);
       }
     };
+
+    // Buscar usos de crédito (aulas extras)
+    const fetchUsosCredito = async () => {
+      try {
+        console.log('[Calendario] Buscando usos de crédito...');
+        const res = await fetch('/api/usos-credito');
+        const data = await res.json();
+        
+        if (data.success || Array.isArray(data)) {
+          const usos = data.success ? data.data : data;
+          setUsosCredito(usos || []);
+          console.log('[Calendario] Usos de crédito carregados:', usos?.length || 0);
+        }
+      } catch (e) {
+        console.error('[Calendario] Erro ao buscar usos de crédito:', e);
+      }
+    };
     
     fetchHorarios();
     fetchReagendamentos();
     fetchAulasRealizadas();
     fetchAulasExperimentais();
+    fetchUsosCredito();
   }, [modalidadeSelecionada]);
 
   // Pegar horários para uma data específica (baseado no dia da semana)
@@ -455,6 +552,18 @@ export default function CalendarioPage() {
       return aulaData === dataStr && 
              String(a.horarioFixoId) === String(horarioFixoId) &&
              (a.status === 'aprovada' || a.status === 'agendada');
+    });
+  };
+
+  // Buscar usos de crédito para uma data e horário específicos
+  const getUsosCreditoForDate = (date: Date, horarioFixoId: string) => {
+    const dataStr = formatDateToISO(date);
+    return usosCredito.filter(u => {
+      const usoData = u.dataUso?.split('T')[0];
+      const usoHorarioId = typeof u.agendamentoId === 'string' 
+        ? u.agendamentoId 
+        : u.agendamentoId?._id;
+      return usoData === dataStr && String(usoHorarioId) === String(horarioFixoId);
     });
   };
 
@@ -1329,6 +1438,13 @@ export default function CalendarioPage() {
               _d.setHours(0, 0, 0, 0);
               const isPast = _d < _today && !isToday;
 
+              // Verificar se é feriado
+              const dataStrFeriado = formatDateToISO(dObj.date);
+              const feriadoDoDia = feriadosDoMes.find(f => f.data === dataStrFeriado);
+              const isFeriadoPersonalizado = feriadoDoDia?.tipo === 'personalizado';
+              const isFeriadoNacional = feriadoDoDia?.tipo === 'nacional';
+              const isFeriado = !!feriadoDoDia;
+
               // cell background: previous/next month are more muted (bg-gray-200),
               // past days in the current month should be slightly muted but less than prev-month cells
               let cellBg = inCurrentMonth ? 'bg-white' : 'bg-gray-200 text-gray-500';
@@ -1336,6 +1452,11 @@ export default function CalendarioPage() {
               if (inCurrentMonth && isPast) {
                 cellBg = 'bg-gray-50';
                 // reduce hover effect for past days
+                hoverClass = '';
+              }
+              // Se for feriado personalizado, deixar célula cinza
+              if (inCurrentMonth && isFeriadoPersonalizado) {
+                cellBg = 'bg-gray-100';
                 hoverClass = '';
               }
 
@@ -1350,7 +1471,7 @@ export default function CalendarioPage() {
               return (
                 <div
                   key={dateKey}
-                  className={`p-2 h-48 flex flex-col min-h-0 ${cellBg} ${
+                  className={`group p-2 h-48 flex flex-col min-h-0 ${cellBg} ${
                     isToday ? 'ring-2 ring-primary-500' : ''
                   } border rounded-sm ${hoverClass} transition-colors`}
                 >
@@ -1365,28 +1486,89 @@ export default function CalendarioPage() {
                         </span>
                       )}
                       {(() => {
-                        const dataStr = formatDateToISO(dObj.date);
-                        const feriado = feriadosDoMes.find(f => f.data === dataStr);
-                        if (feriado && inCurrentMonth) {
-                          const corFeriado = feriado.tipo === 'nacional' ? 'bg-blue-600' : 
-                                           feriado.tipo === 'municipal' ? 'bg-purple-600' : 'bg-green-600';
-                          return (
+                        const horariosNoDia = getHorariosForDate(dObj.date);
+                        const elements = [];
+                        
+                        // Mostrar badge para feriados nacionais/municipais
+                        if ((isFeriadoNacional || feriadoDoDia?.tipo === 'municipal') && inCurrentMonth) {
+                          const corFeriado = isFeriadoNacional ? 'bg-blue-600' : 'bg-purple-600';
+                          elements.push(
                             <span 
-                              className={`inline-block text-[9px] ${corFeriado} text-white px-1.5 py-0.5 rounded-md font-medium`}
-                              title={feriado.nome}
+                              key="feriado-badge"
+                              className={`inline-flex items-center text-[9px] ${corFeriado} text-white px-1.5 py-0.5 rounded-md font-medium`}
+                              title={feriadoDoDia?.nome}
                             >
-                              <i className="fas fa-calendar-day"></i>
+                              <i className="fas fa-flag"></i>
                             </span>
                           );
                         }
-                        return null;
+                        
+                        // Mostrar botão para adicionar/remover feriado personalizado (apenas para admin/root)
+                        // Em dias com feriado nacional, permitir adicionar feriado personalizado para cancelar aulas
+                        if (isAdminOrRoot && inCurrentMonth && horariosNoDia.length > 0 && !isPast) {
+                          // Se já é feriado personalizado, mostrar botão de remover
+                          if (isFeriadoPersonalizado) {
+                            elements.push(
+                              <button 
+                                key="remover-feriado"
+                                className="inline-flex items-center text-[9px] text-red-400 px-1.5 py-0.5 rounded-md font-medium hover:text-red-600 opacity-0 group-hover:opacity-100 transition-all duration-300 ease-in-out transform scale-90 group-hover:scale-100 z-10"
+                                title="Remover dia sem expediente"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleFeriado(dObj.date);
+                                }}
+                              >
+                                <i className="fas fa-calendar-check"></i>
+                              </button>
+                            );
+                          } else {
+                            // Permitir adicionar feriado personalizado (mesmo em dias de feriado nacional)
+                            elements.push(
+                              <button 
+                                key="adicionar-feriado"
+                                className="inline-flex items-center text-[9px] text-gray-300 px-1.5 py-0.5 rounded-md font-medium hover:text-purple-500 opacity-0 group-hover:opacity-100 transition-all duration-300 ease-in-out transform scale-90 group-hover:scale-100 z-10"
+                                title="Marcar como dia sem expediente"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleFeriado(dObj.date);
+                                }}
+                              >
+                                <i className="fas fa-calendar-plus"></i>
+                              </button>
+                            );
+                          }
+                        }
+                        
+                        return elements.length > 0 ? elements : null;
                       })()}
                     </div>
                   </div>
 
-                  {/* Horários do dia */}
+                  {/* Horários do dia ou mensagem de sem expediente */}
                   <div className="flex-1 min-h-0 overflow-y-auto space-y-1">
-                    {getHorariosForDate(dObj.date).map((horario, hIdx) => {
+                    {/* Se for feriado personalizado, mostrar mensagem */}
+                    {isFeriadoPersonalizado && inCurrentMonth && (
+                      <div className="h-full flex flex-col items-center justify-center text-gray-400">
+                        <i className="fas fa-calendar-times text-2xl mb-2"></i>
+                        <span className="text-xs font-medium text-center">{feriadoDoDia?.nome || 'Sem Expediente'}</span>
+                        {/* Botão de desfazer só para admin/root */}
+                        {isAdminOrRoot && !isPast && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleFeriado(dObj.date);
+                            }}
+                            className="mt-2 text-[10px] text-gray-400 hover:text-red-500 transition-colors"
+                            title="Remover dia sem expediente"
+                          >
+                            <i className="fas fa-undo mr-1"></i>Desfazer
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    
+                    {/* Horários normais - só mostrar se não for feriado personalizado */}
+                    {!isFeriadoPersonalizado && getHorariosForDate(dObj.date).map((horario, hIdx) => {
                       const numAlunosFixos = horario.matriculas?.filter(m => !m.emEspera).length || 0;
                       const horarioKey = `horario-${dateKey}-${hIdx}`;
                       const professorNome = typeof horario.professorId === 'string' 
@@ -1578,15 +1760,15 @@ export default function CalendarioPage() {
                       );
                     })}
                     
-                    {/* Exibir feriado se houver */}
+                    {/* Exibir feriado nacional/municipal se houver (personalizados são tratados acima) */}
                     {(() => {
                       const dataStr = formatDateToISO(dObj.date);
                       const feriado = feriadosDoMes.find(f => f.data === dataStr);
-                      if (feriado && inCurrentMonth) {
+                      // Só mostrar feriados nacionais e municipais aqui
+                      if (feriado && inCurrentMonth && feriado.tipo !== 'personalizado') {
                         const corFeriado = feriado.tipo === 'nacional' ? 'bg-blue-500 border-blue-600' : 
-                                         feriado.tipo === 'municipal' ? 'bg-purple-500 border-purple-600' : 'bg-green-500 border-green-600';
-                        const icone = feriado.tipo === 'nacional' ? 'fa-flag' : 
-                                     feriado.tipo === 'municipal' ? 'fa-building' : 'fa-star';
+                                         'bg-purple-500 border-purple-600';
+                        const icone = feriado.tipo === 'nacional' ? 'fa-flag' : 'fa-building';
                         return (
                           <div className={`w-full border rounded-md px-2 py-1.5 text-xs text-white ${corFeriado} shadow-sm`}>
                             <div className="flex items-center gap-1.5">
@@ -1599,8 +1781,8 @@ export default function CalendarioPage() {
                       return null;
                     })()}
                     
-                    {/* Exibir reagendamentos de destino (alunos que virão neste dia) */}
-                    {inCurrentMonth && getReagendamentosForDate(dObj.date).destino.map((reag, rIdx) => {
+                    {/* Exibir reagendamentos de destino (alunos que virão neste dia) - não mostrar em feriados personalizados */}
+                    {!isFeriadoPersonalizado && inCurrentMonth && getReagendamentosForDate(dObj.date).destino.map((reag, rIdx) => {
                       const matriculaId = reag.matriculaId;
                       
                       // Tentar obter nome do aluno de várias formas
@@ -1993,17 +2175,20 @@ export default function CalendarioPage() {
                   </div>
                 </div>
                 
-                {/* Botão fechar */}
-                <button
-                  onClick={() => {
-                    setHorarioSelecionado(null);
-                    setDataClicada(null);
-                  }}
-                  className="ml-2 w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 hover:text-gray-700 transition-colors flex-shrink-0"
-                  aria-label="Fechar"
-                >
-                  <i className="fas fa-times text-sm"></i>
-                </button>
+                {/* Botões de ação do header */}
+                <div className="flex items-center gap-2 ml-2 flex-shrink-0">
+                  {/* Botão fechar */}
+                  <button
+                    onClick={() => {
+                      setHorarioSelecionado(null);
+                      setDataClicada(null);
+                    }}
+                    className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 hover:text-gray-700 transition-colors"
+                    aria-label="Fechar"
+                  >
+                    <i className="fas fa-times text-sm"></i>
+                  </button>
+                </div>
               </div>
 
               {/* Separator between header and content */}
@@ -2064,18 +2249,82 @@ export default function CalendarioPage() {
                   dataAulaDate.setHours(0, 0, 0, 0);
                   const aulaFutura = dataAulaDate >= hoje;
                   
-                  if (aulaFutura) {
-                    return (
+                  // Verificar se a aula já foi enviada/registrada
+                  const aulaJaEnviada = verificarAulaRegistrada(horarioSelecionado._id, dataAula);
+                  
+                  // Verificar se a turma está lotada
+                  const dataAulaStr = formatDateToISO(dataAula);
+                  const modalidadeAtual = modalidades.find(m => 
+                    m._id === (typeof horarioSelecionado.modalidadeId === 'string' 
+                      ? horarioSelecionado.modalidadeId 
+                      : horarioSelecionado.modalidadeId?._id)
+                  );
+                  const limiteAlunos = modalidadeAtual?.limiteAlunos || 5;
+                  
+                  // Contar alunos ativos na turma
+                  const alunosAtivos = horarioSelecionado.matriculas?.filter(m => {
+                    const isEmEspera = m.emEspera || m.alunoId?.emEspera;
+                    const isCongelado = m.alunoId?.congelado;
+                    const isAusente = m.alunoId?.ausente;
+                    return !isEmEspera && !isCongelado && !isAusente;
+                  }).length || 0;
+                  
+                  // Contar alunos que faltarão (reagendados para outro horário)
+                  const alunosFaltarao = reagendamentos.filter(r => {
+                    const horarioFixoId = typeof r.horarioFixoId === 'string' 
+                      ? r.horarioFixoId 
+                      : r.horarioFixoId?._id;
+                    const dataOriginalNormalizada = r.dataOriginal?.split('T')[0];
+                    return horarioFixoId === horarioSelecionado._id &&
+                      dataOriginalNormalizada === dataAulaStr &&
+                      r.status === 'aprovado';
+                  }).length;
+                  
+                  // Contar alunos que virão (reagendados de outros horários)
+                  const alunosVirao = reagendamentos.filter(r => {
+                    const novoHorarioFixoId = typeof r.novoHorarioFixoId === 'string'
+                      ? r.novoHorarioFixoId
+                      : r.novoHorarioFixoId?._id;
+                    const novaDataNormalizada = r.novaData?.split('T')[0];
+                    return novoHorarioFixoId === horarioSelecionado._id &&
+                      novaDataNormalizada === dataAulaStr &&
+                      r.status === 'aprovado';
+                  }).length;
+                  
+                  // Contar aulas experimentais já agendadas para este horário/data
+                  const experimentaisNaData = aulasExperimentais.filter(ae => {
+                    const aeData = ae.data?.split('T')[0];
+                    return ae.horarioFixoId === horarioSelecionado._id && 
+                      aeData === dataAulaStr &&
+                      ae.status === 'pendente';
+                  }).length;
+                  
+                  const totalPresentes = alunosAtivos - alunosFaltarao + alunosVirao + experimentaisNaData;
+                  const turmaLotada = totalPresentes >= limiteAlunos;
+                  
+                  if (aulaFutura && !aulaJaEnviada) {
+                    return permissoesCalendario.aulaExperimental() ? (
                       <div className="mb-4">
                         <button
-                          onClick={() => setShowAulaExperimentalModal(true)}
-                          className="w-full bg-white border border-gray-300 text-gray-700 py-2 px-3 rounded-md font-normal hover:bg-gray-50 hover:border-gray-400 transition-colors flex items-center justify-center gap-2 text-sm"
+                          onClick={() => {
+                            if (turmaLotada) {
+                              toast.warning(`Turma lotada! (${totalPresentes}/${limiteAlunos} alunos)`);
+                              return;
+                            }
+                            setShowAulaExperimentalModal(true);
+                          }}
+                          disabled={turmaLotada}
+                          className={`w-full py-2 px-3 rounded-md font-normal transition-colors flex items-center justify-center gap-2 text-sm ${
+                            turmaLotada 
+                              ? 'bg-gray-100 border border-gray-200 text-gray-400 cursor-not-allowed' 
+                              : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 hover:border-gray-400'
+                          }`}
                         >
                           <i className="fas fa-user-plus text-xs"></i>
-                          Agendar Aula Experimental
+                          {turmaLotada ? `Turma Lotada (${totalPresentes}/${limiteAlunos})` : 'Agendar Aula Experimental'}
                         </button>
                       </div>
-                    );
+                    ) : null;
                   }
                   return null;
                 })()}
@@ -2335,7 +2584,7 @@ export default function CalendarioPage() {
                                       hoje.setHours(0, 0, 0, 0);
                                       const prazoPassou = hoje > prazoFinal;
                                       
-                                      return (
+                                      return permissoesCalendario.reposicao() ? (
                                         <button
                                           onClick={() => {
                                             setAlunoReposicao({
@@ -2374,7 +2623,7 @@ export default function CalendarioPage() {
                                           }`}></i>
                                           {prazoPassou ? 'Expirada' : (reposicao ? 'Agendada' : 'Repor Aula')}
                                         </button>
-                                      );
+                                      ) : null;
                                     })()}
                                     {temReposicaoAgendada && faltaInfo?.reposicao && (
                                       (() => {
@@ -2530,6 +2779,9 @@ export default function CalendarioPage() {
                                 
                                 // Não exibir botão se já passou, já tem reagendamento ou aula já foi registrada
                                 if (reagendamentoAluno || aulaPassou || aulaJaRegistrada) return null;
+                                
+                                // Verificar permissão de reagendar
+                                if (!permissoesCalendario.reagendar()) return null;
                                 
                                 // Se for professor, verificar se o horário é dele
                                 const isProfessor = currentUser?.tipo === 'professor';
@@ -2966,6 +3218,76 @@ export default function CalendarioPage() {
                                     <p className="text-xs text-gray-500">
                                       <i className="fas fa-phone text-[9px] mr-1"></i>
                                       {exp.telefoneExperimental}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Alunos com Crédito de Reposição */}
+                {(() => {
+                  const dataAula = dataClicada || new Date();
+                  const creditosNaAula = getUsosCreditoForDate(dataAula, horarioSelecionado._id || '');
+                  
+                  if (creditosNaAula.length === 0) return null;
+                  
+                  // Verificar se a aula já passou ou foi registrada
+                  const hoje = new Date();
+                  hoje.setHours(0, 0, 0, 0);
+                  const dataAulaDate = new Date(dataAula);
+                  dataAulaDate.setHours(0, 0, 0, 0);
+                  const aulaPassouOuEnviada = dataAulaDate < hoje || verificarAulaRegistrada(horarioSelecionado._id || '', dataAula);
+                  
+                  return (
+                    <div className="border border-green-300 rounded-lg p-4 relative pt-6 mt-6">
+                      <h3 className="font-semibold text-green-700 text-sm md:text-base absolute -top-3 left-4 bg-white px-2">
+                        Créditos Usados ({creditosNaAula.length})
+                      </h3>
+                      <div className="space-y-2">
+                        {creditosNaAula.map((uso, idx) => {
+                          const nomeAluno = uso.alunoId?.nome || 'Aluno não identificado';
+                          
+                          return (
+                            <div 
+                              key={uso._id || `credito-${idx}`}
+                              className={`flex items-center justify-between p-3 rounded-md border ${
+                                aulaPassouOuEnviada
+                                  ? 'bg-gray-100 border-gray-300'
+                                  : 'bg-green-50 border-green-200'
+                              }`}
+                            >
+                              <div className="flex items-center gap-3 flex-1">
+                                <div className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold text-white ${
+                                  aulaPassouOuEnviada 
+                                    ? 'bg-gray-400' 
+                                    : 'bg-green-500'
+                                }`}>
+                                  {nomeAluno.charAt(0).toUpperCase()}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <p className={`font-medium ${aulaPassouOuEnviada ? 'text-gray-500' : 'text-gray-900'}`}>
+                                      {nomeAluno}
+                                    </p>
+                                    <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-medium ${
+                                      aulaPassouOuEnviada
+                                        ? 'bg-gray-200 text-gray-500' 
+                                        : 'bg-green-100 text-green-700'
+                                    }`}>
+                                      <i className="fas fa-ticket-alt text-[8px]"></i>
+                                      Crédito
+                                    </span>
+                                  </div>
+                                  {uso.creditoId?.motivo && (
+                                    <p className="text-xs text-gray-500 mt-0.5">
+                                      <i className="fas fa-info-circle text-[9px] mr-1"></i>
+                                      {uso.creditoId.motivo}
                                     </p>
                                   )}
                                 </div>

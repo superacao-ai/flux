@@ -46,6 +46,7 @@ export interface HorarioFixo {
   horarioFim: string; // HH:MM
   ativo: boolean;
   observacoes?: string;
+  limiteAlunos?: number; // Limite específico da turma (sobrescreve modalidade)
   criadoEm: Date;
   atualizadoEm: Date;
 }

@@ -5,6 +5,7 @@ import connectDB from '@/lib/mongodb';
 import { Reagendamento } from '@/models/Reagendamento';
 import { HorarioFixo } from '@/models/HorarioFixo';
 import { Matricula } from '@/models/Matricula';
+import { Modalidade } from '@/models/Modalidade';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'aluno-secret-key-2025';
 
@@ -132,6 +133,27 @@ export async function POST(req: NextRequest) {
         { status: 404 }
       );
     }
+
+    // ========== VALIDAÇÃO DE ANTECEDÊNCIA MÍNIMA DE 15 MINUTOS ==========
+    const agora = new Date();
+    const dataOriginalParaValidacao = new Date(dataOriginal);
+    const [horaAula, minutoAula] = horarioOriginal.horarioInicio.split(':').map(Number);
+    const dataHoraAula = new Date(dataOriginalParaValidacao);
+    dataHoraAula.setHours(horaAula, minutoAula, 0, 0);
+    
+    const diffMs = dataHoraAula.getTime() - agora.getTime();
+    const diffMinutos = Math.floor(diffMs / (1000 * 60));
+    
+    if (diffMinutos < 15) {
+      const motivo = diffMinutos < 0 
+        ? 'Esta aula já começou' 
+        : `Faltam apenas ${diffMinutos} minutos para a aula. É necessário no mínimo 15 minutos de antecedência.`;
+      return NextResponse.json(
+        { success: false, error: motivo },
+        { status: 400 }
+      );
+    }
+    // ========== FIM VALIDAÇÃO DE ANTECEDÊNCIA ==========
     
     // Buscar novo horário
     const novoHorario = await HorarioFixo.findById(novoHorarioFixoId);
@@ -142,6 +164,84 @@ export async function POST(req: NextRequest) {
         { status: 404 }
       );
     }
+
+    // ========== VERIFICAÇÃO DE CONFLITO ENTRE MODALIDADES VINCULADAS ==========
+    // Se a modalidade do novo horário tem modalidades vinculadas (compartilham espaço físico),
+    // verificar se há aulas no mesmo dia/horário nessas modalidades
+    if (novoHorario.modalidadeId) {
+      try {
+        const modalidade = await Modalidade.findById(novoHorario.modalidadeId).lean();
+        const vinculadas = (modalidade as any)?.modalidadesVinculadas || [];
+        
+        if (vinculadas.length > 0) {
+          // Calcular o dia da semana da nova data
+          const novaDataObj = new Date(novaData);
+          const diaSemanaNovaData = novaDataObj.getDay();
+          
+          // Buscar aulas nas modalidades vinculadas no mesmo dia e horário
+          const conflitoVinculada = await HorarioFixo.findOne({
+            modalidadeId: { $in: vinculadas },
+            diaSemana: diaSemanaNovaData,
+            ativo: true,
+            $or: [
+              // Horário sobrepõe
+              { horarioInicio: { $lt: novoHorario.horarioFim }, horarioFim: { $gt: novoHorario.horarioInicio } }
+            ]
+          }).populate('modalidadeId', 'nome');
+          
+          if (conflitoVinculada) {
+            const nomeModalidadeConflito = (conflitoVinculada.modalidadeId as any)?.nome || 'outra modalidade';
+            return NextResponse.json(
+              {
+                success: false,
+                error: `Conflito de espaço: já existe aula de "${nomeModalidadeConflito}" neste horário. As modalidades compartilham o mesmo espaço físico.`
+              },
+              { status: 400 }
+            );
+          }
+        }
+      } catch (err) {
+        console.warn('Erro ao verificar conflito de modalidades vinculadas:', err);
+        // Não bloquear o reagendamento por erro na verificação
+      }
+    }
+    // ========== FIM VERIFICAÇÃO DE CONFLITO ==========
+
+    // ========== VERIFICAÇÃO DE LIMITE DE VAGAS NO DESTINO ==========
+    // Verificar quantos alunos já estão na turma destino + reagendamentos aprovados/pendentes para a mesma data
+    try {
+      // Contar alunos fixos na turma destino
+      const matriculasDestino = await Matricula.countDocuments({
+        horarioFixoId: novoHorarioFixoId,
+        ativo: true
+      });
+      
+      // Contar reagendamentos aprovados ou pendentes para a mesma turma e data
+      const reagendamentosParaDestino = await Reagendamento.countDocuments({
+        novoHorarioFixoId: novoHorarioFixoId,
+        novaData: new Date(novaData),
+        status: { $in: ['pendente', 'aprovado'] }
+      });
+      
+      // Limite padrão de vagas por turma (pode ser configurável no futuro)
+      const LIMITE_VAGAS = novoHorario.limiteAlunos || 10; // usar limite do horário ou padrão 10
+      
+      const totalOcupacao = matriculasDestino + reagendamentosParaDestino;
+      
+      if (totalOcupacao >= LIMITE_VAGAS) {
+        return NextResponse.json(
+          { 
+            success: false, 
+            error: `Esta turma já está lotada para esta data. Vagas ocupadas: ${totalOcupacao}/${LIMITE_VAGAS}` 
+          },
+          { status: 400 }
+        );
+      }
+    } catch (err) {
+      console.warn('Erro ao verificar limite de vagas:', err);
+      // Continuar mesmo com erro - melhor permitir do que bloquear por erro
+    }
+    // ========== FIM VERIFICAÇÃO DE LIMITE DE VAGAS ==========
     
     // Verificar se não há reagendamento pendente para o mesmo horário e data
     const reagendamentoExistente = await Reagendamento.findOne({

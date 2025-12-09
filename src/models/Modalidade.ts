@@ -43,6 +43,17 @@ const modalidadeSchema = new mongoose.Schema({
       fim: { type: String, default: null }
     }
   },
+  // Link do grupo do WhatsApp da modalidade
+  linkWhatsapp: {
+    type: String,
+    trim: true,
+    default: ''
+  },
+  // Modalidades que compartilham o mesmo espaço (conflito de horário)
+  modalidadesVinculadas: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Modalidade'
+  }],
   ativo: {
     type: Boolean,
     default: true

@@ -15,6 +15,7 @@ export interface IHorarioFixo {
   emEspera?: boolean;
   observacoes?: string;
   observacaoTurma?: string;
+  limiteAlunos?: number; // Limite de alunos específico da turma (sobrescreve o da modalidade)
   criadoEm?: Date;
   atualizadoEm?: Date;
 }
@@ -78,6 +79,11 @@ const HorarioFixoSchema = new Schema<IHorarioFixo>({
     type: String,
     trim: true,
     maxlength: [300, 'Observações da turma devem ter no máximo 300 caracteres']
+  },
+  limiteAlunos: {
+    type: Number,
+    required: false,
+    min: [1, 'Limite de alunos deve ser pelo menos 1']
   }
 }, {
   timestamps: { createdAt: 'criadoEm', updatedAt: 'atualizadoEm' }

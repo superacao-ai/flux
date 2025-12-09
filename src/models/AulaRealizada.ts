@@ -35,9 +35,15 @@ export interface IAulaRealizada extends Document {
   alunos: IAlunoAula[];
   
   // Metadados do envio
-  status: 'pendente' | 'enviada' | 'corrigida';
+  status: 'pendente' | 'enviada' | 'corrigida' | 'cancelada';
   enviouEm?: Date;
   enviadoPor?: mongoose.Types.ObjectId;
+  
+  // Cancelamento retroativo
+  cancelada?: boolean;
+  canceladaEm?: Date;
+  canceladaPor?: mongoose.Types.ObjectId;
+  motivoCancelamento?: string;
   
   // Histórico de correções
   historicoCorrecoes: ICorrecao[];
@@ -147,13 +153,28 @@ const AulaRealizadaSchema = new Schema<IAulaRealizada>(
     
     status: {
       type: String,
-      enum: ['pendente', 'enviada', 'corrigida'],
+      enum: ['pendente', 'enviada', 'corrigida', 'cancelada'],
       default: 'pendente',
     },
     enviouEm: Date,
     enviadoPor: {
       type: Schema.Types.ObjectId,
       ref: 'User',
+    },
+    
+    // Cancelamento retroativo
+    cancelada: {
+      type: Boolean,
+      default: false,
+    },
+    canceladaEm: Date,
+    canceladaPor: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+    },
+    motivoCancelamento: {
+      type: String,
+      trim: true,
     },
     
     historicoCorrecoes: [ICorrecaoSchema],

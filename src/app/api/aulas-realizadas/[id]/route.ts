@@ -31,7 +31,7 @@ export async function PUT(
     }
 
     // Atualizar campos permitidos
-    const camposPermitidos = ['alunos', 'total_presentes', 'total_faltas', 'status'];
+    const camposPermitidos = ['alunos', 'total_presentes', 'total_faltas', 'status', 'cancelada', 'canceladaEm', 'canceladaPor', 'motivoCancelamento'];
     const dadosAtualizacao: any = {};
     
     camposPermitidos.forEach(campo => {
@@ -39,6 +39,12 @@ export async function PUT(
         dadosAtualizacao[campo] = body[campo];
       }
     });
+
+    // Se está cancelando, definir status como 'cancelada'
+    if (body.cancelada === true) {
+      dadosAtualizacao.status = 'cancelada';
+      dadosAtualizacao.canceladaEm = new Date();
+    }
 
     // Atualizar aula
     const aulaAtualizada = await AulaRealizada.findByIdAndUpdate(
@@ -50,7 +56,7 @@ export async function PUT(
     return NextResponse.json({
       success: true,
       data: aulaAtualizada,
-      message: 'Aula atualizada com sucesso'
+      message: body.cancelada ? 'Aula cancelada com sucesso' : 'Aula atualizada com sucesso'
     });
 
   } catch (error: any) {

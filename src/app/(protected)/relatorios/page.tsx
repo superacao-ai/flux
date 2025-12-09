@@ -5,6 +5,7 @@ import { toast } from 'react-toastify';
 import ProtectedPage from '@/components/ProtectedPage';
 import { useEffect, useState, useMemo } from 'react';
 import { Line, Bar, Doughnut, Pie } from 'react-chartjs-2';
+import { getFeriadosPeriodo, fetchFeriadosPersonalizados } from '@/lib/feriados';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -346,6 +347,14 @@ export default function RelatoriosPage() {
           return dates;
         }
 
+        // Buscar feriados do período
+        const feriadosNacionais = getFeriadosPeriodo(filtros.dataInicio, filtros.dataFim);
+        const feriadosPersonalizados = await fetchFeriadosPersonalizados(filtros.dataInicio, filtros.dataFim);
+        const todosFeriados = new Set([
+          ...feriadosNacionais.map(f => f.data),
+          ...feriadosPersonalizados.map(f => f.data)
+        ]);
+
         let aulasPendentes = 0;
         const aulasPendentesDetalhadas: Array<{
           data: string;
@@ -359,6 +368,10 @@ export default function RelatoriosPage() {
           dias.forEach(dateObj => {
             const dataStr = dateObj.toISOString().split('T')[0];
             const key = `${horario._id}_${dataStr}`;
+            // Ignorar feriados
+            if (todosFeriados.has(dataStr)) {
+              return;
+            }
             // Só conta como pendente se a data já passou (menor que hoje) e não existe aula realizada
             if (dataStr < new Date().toISOString().split('T')[0] && !aulasMap.has(key)) {
               aulasPendentes++;

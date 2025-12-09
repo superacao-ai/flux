@@ -123,6 +123,19 @@
       return `${parts[2]}/${parts[1]}/${parts[0]}`;
     };
 
+    // Obter dia da semana
+    const getDiaSemana = (dateStr: string) => {
+      try {
+        const parts = dateStr.split('-');
+        if (parts.length !== 3) return '';
+        const date = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+        const weekday = date.toLocaleDateString('pt-BR', { weekday: 'long' });
+        return weekday.charAt(0).toUpperCase() + weekday.slice(1);
+      } catch (e) {
+        return '';
+      }
+    };
+
     // Calcular paginação
     const totalPaginasPendentes = Math.ceil(aulasPendentes.length / AULAS_POR_PAGINA);
     const totalPaginasEnviadas = Math.ceil(aulasEnviadas.length / AULAS_POR_PAGINA);
@@ -137,14 +150,24 @@
 
     return (
       <ProtectedPage tab="professor:aulas" title="Minhas Aulas - Professor">
-          <div className="px-4 py-6 sm:px-0">
-            <div className="mb-6 fade-in-1">
-              <h1 className="text-2xl font-semibold text-gray-900 flex items-center gap-3">
+          <div className="px-4 py-4 md:py-6 sm:px-6 lg:px-8">
+            {/* Header Desktop */}
+            <div className="hidden md:block mb-6 fade-in-1">
+              <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
                 <i className="fas fa-chalkboard-teacher text-primary-600"></i>
                 Minhas Aulas
               </h1>
-              <p className="text-gray-600 mt-1">Acompanhe e preencha suas aulas pendentes.</p>
+              <p className="text-sm text-gray-600 mt-1">Acompanhe e preencha suas aulas pendentes</p>
             </div>
+            
+            {/* Header Mobile - Compacto */}
+            <div className="md:hidden mb-3 fade-in-1">
+              <h1 className="text-lg font-bold text-gray-900">
+                <i className="fas fa-chalkboard-teacher text-primary-600 mr-1.5"></i>
+                Minhas Aulas
+              </h1>
+            </div>
+            
             {error && <div className="bg-red-50 border border-red-200 rounded-md p-4 text-red-700">{error}</div>}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 fade-in-2">
               {/* Pendentes */}
@@ -183,6 +206,7 @@
                               <i className="fas fa-calendar text-gray-400" aria-hidden="true" />
                               {formatDate(aula.data)}
                             </div>
+                            <div className="text-xs text-primary-600 font-medium">{getDiaSemana(aula.data)}</div>
                             <div className="text-xs text-gray-500 mt-1 truncate">{aula.modalidade || '—'}</div>
                           </div>
                           <div className="flex items-center gap-3">
@@ -250,6 +274,7 @@
                               <i className="fas fa-calendar text-gray-400" aria-hidden="true" />
                               {formatDate((aula.data || '').split('T')[0])}
                             </div>
+                            <div className="text-xs text-primary-600 font-medium">{getDiaSemana((aula.data || '').split('T')[0])}</div>
                             <div className="text-xs text-gray-500 mt-1 truncate">{aula.modalidade || '—'}</div>
                           </div>
                           <div className="flex items-center gap-3">

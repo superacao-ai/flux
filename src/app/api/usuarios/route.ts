@@ -40,10 +40,11 @@ export async function POST(request: NextRequest) {
     const senha = String(body.senha || '').trim();
     const especialidades = Array.isArray(body.especialidades) ? body.especialidades.map(String) : [];
     const modalidadeId = body.modalidadeId || null;
-    const allowedTipos = ['admin', 'professor', 'root'];
+    const allowedTipos = ['admin', 'professor', 'root', 'vendedor'];
     const tipo = allowedTipos.includes(body.tipo) ? body.tipo : 'professor';
     const ativo = body.ativo === undefined ? true : Boolean(body.ativo);
     const abas = Array.isArray(body.abas) ? body.abas.map(String) : [];
+    const permissoes = body.permissoes || {};
 
     // Verificar se está tentando criar um root - apenas root pode fazer isso
     if (tipo === 'root') {
@@ -74,7 +75,7 @@ export async function POST(request: NextRequest) {
     // normalize color to ensure it starts with '#'
     let corVal = (body.cor || '').trim();
     if (corVal && !corVal.startsWith('#')) corVal = `#${corVal}`;
-    const novo = new User({ nome, email, senha, tipo, ativo, abas, telefone: body.telefone || '', cor: corVal, especialidades, modalidadeId });
+    const novo = new User({ nome, email, senha, tipo, ativo, abas, permissoes, telefone: body.telefone || '', cor: corVal, especialidades, modalidadeId });
     await novo.save();
 
     // Se for professor, criar automaticamente na collection Professor

@@ -4,6 +4,8 @@ import Swal from 'sweetalert2';
 import { toast } from 'react-toastify';
 import { useState, useEffect } from 'react';
 import ProtectedPage from '@/components/ProtectedPage';
+import { refreshPendingCounts } from '@/lib/events';
+import ToggleAprovacaoAutomatica from '@/components/ToggleAprovacaoAutomatica';
 
 interface Aluno {
   _id: string;
@@ -15,6 +17,7 @@ interface Professor {
   _id: string;
   nome: string;
   especialidade: string;
+  cor?: string;
 }
 
 interface HorarioFixo {
@@ -164,6 +167,7 @@ export default function ReagendamentosPage() {
       if (data.success) {
         toast.success('Reagendamento aprovado!');
         fetchReagendamentos();
+        refreshPendingCounts();
       } else {
         toast.error('Erro ao aprovar reagendamento');
       }
@@ -187,6 +191,7 @@ export default function ReagendamentosPage() {
       if (data.success) {
         toast.success('Reagendamento rejeitado!');
         fetchReagendamentos();
+        refreshPendingCounts();
       } else {
         toast.error('Erro ao rejeitar reagendamento');
       }
@@ -210,6 +215,7 @@ export default function ReagendamentosPage() {
       if (data.success) {
         toast.success('Reagendamento voltou para pendente!');
         fetchReagendamentos();
+        refreshPendingCounts();
       } else {
         toast.error('Erro ao alterar status do reagendamento');
       }
@@ -439,6 +445,14 @@ export default function ReagendamentosPage() {
           </button>
         </div>
 
+        {/* Toggle Aprovação Automática */}
+        <div className="mb-4 fade-in-2">
+          <ToggleAprovacaoAutomatica 
+            chave="aprovacaoAutomaticaReagendamento" 
+            label="Aprovação Automática de Reagendamentos" 
+          />
+        </div>
+
         {/* Tabs Mobile */}
         <div className="md:hidden mb-4 fade-in-2">
           <div className="flex gap-2">
@@ -511,7 +525,9 @@ export default function ReagendamentosPage() {
                   : ((reagendamento as any).matriculaId?.alunoId?.nome || reagendamento.horarioFixoId?.alunoId?.nome || 'Aluno');
                 
                 const professorOrigem = reagendamento.horarioFixoId?.professorId?.nome || 'N/A';
+                const professorOrigemCor = reagendamento.horarioFixoId?.professorId?.cor;
                 const professorDestino = (reagendamento as any).novoHorarioFixoId?.professorId?.nome || 'N/A';
+                const professorDestinoCor = (reagendamento as any).novoHorarioFixoId?.professorId?.cor;
                 
                 return (
                   <div key={reagendamento._id} className={`border rounded-xl md:rounded-lg shadow-sm md:shadow-none p-3 md:p-5 transition-colors ${
@@ -569,8 +585,11 @@ export default function ReagendamentosPage() {
                           <div className="text-xs font-semibold text-gray-800">{formatarData(reagendamento.dataOriginal)}</div>
                           <div className="text-[10px] text-gray-600">{reagendamento.horarioFixoId?.horarioInicio}</div>
                           {professorOrigem !== 'N/A' && (
-                            <div className="text-[10px] text-gray-500 mt-0.5">
-                              <i className="fas fa-user-tie text-[8px] mr-0.5"></i>{professorOrigem}
+                            <div className="text-[10px] mt-0.5 flex items-center justify-center gap-1">
+                              {professorOrigemCor && (
+                                <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: professorOrigemCor }}></span>
+                              )}
+                              <span className="text-gray-600">{professorOrigem}</span>
                             </div>
                           )}
                         </div>
@@ -583,8 +602,11 @@ export default function ReagendamentosPage() {
                           <div className="text-xs font-semibold text-gray-800">{formatarData(reagendamento.novaData)}</div>
                           <div className="text-[10px] text-gray-600">{reagendamento.novoHorarioInicio}</div>
                           {professorDestino !== 'N/A' && (
-                            <div className="text-[10px] text-gray-500 mt-0.5">
-                              <i className="fas fa-user-tie text-[8px] mr-0.5"></i>{professorDestino}
+                            <div className="text-[10px] mt-0.5 flex items-center justify-center gap-1">
+                              {professorDestinoCor && (
+                                <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: professorDestinoCor }}></span>
+                              )}
+                              <span className="text-gray-600">{professorDestino}</span>
                             </div>
                           )}
                         </div>
@@ -721,8 +743,13 @@ export default function ReagendamentosPage() {
                             <p className={reagendamento.status === 'aprovado' ? 'text-gray-500' : 'text-gray-700'}>
                               <i className="fas fa-clock w-4 text-gray-400"></i> {reagendamento.horarioFixoId?.horarioInicio} - {reagendamento.horarioFixoId?.horarioFim}
                             </p>
-                            <p className={reagendamento.status === 'aprovado' ? 'text-gray-500' : 'text-gray-700'}>
-                              <i className="fas fa-user w-4 text-gray-400"></i> {professorOrigem}
+                            <p className={`flex items-center gap-1.5 ${reagendamento.status === 'aprovado' ? 'text-gray-500' : 'text-gray-700'}`}>
+                              {professorOrigemCor ? (
+                                <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: professorOrigemCor }}></span>
+                              ) : (
+                                <i className="fas fa-user w-4 text-gray-400"></i>
+                              )}
+                              {professorOrigem}
                             </p>
                           </div>
                         </div>
@@ -763,8 +790,13 @@ export default function ReagendamentosPage() {
                             <p className={reagendamento.status === 'aprovado' ? 'text-gray-500' : 'text-gray-700'}>
                               <i className="fas fa-clock w-4 text-gray-400"></i> {reagendamento.novoHorarioInicio} - {reagendamento.novoHorarioFim}
                             </p>
-                            <p className={reagendamento.status === 'aprovado' ? 'text-gray-500' : 'text-gray-700'}>
-                              <i className="fas fa-user w-4 text-gray-400"></i> {professorDestino}
+                            <p className={`flex items-center gap-1.5 ${reagendamento.status === 'aprovado' ? 'text-gray-500' : 'text-gray-700'}`}>
+                              {professorDestinoCor ? (
+                                <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: professorDestinoCor }}></span>
+                              ) : (
+                                <i className="fas fa-user w-4 text-gray-400"></i>
+                              )}
+                              {professorDestino}
                             </p>
                           </div>
                         </div>

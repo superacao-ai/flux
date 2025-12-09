@@ -3,6 +3,8 @@ import { cookies } from 'next/headers';
 import jwt from 'jsonwebtoken';
 import connectDB from '@/lib/mongodb';
 import { AvisoAusencia } from '@/models/AvisoAusencia';
+import Feriado from '@/models/Feriado';
+import { getFeriadosNacionais } from '@/lib/feriados';
 import mongoose from 'mongoose';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'aluno-secret-key-2025';
@@ -37,6 +39,29 @@ export async function GET(req: NextRequest) {
     }
     
     await connectDB();
+    
+    // Buscar feriados para exclusão
+    const feriadosPersonalizados = await Feriado.find({}).lean();
+    const anoAtual = new Date().getFullYear();
+    const feriadosNacionais = getFeriadosNacionais(anoAtual);
+    
+    // Criar set de datas de feriados (formato YYYY-MM-DD)
+    const feriadosSet = new Set<string>();
+    for (const f of feriadosPersonalizados) {
+      const d = new Date(f.data);
+      feriadosSet.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+    }
+    for (const f of feriadosNacionais) {
+      const d = new Date(f.data);
+      feriadosSet.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+    }
+    
+    // Helper para verificar se data é feriado
+    const isFeriado = (date: Date | string) => {
+      const d = new Date(date);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      return feriadosSet.has(key);
+    };
     
     // Buscar avisos de ausência confirmados que ainda têm direito a reposição
     const faltasParaReposicao = await AvisoAusencia.find({
@@ -110,23 +135,29 @@ export async function GET(req: NextRequest) {
       { $limit: 20 }
     ]);
     
-    // Verificar quais faltas já tem aviso de ausência associado
-    const faltasComAviso = faltasParaReposicao.map((f: any) => ({
-      _id: f._id,
-      tipo: 'aviso_ausencia',
-      data: f.dataAusencia,
-      horarioFixoId: f.horarioFixoId?._id,
-      horarioInicio: f.horarioFixoId?.horarioInicio,
-      horarioFim: f.horarioFixoId?.horarioFim,
-      modalidade: f.horarioFixoId?.modalidadeId,
-      motivo: f.motivo,
-      temDireitoReposicao: true
-    }));
+    // Verificar quais faltas já tem aviso de ausência associado (excluir feriados)
+    const faltasComAviso = faltasParaReposicao
+      .filter((f: any) => !isFeriado(f.dataAusencia))
+      .map((f: any) => ({
+        _id: f._id,
+        tipo: 'aviso_ausencia',
+        data: f.dataAusencia,
+        horarioFixoId: f.horarioFixoId?._id,
+        horarioInicio: f.horarioFixoId?.horarioInicio,
+        horarioFim: f.horarioFixoId?.horarioFim,
+        modalidade: f.horarioFixoId?.modalidadeId,
+        motivo: f.motivo,
+        temDireitoReposicao: true
+      }));
     
     // Faltas registradas pelo professor que não tem aviso prévio
     // (não tem direito automático, mas pode solicitar)
+    // Também exclui feriados
     const faltasSemAviso = faltasRegistradas
       .filter((f: any) => {
+        // Excluir feriados
+        if (isFeriado(f.data)) return false;
+        
         // Verificar se essa falta já tem aviso de ausência
         const temAviso = faltasParaReposicao.some((a: any) => 
           a.dataAusencia.toISOString().split('T')[0] === f.data.split('T')[0] &&

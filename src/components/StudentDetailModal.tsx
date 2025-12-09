@@ -13,6 +13,18 @@ interface Props {
   onRefresh?: () => void;
 }
 
+interface CreditoReposicao {
+  _id: string;
+  quantidade: number;
+  quantidadeUsada: number;
+  modalidadeId?: { _id: string; nome: string };
+  motivo: string;
+  validade: string;
+  concedidoPor: { _id: string; name: string };
+  ativo: boolean;
+  criadoEm: string;
+}
+
 const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalidades, horarios, onRefresh }) => {
   const [modalEditing, setModalEditing] = useState(false);
   const [modalEditName, setModalEditName] = useState('');
@@ -30,8 +42,112 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
   const [selectedAlunoToMerge, setSelectedAlunoToMerge] = useState<string | null>(null);
   const [loadingAlunos, setLoadingAlunos] = useState(false);
   const [mergeSearchText, setMergeSearchText] = useState<string>('');
+  
+  // Estados para créditos
+  const [creditos, setCreditos] = useState<CreditoReposicao[]>([]);
+  const [loadingCreditos, setLoadingCreditos] = useState(false);
+  const [showCreditoModal, setShowCreditoModal] = useState(false);
+  const [salvandoCredito, setSalvandoCredito] = useState(false);
+  const [quantidadeCredito, setQuantidadeCredito] = useState('1');
+  const [modalidadeCreditoId, setModalidadeCreditoId] = useState('');
+  const [motivoCredito, setMotivoCredito] = useState('');
+  const [validadeCredito, setValidadeCredito] = useState('');
 
   const diasSemana = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+
+  // Buscar créditos do aluno
+  const fetchCreditos = async () => {
+    const aluno = horario.alunoId || horario.aluno;
+    if (!aluno || !aluno._id) return;
+    
+    try {
+      setLoadingCreditos(true);
+      const res = await fetch(`/api/creditos-reposicao?alunoId=${aluno._id}&disponiveis=true`);
+      if (res.ok) {
+        const data = await res.json();
+        setCreditos(data);
+      }
+    } catch (error) {
+      console.error('Erro ao buscar créditos:', error);
+    } finally {
+      setLoadingCreditos(false);
+    }
+  };
+
+  // Abrir modal para conceder crédito
+  const abrirConcederCredito = () => {
+    setQuantidadeCredito('1');
+    setModalidadeCreditoId('');
+    setMotivoCredito('');
+    
+    // Data padrão: 3 meses a partir de hoje
+    const dataFutura = new Date();
+    dataFutura.setMonth(dataFutura.getMonth() + 3);
+    setValidadeCredito(dataFutura.toISOString().split('T')[0]);
+    
+    setShowCreditoModal(true);
+  };
+
+  // Salvar novo crédito
+  const handleSalvarCredito = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    const aluno = horario.alunoId || horario.aluno;
+    if (!aluno || !aluno._id) {
+      toast.error('Aluno não encontrado');
+      return;
+    }
+
+    if (!quantidadeCredito || !motivoCredito || !validadeCredito) {
+      toast.error('Preencha todos os campos obrigatórios');
+      return;
+    }
+
+    setSalvandoCredito(true);
+
+    try {
+      const body = {
+        alunoId: aluno._id,
+        quantidade: parseInt(quantidadeCredito),
+        modalidadeId: modalidadeCreditoId || null,
+        motivo: motivoCredito,
+        validade: validadeCredito
+      };
+
+      const res = await fetch('/api/creditos-reposicao', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+
+      if (res.ok) {
+        toast.success('Crédito concedido com sucesso!');
+        setShowCreditoModal(false);
+        fetchCreditos();
+      } else {
+        const data = await res.json();
+        toast.error(data.error || 'Erro ao conceder crédito');
+      }
+    } catch (error) {
+      console.error('Erro ao conceder crédito:', error);
+      toast.error('Erro ao conceder crédito');
+    } finally {
+      setSalvandoCredito(false);
+    }
+  };
+
+  const formatarData = (dataStr: string) => {
+    const data = new Date(dataStr);
+    return data.toLocaleDateString('pt-BR', { 
+      day: '2-digit', 
+      month: '2-digit', 
+      year: 'numeric' 
+    });
+  };
+
+  const isExpirado = (validadeStr: string) => {
+    return new Date(validadeStr) <= new Date();
+  };
 
   // getMid is already declared below; keep a single definition further down
 
@@ -66,11 +182,15 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
       setAlunoCongelado(aluno.congelado === true);
       setAlunoAusente(aluno.ausente === true);
       setAlunoEmEspera(aluno.emEspera === true);
+      
+      // Buscar créditos do aluno
+      fetchCreditos();
     } else {
       // Reset states se não há aluno
       setAlunoCongelado(false);
       setAlunoAusente(false);
       setAlunoEmEspera(false);
+      setCreditos([]);
     }
   }, [horario]);
 
@@ -578,6 +698,98 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
                 </div>
               </div>
 
+              {/* Créditos de Reposição */}
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <label className="block text-sm font-medium text-gray-700">Créditos de Reposição</label>
+                  <button
+                    onClick={abrirConcederCredito}
+                    className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 transition-colors flex items-center gap-1"
+                    title="Conceder novo crédito"
+                  >
+                    <i className="fas fa-plus"></i>
+                    <span>Conceder</span>
+                  </button>
+                </div>
+
+                {loadingCreditos ? (
+                  <div className="text-center py-4">
+                    <i className="fas fa-spinner fa-spin text-green-600"></i>
+                    <p className="text-xs text-gray-500 mt-1">Carregando créditos...</p>
+                  </div>
+                ) : creditos.length === 0 ? (
+                  <div className="text-center py-4 bg-gray-50 rounded-md border border-gray-200">
+                    <i className="fas fa-ticket text-2xl text-gray-400 mb-1"></i>
+                    <p className="text-xs text-gray-500">Nenhum crédito disponível</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {creditos.map((credito) => {
+                      const creditosDisponiveis = credito.quantidade - credito.quantidadeUsada;
+                      const expirado = isExpirado(credito.validade);
+                      
+                      return (
+                        <div
+                          key={credito._id}
+                          className={`p-3 border rounded-md ${
+                            expirado 
+                              ? 'bg-red-50 border-red-200' 
+                              : creditosDisponiveis > 0 
+                                ? 'bg-green-50 border-green-200' 
+                                : 'bg-gray-50 border-gray-200'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <i className={`fas fa-ticket text-lg ${
+                                expirado 
+                                  ? 'text-red-600' 
+                                  : creditosDisponiveis > 0 
+                                    ? 'text-green-600' 
+                                    : 'text-gray-600'
+                              }`}></i>
+                              <span className="font-semibold text-sm">
+                                {creditosDisponiveis} de {credito.quantidade} créditos
+                              </span>
+                            </div>
+                            <span className={`px-2 py-0.5 text-xs font-medium rounded ${
+                              expirado 
+                                ? 'bg-red-100 text-red-800' 
+                                : creditosDisponiveis > 0 
+                                  ? 'bg-green-100 text-green-800' 
+                                  : 'bg-gray-100 text-gray-800'
+                            }`}>
+                              {expirado ? 'EXPIRADO' : creditosDisponiveis === 0 ? 'ESGOTADO' : 'DISPONÍVEL'}
+                            </span>
+                          </div>
+                          
+                          <div className="space-y-1 text-xs">
+                            {credito.modalidadeId && (
+                              <div className="flex items-center gap-1">
+                                <i className="fas fa-tag text-gray-500"></i>
+                                <span className="text-gray-600">Modalidade:</span>
+                                <span className="font-medium text-gray-900">{credito.modalidadeId.nome}</span>
+                              </div>
+                            )}
+                            <div className="flex items-center gap-1">
+                              <i className="fas fa-calendar text-gray-500"></i>
+                              <span className="text-gray-600">Validade:</span>
+                              <span className={`font-medium ${expirado ? 'text-red-600' : 'text-gray-900'}`}>
+                                {formatarData(credito.validade)}
+                              </span>
+                            </div>
+                            <div className="flex items-start gap-1 mt-1 pt-1 border-t border-gray-200">
+                              <i className="fas fa-comment-dots text-gray-500 mt-0.5"></i>
+                              <span className="text-gray-700">{credito.motivo}</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
               {/* Status Flags */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-3">Status do Aluno</label>
@@ -720,6 +932,116 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
                   <button onClick={() => { setShowConflictModal(false); setConflictSubstitutes(null); }} disabled={conflictLoading} className="px-3 py-2 border border-gray-300 rounded-md text-sm">Cancelar</button>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Concessão de Crédito */}
+      {showCreditoModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" style={{ zIndex: 10001 }}>
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="p-6">
+              <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
+                <i className="fas fa-ticket text-green-600"></i>
+                Conceder Crédito
+              </h2>
+
+              <form onSubmit={handleSalvarCredito} className="space-y-4">
+                {/* Quantidade */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Quantidade de créditos *
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={quantidadeCredito}
+                    onChange={(e) => setQuantidadeCredito(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    required
+                  />
+                </div>
+
+                {/* Modalidade */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Modalidade (opcional)
+                  </label>
+                  <select
+                    value={modalidadeCreditoId}
+                    onChange={(e) => setModalidadeCreditoId(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                  >
+                    <option value="">Qualquer modalidade</option>
+                    {modalidades.filter(m => m.ativo).map(m => (
+                      <option key={m._id || m.id} value={m._id || m.id}>{m.nome}</option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Deixe em branco para permitir uso em qualquer modalidade
+                  </p>
+                </div>
+
+                {/* Motivo */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Motivo *
+                  </label>
+                  <textarea
+                    value={motivoCredito}
+                    onChange={(e) => setMotivoCredito(e.target.value)}
+                    rows={3}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    placeholder="Ex: Compensação por problema técnico"
+                    required
+                  />
+                </div>
+
+                {/* Validade */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Validade *
+                  </label>
+                  <input
+                    type="date"
+                    value={validadeCredito}
+                    onChange={(e) => setValidadeCredito(e.target.value)}
+                    min={new Date().toISOString().split('T')[0]}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    required
+                  />
+                </div>
+
+                {/* Botões */}
+                <div className="flex gap-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setShowCreditoModal(false)}
+                    disabled={salvandoCredito}
+                    className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={salvandoCredito}
+                    className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {salvandoCredito ? (
+                      <>
+                        <i className="fas fa-spinner fa-spin"></i>
+                        Salvando...
+                      </>
+                    ) : (
+                      <>
+                        <i className="fas fa-check"></i>
+                        Conceder
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         </div>

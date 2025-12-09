@@ -2,11 +2,11 @@
 import Swal from 'sweetalert2';
 import { toast } from 'react-toastify';
 import ReagendarAulaModal from "@/components/ReagendarAulaModal";
-import ReporFaltaModal from "@/components/ReporFaltaModal";
 
 import { useState, useEffect, useMemo } from 'react';
 // Link removed; modal will be used for creating new alunos
 import ProtectedPage from '@/components/ProtectedPage';
+import { permissoesAlunos } from '@/lib/permissoes';
 
 interface Modalidade {
   _id: string;
@@ -28,6 +28,8 @@ interface Aluno {
   email: string;
   telefone: string;
   endereco?: string;
+  cpf?: string;
+  dataNascimento?: string;
   modalidadeId: Modalidade;
   plano?: string;
   observacoes?: string;
@@ -60,47 +62,11 @@ export default function AlunosPage() {
   const [modalidades, setModalidades] = useState<Modalidade[]>([]);
   const [professores, setProfessores] = useState<Professor[]>([]);
   const [loading, setLoading] = useState(true);
-  // Estado para modal de faltas
-  const [showModalFaltas, setShowModalFaltas] = useState(false);
-  const [faltasAlunoSelecionado, setFaltasAlunoSelecionado] = useState<any[]>([]);
-  const [alunoModalFaltas, setAlunoModalFaltas] = useState<Aluno | null>(null);
-  const [loadingFaltas, setLoadingFaltas] = useState(false);
-  
-  // Estado para reposição de falta
-  const [showReporModal, setShowReporModal] = useState(false);
-  const [reporData, setReporData] = useState<any>(null);
 
   // Marcar como montado no cliente
   useEffect(() => {
     setMounted(true);
   }, []);
-
-  // Função para abrir modal de faltas - usando nova API com status de reposição
-  const abrirModalFaltas = async (aluno: Aluno) => {
-    setAlunoModalFaltas(aluno);
-    setShowModalFaltas(true);
-    setLoadingFaltas(true);
-    try {
-      const token = localStorage.getItem('token');
-      const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
-      
-      // Usar nova API que retorna faltas com status de reposição
-      const res = await fetch(`/api/alunos/${aluno._id}/faltas`, { headers });
-      const json = res.ok ? await res.json() : null;
-      
-      if (json && json.success && Array.isArray(json.data)) {
-        setFaltasAlunoSelecionado(json.data);
-      } else {
-        setFaltasAlunoSelecionado([]);
-      }
-    } catch (err) {
-      console.error('Erro ao buscar faltas:', err);
-      setFaltasAlunoSelecionado([]);
-    } finally {
-      setLoadingFaltas(false);
-    }
-  };
-  
 
   // Fetch all alunos and attach their horarios (so students without horarios are included)
   const fetchAlunos = async () => {
@@ -259,6 +225,8 @@ export default function AlunosPage() {
           email: a.email || '',
           telefone: a.telefone || 'Não informado',
           endereco: a.endereco || '',
+          cpf: a.cpf || '',
+          dataNascimento: a.dataNascimento || '',
           modalidadeId: a.modalidadeId || { _id: '', nome: 'N/A', cor: '#3B82F6', duracao: 0, limiteAlunos: 0 },
           plano: a.plano,
           observacoes: a.observacoes,
@@ -419,11 +387,21 @@ export default function AlunosPage() {
     setEditingAluno(aluno);
     // Formatar data de nascimento para input date (YYYY-MM-DD)
     let dataNascimentoFormatted = '';
-    if ((aluno as any).dataNascimento) {
+    if (aluno.dataNascimento) {
       try {
-        const d = new Date((aluno as any).dataNascimento);
+        const d = new Date(aluno.dataNascimento);
         dataNascimentoFormatted = d.toISOString().split('T')[0];
       } catch { /* ignore */ }
+    }
+    // Formatar CPF com máscara (XXX.XXX.XXX-XX)
+    let cpfFormatted = '';
+    if (aluno.cpf) {
+      const cpfLimpo = String(aluno.cpf).replace(/\D/g, '');
+      if (cpfLimpo.length === 11) {
+        cpfFormatted = `${cpfLimpo.slice(0,3)}.${cpfLimpo.slice(3,6)}.${cpfLimpo.slice(6,9)}-${cpfLimpo.slice(9)}`;
+      } else {
+        cpfFormatted = aluno.cpf;
+      }
     }
     setEditFormData({
       nome: aluno.nome,
@@ -431,7 +409,7 @@ export default function AlunosPage() {
       telefone: aluno.telefone,
       endereco: aluno.endereco || '',
       observacoes: aluno.observacoes || '',
-      cpf: (aluno as any).cpf || '',
+      cpf: cpfFormatted,
       dataNascimento: dataNascimentoFormatted
     });
     // set flags for edit modal
@@ -474,7 +452,7 @@ export default function AlunosPage() {
         email: (typeof editFormData.email === 'string' ? String(editFormData.email).trim() : editFormData.email),
         telefone: (typeof editFormData.telefone === 'string' ? String(editFormData.telefone).trim() : editFormData.telefone),
         endereco: (typeof editFormData.endereco === 'string' ? String(editFormData.endereco).trim() : editFormData.endereco),
-        observacoes: (typeof editFormData.observacoes === 'string' ? String(editFormData.observacoes).trim() : editFormData.observacoes),
+        observacoes: (typeof editFormData.observacoes === 'string' ? String(editFormData.observacoes).trim() : editFormData.observacoes) || '',
         cpf: cpfLimpo || undefined,
         dataNascimento: editFormData.dataNascimento || undefined,
         congelado: !!editFlags.congelado,
@@ -490,7 +468,7 @@ export default function AlunosPage() {
       // Also omit other empty string fields to keep documents clean
       if (!payload.telefone) delete payload.telefone;
       if (!payload.endereco) delete payload.endereco;
-      if (!payload.observacoes) delete payload.observacoes;
+      // observacoes: sempre enviar (pode ser string vazia para limpar)
       if (!payload.cpf) delete payload.cpf;
       if (!payload.dataNascimento) delete payload.dataNascimento;
 
@@ -736,12 +714,25 @@ export default function AlunosPage() {
       const nome = String(aluno.nome || '').toLowerCase();
       const email = String(aluno.email || '').toLowerCase();
       const telefone = String(aluno.telefone || '').toLowerCase();
+      const telefoneLimpo = telefone.replace(/\D/g, ''); // Telefone sem formatação para busca
       const plano = String(aluno.plano || '').toLowerCase();
       const modIdNome = String(aluno.modalidadeId?.nome || '').toLowerCase();
       const modalidadesStr = (aluno.modalidades || []).map(m => String(m.nome || '').toLowerCase()).join(' ');
+      const cpf = String(aluno.cpf || '').toLowerCase();
+      const cpfLimpo = cpf.replace(/\D/g, ''); // CPF sem formatação para busca
+      const qLimpo = q.replace(/\D/g, ''); // Query sem formatação para comparar com CPF/telefone
 
-      // base query match (name, email, phone, plano, modalidade)
-      const baseMatch = q === '' || nome.includes(q) || email.includes(q) || telefone.includes(q) || plano.includes(q) || modIdNome.includes(q) || modalidadesStr.includes(q);
+      // base query match (name, email, phone, plano, modalidade, cpf)
+      const baseMatch = q === '' || 
+        nome.includes(q) || 
+        email.includes(q) || 
+        telefone.includes(q) || 
+        (qLimpo.length >= 3 && telefoneLimpo.includes(qLimpo)) ||
+        plano.includes(q) || 
+        modIdNome.includes(q) || 
+        modalidadesStr.includes(q) ||
+        cpf.includes(q) ||
+        (qLimpo.length >= 3 && cpfLimpo.includes(qLimpo)); // Busca CPF com pelo menos 3 dígitos
 
       // If the user typed any of the special status keywords, require those to match.
       if (wantsAnyKeyword) {
@@ -817,20 +808,12 @@ export default function AlunosPage() {
         if (showEditModal) {
           setShowEditModal(false);
           setEditingAluno(null);
-        } else if (showModalFaltas) {
-          setShowModalFaltas(false);
-          setAlunoSelecionado(null);
-          setFaltasAlunoSelecionado([]);
-        } else if (showReporModal) {
-          setShowReporModal(false);
-          setFaltaSelecionada(null);
-          setAlunoReposicao(null);
         }
       }
     };
     window.addEventListener('keydown', handleEsc);
     return () => window.removeEventListener('keydown', handleEsc);
-  }, [showEditModal, showModalFaltas, showReporModal]);
+  }, [showEditModal]);
 
   // Pagination: slice the filtered list
   const totalPages = Math.max(1, Math.ceil(filteredAlunos.length / pageSize));
@@ -999,10 +982,12 @@ export default function AlunosPage() {
           </div>
 
           <div className="flex items-center gap-3">
-            <button type="button" onClick={abrirNovoAluno} className="h-10 inline-flex items-center justify-center rounded-full bg-primary-600 px-4 text-sm font-medium text-white hover:bg-primary-700">
-              <i className="fas fa-plus mr-2" aria-hidden="true"></i>
-              Novo Aluno
-            </button>
+            {permissoesAlunos.criar() && (
+              <button type="button" onClick={abrirNovoAluno} className="h-10 inline-flex items-center justify-center rounded-full bg-primary-600 px-4 text-sm font-medium text-white hover:bg-primary-700">
+                <i className="fas fa-plus mr-2" aria-hidden="true"></i>
+                Novo Aluno
+              </button>
+            )}
             <button
               type="button"
               onClick={() => {
@@ -1090,7 +1075,7 @@ export default function AlunosPage() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Pesquisar aluno..."
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm"
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-0 focus:border-gray-300 outline-none text-sm"
             />
           </div>
         </div>
@@ -1245,9 +1230,6 @@ export default function AlunosPage() {
                         Modalidades
                       </th>
                       <th scope="col" className="px-3 py-2 text-center text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
-                        Reposição
-                      </th>
-                      <th scope="col" className="px-3 py-2 text-center text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
                         Status
                       </th>
                       <th scope="col" className="px-3 py-2 text-center text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
@@ -1266,7 +1248,7 @@ export default function AlunosPage() {
                       <>
                         {[1, 2, 3, 4, 5].map(i => (
                           <tr key={i} className="animate-pulse">
-                            <td colSpan={9} className="px-3 py-3 border-b border-gray-200">
+                            <td colSpan={7} className="px-3 py-3 border-b border-gray-200">
                               <div className="flex items-center gap-3">
                                 <div className="w-10 h-10 bg-gray-200 rounded-full"></div>
                                 <div className="flex-1 space-y-2">
@@ -1360,16 +1342,6 @@ export default function AlunosPage() {
                               </div>
                             </td>
 
-                            <td className="px-3 py-3 text-sm border-r border-b border-gray-200 text-center">
-                              <button
-                                className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-yellow-50 text-yellow-700 text-xs font-medium border border-yellow-200 hover:bg-yellow-100"
-                                onClick={() => abrirModalFaltas(aluno)}
-                                title="Ver faltas do aluno"
-                              >
-                                <i className="fas fa-history"></i> Ver Faltas
-                              </button>
-                            </td>
-
                             <td className="px-3 py-3 text-sm text-gray-500 border-r border-b border-gray-200 text-center">
                               <div className="flex items-center justify-center gap-2 flex-wrap">
                                 {(aluno.congelado) && (
@@ -1448,12 +1420,16 @@ export default function AlunosPage() {
                                   </>
                                 ) : (
                                   <>
-                                    <button onClick={() => abrirEdicao(aluno)} className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md bg-white border border-gray-100 hover:bg-gray-50 text-primary-600">
-                                      <i className="fas fa-edit w-3" aria-hidden="true" />
-                                    </button>
-                                    <button onClick={() => excluirAluno(aluno._id, aluno.nome, aluno.ativo)} className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md bg-red-50 border border-red-100 text-red-700 hover:bg-red-100">
-                                      <i className="fas fa-trash w-3" aria-hidden="true" />
-                                    </button>
+                                    {permissoesAlunos.editar() && (
+                                      <button onClick={() => abrirEdicao(aluno)} className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md bg-white border border-gray-100 hover:bg-gray-50 text-primary-600">
+                                        <i className="fas fa-edit w-3" aria-hidden="true" />
+                                      </button>
+                                    )}
+                                    {permissoesAlunos.excluir() && (
+                                      <button onClick={() => excluirAluno(aluno._id, aluno.nome, aluno.ativo)} className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md bg-red-50 border border-red-100 text-red-700 hover:bg-red-100">
+                                        <i className="fas fa-trash w-3" aria-hidden="true" />
+                                      </button>
+                                    )}
                                   </>
                                 )}
                               </div>
@@ -1525,6 +1501,22 @@ export default function AlunosPage() {
                             <div className="text-xs text-gray-500 flex items-center gap-1">
                               <i className="fas fa-phone text-[10px]"></i>
                               {aluno.telefone}
+                            </div>
+                          )}
+                          {(aluno.cpf || aluno.dataNascimento) && (
+                            <div className="text-xs text-gray-400 flex items-center gap-2 mt-0.5">
+                              {aluno.cpf && (
+                                <span className="flex items-center gap-1">
+                                  <i className="fas fa-id-card text-[10px]"></i>
+                                  {aluno.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}
+                                </span>
+                              )}
+                              {aluno.dataNascimento && (
+                                <span className="flex items-center gap-1">
+                                  <i className="fas fa-birthday-cake text-[10px]"></i>
+                                  {new Date(aluno.dataNascimento).toLocaleDateString('pt-BR')}
+                                </span>
+                              )}
                             </div>
                           )}
                         </div>
@@ -1623,14 +1615,7 @@ export default function AlunosPage() {
 
                   {/* Footer - Ações */}
                   <div className="px-4 py-3 bg-gray-50 border-t border-gray-100">
-                    <div className="flex items-center justify-between">
-                      <button
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-600 hover:bg-gray-100 transition-colors"
-                        onClick={() => abrirModalFaltas(aluno)}
-                      >
-                        <i className="fas fa-history text-gray-400"></i> Faltas
-                      </button>
-                      
+                    <div className="flex items-center justify-end">
                       <div className="flex items-center gap-1.5">
                         {isInativo ? (
                           <>
@@ -1649,18 +1634,22 @@ export default function AlunosPage() {
                           </>
                         ) : (
                           <>
-                            <button 
-                              onClick={() => abrirEdicao(aluno)} 
-                              className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-white border border-gray-200 text-green-600 hover:bg-green-50 transition-colors"
-                            >
-                              <i className="fas fa-edit text-xs"></i>
-                            </button>
-                            <button 
-                              onClick={() => excluirAluno(aluno._id, aluno.nome, aluno.ativo)} 
-                              className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-white border border-gray-200 text-red-500 hover:bg-red-50 transition-colors"
-                            >
-                              <i className="fas fa-trash text-xs"></i>
-                            </button>
+                            {permissoesAlunos.editar() && (
+                              <button 
+                                onClick={() => abrirEdicao(aluno)} 
+                                className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-white border border-gray-200 text-green-600 hover:bg-green-50 transition-colors"
+                              >
+                                <i className="fas fa-edit text-xs"></i>
+                              </button>
+                            )}
+                            {permissoesAlunos.excluir() && (
+                              <button 
+                                onClick={() => excluirAluno(aluno._id, aluno.nome, aluno.ativo)} 
+                                className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-white border border-gray-200 text-red-500 hover:bg-red-50 transition-colors"
+                              >
+                                <i className="fas fa-trash text-xs"></i>
+                              </button>
+                            )}
                           </>
                         )}
                       </div>
@@ -1694,7 +1683,7 @@ export default function AlunosPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-600 bg-opacity-50 p-3 sm:p-4">
           <div className="relative w-full max-w-lg mx-auto bg-white rounded-lg shadow-lg border border-gray-200 p-4 sm:p-6 max-h-[90vh] overflow-y-auto">
             {/* Header + Info */}
-            <div className="mb-2 border-b pb-4">
+            <div className="mb-4 border-b pb-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <i className={`fas fa-edit text-primary-600 text-lg`} aria-hidden="true" />
@@ -1716,7 +1705,7 @@ export default function AlunosPage() {
             </div>
             {/* Form */}
             <form
-              className="space-y-3"
+              className="space-y-4"
               noValidate
               onSubmit={(e) => {
                 e.preventDefault();
@@ -1740,7 +1729,28 @@ export default function AlunosPage() {
                   <input
                     type="tel"
                     value={editFormData.telefone}
-                    onChange={(e) => setEditFormData({...editFormData, telefone: e.target.value})}
+                    onChange={(e) => {
+                      const input = e.target.value;
+                      // Se começar com letra, permitir texto livre (ex: "Não informado")
+                      if (/^[a-zA-ZÀ-ÿ]/.test(input)) {
+                        setEditFormData({...editFormData, telefone: input});
+                        return;
+                      }
+                      // Aceitar apenas números e limitar a 11 dígitos
+                      const value = input.replace(/\D/g, '').slice(0, 11);
+                      // Formatar com máscara (XX) XXXXX-XXXX ou (XX) XXXX-XXXX
+                      let formatted = value;
+                      if (value.length > 10) {
+                        formatted = `(${value.slice(0,2)}) ${value.slice(2,7)}-${value.slice(7)}`;
+                      } else if (value.length > 6) {
+                        formatted = `(${value.slice(0,2)}) ${value.slice(2,6)}-${value.slice(6)}`;
+                      } else if (value.length > 2) {
+                        formatted = `(${value.slice(0,2)}) ${value.slice(2)}`;
+                      } else if (value.length > 0) {
+                        formatted = `(${value}`;
+                      }
+                      setEditFormData({...editFormData, telefone: formatted});
+                    }}
                     className="block w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-medium focus:outline-none focus:ring-primary-500 focus:border-primary-500"
                     placeholder="(11) 99999-9999 ou Não informado"
                   />
@@ -1748,14 +1758,14 @@ export default function AlunosPage() {
               </div>
 
               {/* Campos para acesso do aluno */}
-              <div className="relative border border-primary-200 rounded-md p-4 mb-3 mt-3 bg-primary-50/30">
+              <div className="relative border border-primary-200 rounded-md p-4 bg-primary-50/30">
                 <div className="absolute -top-3 left-4 bg-white px-2 text-sm font-medium text-primary-700">
                   <i className="fas fa-mobile-alt mr-1"></i> Acesso do Aluno
                 </div>
                 <p className="text-xs text-gray-500 mb-3">
                   Preencha estes campos para permitir que o aluno acesse o sistema e solicite reagendamentos.
                 </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       CPF <span className="text-gray-400 text-xs">(apenas números)</span>
@@ -1794,18 +1804,8 @@ export default function AlunosPage() {
                 </div>
               </div>
 
-              <div className="mb-3">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Observações</label>
-                <textarea
-                  value={editFormData.observacoes}
-                  onChange={(e) => setEditFormData({...editFormData, observacoes: e.target.value})}
-                  className="block w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-medium h-10 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                  rows={1}
-                  placeholder="Observações sobre o aluno"
-                />
-              </div>
-              {/* Modalidade removida do modal de edição/novo aluno */}
-              <div className="relative border border-gray-200 rounded-md p-4 mb-3 mt-0">
+              {/* Status do plano */}
+              <div className="relative border border-gray-200 rounded-md p-4">
                 <div className="absolute -top-3 left-4 bg-white px-2 text-sm font-medium text-gray-700">Status do plano</div>
                 <div className="mt-1 flex flex-wrap gap-2 pb-1 items-center">
                   <button type="button" onClick={() => setEditFlags({...editFlags, congelado: !editFlags.congelado})} className={`px-2 py-1 rounded-full border text-xs font-medium inline-flex items-center gap-1 ${editFlags.congelado ? 'bg-sky-50 border-sky-300 text-sky-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'}`}>
@@ -1839,8 +1839,20 @@ export default function AlunosPage() {
                   </div>
                 )}
               </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Observações</label>
+                <textarea
+                  value={editFormData.observacoes}
+                  onChange={(e) => setEditFormData({...editFormData, observacoes: e.target.value})}
+                  className="block w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-medium h-10 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                  rows={1}
+                  placeholder="Observações sobre o aluno"
+                />
+              </div>
+
               {/* Action Buttons */}
-              <div className="flex justify-end gap-2 pt-3 border-t mt-2">
+              <div className="flex justify-end gap-2 pt-4 border-t">
                 <button
                   type="button"
                   onClick={() => setShowEditModal(false)}
@@ -1860,200 +1872,6 @@ export default function AlunosPage() {
         </div>
       )}
 
-      {/* Modal de faltas do aluno */}
-      {showModalFaltas && alunoModalFaltas && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-3 sm:p-4"
-          onClick={() => setShowModalFaltas(false)}
-        >
-          <div
-            className="bg-white rounded-lg shadow-lg border border-gray-200 max-w-2xl w-full p-4 sm:p-6 max-h-[90vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Header */}
-            <div className="flex items-start justify-between mb-4">
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                  <i className="fas fa-history text-orange-500"></i>
-                  Faltas de {alunoModalFaltas.nome}
-                </h3>
-                <p className="text-xs text-gray-500 mt-1">
-                  Você tem até 7 dias após cada falta para solicitar a reposição
-                </p>
-              </div>
-              <button
-                onClick={() => setShowModalFaltas(false)}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
-                aria-label="Fechar"
-              >
-                <i className="fas fa-times text-lg"></i>
-              </button>
-            </div>
-
-            <div className="border-t border-gray-200 mb-4" />
-
-            {/* Content */}
-            {loadingFaltas ? (
-              <div className="space-y-3">
-                {[1, 2, 3].map(i => (
-                  <div key={i} className="p-4 bg-gray-50 rounded-lg border border-gray-200 animate-pulse">
-                    <div className="flex items-center gap-3 mb-2">
-                      <div className="w-10 h-10 bg-gray-200 rounded-full"></div>
-                      <div className="flex-1">
-                        <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
-                        <div className="h-3 bg-gray-200 rounded w-1/2"></div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : faltasAlunoSelecionado.length === 0 ? (
-              <div className="text-center py-8">
-                <i className="fas fa-check-circle text-green-500 text-4xl mb-3"></i>
-                <p className="text-gray-500">Nenhuma falta registrada</p>
-              </div>
-            ) : (
-              <div className="space-y-3 max-h-[calc(85vh-220px)] overflow-y-auto">
-                {faltasAlunoSelecionado.map((falta, idx) => {
-                  // Determinar cor e ícone baseado no status
-                  const getStatusInfo = () => {
-                    switch (falta.statusReposicao) {
-                      case 'aprovada':
-                        return { 
-                          bgColor: 'bg-green-50 border-green-200', 
-                          badgeColor: 'bg-green-100 text-green-700',
-                          icon: 'fa-check-circle text-green-500',
-                          label: 'Reposta'
-                        };
-                      case 'pendente':
-                        return { 
-                          bgColor: 'bg-yellow-50 border-yellow-200', 
-                          badgeColor: 'bg-yellow-100 text-yellow-700',
-                          icon: 'fa-clock text-yellow-500',
-                          label: 'Aguardando aprovação'
-                        };
-                      case 'rejeitada':
-                        return { 
-                          bgColor: 'bg-red-50 border-red-200', 
-                          badgeColor: 'bg-red-100 text-red-700',
-                          icon: 'fa-times-circle text-red-500',
-                          label: 'Rejeitada'
-                        };
-                      case 'expirada':
-                        return { 
-                          bgColor: 'bg-gray-50 border-gray-200', 
-                          badgeColor: 'bg-gray-100 text-gray-500',
-                          icon: 'fa-ban text-gray-400',
-                          label: 'Prazo expirado'
-                        };
-                      default: // disponivel
-                        return { 
-                          bgColor: 'bg-orange-50 border-orange-200', 
-                          badgeColor: 'bg-orange-100 text-orange-700',
-                          icon: 'fa-exclamation-circle text-orange-500',
-                          label: `${falta.diasRestantes} dia${falta.diasRestantes !== 1 ? 's' : ''} restante${falta.diasRestantes !== 1 ? 's' : ''}`
-                        };
-                    }
-                  };
-                  
-                  const statusInfo = getStatusInfo();
-                  
-                  return (
-                    <div key={idx} className={`p-3 border rounded-lg ${statusInfo.bgColor}`}>
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
-                            <i className={`fas ${statusInfo.icon}`}></i>
-                            <span className="font-medium text-sm text-gray-900">{falta.dataFormatada}</span>
-                            <span className={`text-xs px-2 py-0.5 rounded-full ${statusInfo.badgeColor}`}>
-                              {statusInfo.label}
-                            </span>
-                          </div>
-                          <div className="text-xs text-gray-600">
-                            <span className="font-medium">{falta.modalidade || 'Modalidade não informada'}</span>
-                            <span className="mx-1">•</span>
-                            <span>{falta.horarioInicio} - {falta.horarioFim}</span>
-                          </div>
-                          <div className="text-xs text-gray-500 mt-0.5">
-                            Professor: {falta.professorNome}
-                          </div>
-                          
-                          {/* Info da reposição se existir */}
-                          {falta.reposicao && falta.statusReposicao !== 'rejeitada' && (
-                            <div className="mt-2 text-xs text-gray-600 bg-white bg-opacity-50 rounded p-2">
-                              <i className="fas fa-arrow-right mr-1"></i>
-                              Reposição: {new Date(falta.reposicao.novaData).toLocaleDateString('pt-BR')} às {falta.reposicao.novoHorarioInicio}-{falta.reposicao.novoHorarioFim}
-                            </div>
-                          )}
-                        </div>
-                        
-                        {/* Botão de repor - só mostra se disponível ou rejeitada */}
-                        {(falta.statusReposicao === 'disponivel' || falta.statusReposicao === 'rejeitada') && (
-                          <button
-                            onClick={() => {
-                              setReporData({
-                                aulaRealizadaId: falta.aulaRealizadaId,
-                                data: falta.data,
-                                horarioInicio: falta.horarioInicio,
-                                horarioFim: falta.horarioFim,
-                                horarioFixoId: falta.horarioFixoId,
-                                modalidade: falta.modalidade,
-                                diasRestantes: falta.diasRestantes,
-                                prazoFinal: falta.prazoFinal,
-                              });
-                              setShowReporModal(true);
-                            }}
-                            className="px-3 py-1.5 text-xs bg-orange-600 text-white rounded-md hover:bg-orange-700 flex items-center gap-1 whitespace-nowrap"
-                          >
-                            <i className="fas fa-redo"></i>
-                            Repor
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-            
-            {/* Footer com legenda */}
-            <div className="mt-4 pt-3 border-t border-gray-200">
-              <div className="flex flex-wrap gap-3 text-xs text-gray-500">
-                <span className="flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-orange-400"></span> Disponível para repor
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-yellow-400"></span> Aguardando aprovação
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-green-400"></span> Reposição aprovada
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-gray-400"></span> Prazo expirado
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-    {/* Modal de Reposição de Falta */}
-    {showReporModal && reporData && alunoModalFaltas && (
-      <ReporFaltaModal
-        open={showReporModal}
-        onClose={() => { setShowReporModal(false); setReporData(null); }}
-        alunoId={alunoModalFaltas._id}
-        alunoNome={alunoModalFaltas.nome}
-        falta={reporData}
-        onSuccess={() => {
-          setShowReporModal(false);
-          setReporData(null);
-          // Recarregar faltas
-          abrirModalFaltas(alunoModalFaltas);
-        }}
-      />
-    )}
-
     {/* Modal de reagendamento compartilhado */}
     {showReagendarModal && reagendarData && (
       <ReagendarAulaModal
@@ -2063,27 +1881,7 @@ export default function AlunosPage() {
         horarioOriginal={reagendarData.falta.horarioOriginal || reagendarData.falta.horario || null}
         dataOriginal={reagendarData.falta.data || null}
         matricula={reagendarData.falta.matricula || reagendarData.falta.matriculaId || reagendarData.falta.matricula_id || null}
-        onCreated={(created: any) => {
-          // Mark the falta as reagendada in the faltas list
-          try {
-            const makeKey = (f: any) => {
-              const d = f && f.data ? new Date(f.data).toISOString().slice(0,10) : '';
-              const hid = (f && f.horarioOriginal && (f.horarioOriginal._id || f.horarioOriginal.horarioId || '')) || '';
-              return `${d}__${hid}`;
-            };
-            const createdKey = `${(created && (created.dataOriginal || created.data_original)) || ''}__${(created && (created.horarioFixoId?._id || created.horarioFixoId || created.horario_fixo_id)) || ''}`;
-            setFaltasAlunoSelecionado(prev => prev.map(f => {
-              try {
-                if (makeKey(f) === createdKey) {
-                  return { ...f, reagendadoPara: created.novaData || created.nova_data || null, reagendamentoId: created._id || created.id || null, reagendamentoStatus: created.status || null };
-                }
-              } catch (e) { /* ignore */ }
-              return f;
-            }));
-          } catch (e) {
-            console.warn('Erro ao marcar falta reagendada', e);
-          }
-        }}
+        onCreated={() => {}}
       />
     )}
     </ProtectedPage>

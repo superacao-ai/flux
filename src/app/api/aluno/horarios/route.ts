@@ -40,8 +40,7 @@ export async function GET(req: NextRequest) {
     await connectDB();
     
     // Garantir que o modelo User esteja registrado para o populate funcionar
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const _User = User;
+    void User;
     
     // Buscar matrículas do aluno
     const matriculas = await Matricula.find({
@@ -51,7 +50,7 @@ export async function GET(req: NextRequest) {
       path: 'horarioFixoId',
       populate: [
         { path: 'modalidadeId', select: 'nome cor' },
-        { path: 'professorId', model: 'User', select: 'nome' }
+        { path: 'professorId', model: 'User', select: 'nome telefone' }
       ]
     });
     
@@ -63,8 +62,16 @@ export async function GET(req: NextRequest) {
         diaSemana: m.horarioFixoId.diaSemana,
         horarioInicio: m.horarioFixoId.horarioInicio,
         horarioFim: m.horarioFixoId.horarioFim,
-        modalidadeId: m.horarioFixoId.modalidadeId,
-        professorId: m.horarioFixoId.professorId
+        modalidadeId: m.horarioFixoId.modalidadeId ? {
+          _id: m.horarioFixoId.modalidadeId._id,
+          nome: m.horarioFixoId.modalidadeId.nome,
+          cor: m.horarioFixoId.modalidadeId.cor
+        } : null,
+        professorId: m.horarioFixoId.professorId ? {
+          _id: m.horarioFixoId.professorId._id,
+          nome: m.horarioFixoId.professorId.nome,
+          telefone: m.horarioFixoId.professorId.telefone
+        } : null
       }));
     
     return NextResponse.json({

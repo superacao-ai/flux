@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
+import ProtectedPage from '@/components/ProtectedPage';
 
 interface Modalidade {
   _id: string;
@@ -30,6 +31,7 @@ const tiposAviso = [
 ];
 
 export default function AvisosPage() {
+  const [mounted, setMounted] = useState(false);
   const [avisos, setAvisos] = useState<Aviso[]>([]);
   const [modalidades, setModalidades] = useState<Modalidade[]>([]);
   const [loading, setLoading] = useState(true);
@@ -46,6 +48,11 @@ export default function AvisosPage() {
     modalidadesAfetadas: [] as string[],
     ativo: true
   });
+
+  // Marcar como montado imediatamente
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     fetchAvisos();
@@ -207,54 +214,168 @@ export default function AvisosPage() {
     return aviso.ativo && inicio <= hoje && fim >= hoje;
   };
 
+  if (!mounted || loading) {
+    return (
+      <ProtectedPage tab="avisos" title="Avisos - Superação Flux" fullWidth customLoading>
+        <div className="w-full px-4 py-6 sm:px-6 lg:px-8">
+          {/* Header skeleton - Desktop */}
+          <div className="hidden md:flex items-center justify-between gap-4 mb-6">
+            <div>
+              <div className="h-6 bg-gray-200 rounded w-44 mb-2 animate-pulse" />
+              <div className="h-4 bg-gray-200 rounded w-72 animate-pulse" />
+            </div>
+            <div className="h-10 w-32 bg-gray-200 rounded-full animate-pulse" />
+          </div>
+          
+          {/* Header skeleton - Mobile */}
+          <div className="md:hidden flex items-center justify-between mb-4">
+            <div className="h-5 bg-gray-200 rounded w-28 animate-pulse" />
+            <div className="w-9 h-9 bg-gray-200 rounded-full animate-pulse" />
+          </div>
+          
+          {/* Avisos ativos skeleton */}
+          <div className="mb-6">
+            <div className="h-4 bg-gray-200 rounded w-40 mb-3 animate-pulse" />
+            <div className="space-y-3">
+              {[1, 2].map(i => (
+                <div key={i} className="bg-gray-200 rounded-xl p-4 md:p-5 h-32 animate-pulse" />
+              ))}
+            </div>
+          </div>
+          
+          {/* Lista skeleton */}
+          <div>
+            <div className="h-4 bg-gray-200 rounded w-32 mb-3 animate-pulse" />
+            
+            {/* Tabela skeleton - Desktop */}
+            <div className="hidden md:block bg-white rounded-lg border border-gray-200 overflow-hidden">
+              <div className="bg-gray-50 border-b border-gray-200 p-4">
+                <div className="flex gap-4">
+                  {[1, 2, 3, 4, 5].map(i => (
+                    <div key={i} className="h-4 bg-gray-200 rounded flex-1 animate-pulse" />
+                  ))}
+                </div>
+              </div>
+              {[1, 2, 3, 4].map(i => (
+                <div key={i} className="border-b border-gray-200 p-4">
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 bg-gray-200 rounded-lg animate-pulse" />
+                    <div className="flex-1 space-y-2">
+                      <div className="h-4 bg-gray-200 rounded w-48 animate-pulse" />
+                      <div className="h-3 bg-gray-100 rounded w-72 animate-pulse" />
+                    </div>
+                    <div className="h-5 bg-gray-200 rounded w-20 animate-pulse" />
+                    <div className="flex gap-2">
+                      <div className="w-8 h-8 bg-gray-200 rounded-lg animate-pulse" />
+                      <div className="w-8 h-8 bg-gray-200 rounded-lg animate-pulse" />
+                      <div className="w-8 h-8 bg-gray-200 rounded-lg animate-pulse" />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            
+            {/* Cards skeleton - Mobile */}
+            <div className="md:hidden space-y-3">
+              {[1, 2, 3].map(i => (
+                <div key={i} className="bg-white rounded-xl border border-gray-200 p-3">
+                  <div className="flex items-start gap-3 mb-2">
+                    <div className="w-8 h-8 bg-gray-200 rounded-lg animate-pulse flex-shrink-0" />
+                    <div className="flex-1 space-y-2">
+                      <div className="h-4 bg-gray-200 rounded w-32 animate-pulse" />
+                      <div className="h-3 bg-gray-100 rounded w-full animate-pulse" />
+                    </div>
+                  </div>
+                  <div className="flex justify-between items-center mt-3 pt-3 border-t border-gray-100">
+                    <div className="h-4 bg-gray-200 rounded w-20 animate-pulse" />
+                    <div className="flex gap-2">
+                      <div className="w-7 h-7 bg-gray-200 rounded animate-pulse" />
+                      <div className="w-7 h-7 bg-gray-200 rounded animate-pulse" />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </ProtectedPage>
+    );
+  }
+
   return (
-    <div className="p-4 md:p-6 max-w-6xl mx-auto">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+    <ProtectedPage tab="avisos" title="Avisos - Superação Flux" fullWidth>
+      <div className="w-full px-4 py-6 sm:px-6 lg:px-8">
+        {/* Header Desktop */}
+        <div className="hidden md:flex items-center justify-between gap-4 mb-6 fade-in-1">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Avisos para Alunos</h1>
-          <p className="text-sm text-gray-500 mt-1">Gerencie avisos e cancelamentos de aulas</p>
+          <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+            <i className="fas fa-bullhorn text-green-600"></i>
+            Avisos para Alunos
+          </h1>
+          <p className="text-sm text-gray-600 mt-1">
+            Gerencie avisos e cancelamentos de aulas
+          </p>
         </div>
         <button
           onClick={abrirNovoAviso}
-          className="flex items-center justify-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white font-medium rounded-lg transition-colors"
+          className="inline-flex transition-colors duration-200 items-center justify-center rounded-full border border-green-600 bg-green-600 px-5 py-2 text-sm font-medium text-white shadow-sm hover:bg-green-700 focus:outline-none focus:ring-offset-2 sm:w-auto"
         >
-          <i className="fas fa-plus"></i>
-          <span>Novo Aviso</span>
+          <i className="fas fa-plus mr-2"></i>
+          Novo Aviso
+        </button>
+      </div>
+
+      {/* Header Mobile */}
+      <div className="md:hidden flex items-center justify-between mb-4 fade-in-1">
+        <h1 className="text-lg font-semibold text-gray-900">Avisos</h1>
+        <button
+          onClick={abrirNovoAviso}
+          className="w-9 h-9 flex items-center justify-center rounded-full border border-green-600 bg-green-600 text-white"
+        >
+          <i className="fas fa-plus text-sm"></i>
         </button>
       </div>
 
       {/* Avisos ativos no topo */}
       {avisos.filter(a => isVigente(a)).length > 0 && (
-        <div className="mb-6">
+        <div className="mb-6 fade-in-2">
           <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wide mb-3">
-            Avisos Ativos Agora
+            <i className="fas fa-star text-yellow-500 mr-2"></i>Avisos Ativos Agora
           </h2>
-          <div className="space-y-2">
+          <div className="space-y-3">
             {avisos.filter(a => isVigente(a)).map(aviso => {
               const tipo = getTipoBadge(aviso.tipo);
               return (
-                <div key={aviso._id} className={`${tipo.cor} rounded-xl p-4 text-white`}>
+                <div key={aviso._id} className={`${tipo.cor} rounded-xl p-4 md:p-5 text-white shadow-lg hover:shadow-xl transition-shadow`}>
                   <div className="flex items-start justify-between gap-4">
-                    <div className="flex items-start gap-3">
-                      <i className={`${tipo.icon} text-xl mt-0.5`}></i>
-                      <div>
-                        <h3 className="font-bold">{aviso.titulo}</h3>
-                        <p className="text-sm opacity-90 mt-1">{aviso.mensagem}</p>
-                        <p className="text-xs opacity-75 mt-2">
-                          {formatarData(aviso.dataInicio)} até {formatarData(aviso.dataFim)}
+                    <div className="flex items-start gap-3 flex-1">
+                      <div className="w-10 h-10 md:w-12 md:h-12 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <i className={`${tipo.icon} text-lg md:text-xl`}></i>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-bold text-base md:text-lg">{aviso.titulo}</h3>
+                        <p className="text-sm md:text-base opacity-90 mt-1">{aviso.mensagem}</p>
+                        <div className="flex flex-wrap items-center gap-2 mt-3 text-xs md:text-sm opacity-90">
+                          <span className="flex items-center gap-1">
+                            <i className="fas fa-calendar-alt"></i>
+                            {formatarData(aviso.dataInicio)} até {formatarData(aviso.dataFim)}
+                          </span>
                           {aviso.modalidadesAfetadas && aviso.modalidadesAfetadas.length > 0 && (
-                            <span className="ml-2">• {aviso.modalidadesAfetadas.map(m => m.nome).join(', ')}</span>
+                            <span className="flex items-center gap-1">
+                              <i className="fas fa-dumbbell"></i>
+                              {aviso.modalidadesAfetadas.map(m => m.nome).join(', ')}
+                            </span>
                           )}
-                        </p>
+                        </div>
                       </div>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 flex-shrink-0">
                       <button
                         onClick={() => abrirEdicao(aviso)}
-                        className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+                        className="w-8 h-8 md:w-9 md:h-9 flex items-center justify-center hover:bg-white/20 rounded-lg transition-colors"
+                        title="Editar aviso"
                       >
-                        <i className="fas fa-edit"></i>
+                        <i className="fas fa-edit text-sm"></i>
                       </button>
                     </div>
                   </div>
@@ -266,9 +387,9 @@ export default function AvisosPage() {
       )}
 
       {/* Lista de todos os avisos */}
-      <div>
+      <div className="fade-in-3">
         <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wide mb-3">
-          Todos os Avisos
+          <i className="fas fa-list mr-2"></i>Todos os Avisos
         </h2>
         
         {loading ? (
@@ -287,15 +408,15 @@ export default function AvisosPage() {
             </button>
           </div>
         ) : (
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Aviso</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase hidden md:table-cell">Período</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase hidden lg:table-cell">Modalidades</th>
-                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
-                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Ações</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Aviso</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider hidden md:table-cell">Período</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider hidden lg:table-cell">Modalidades</th>
+                  <th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
+                  <th className="px-6 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
@@ -304,23 +425,23 @@ export default function AvisosPage() {
                   const vigente = isVigente(aviso);
                   
                   return (
-                    <tr key={aviso._id} className={`hover:bg-gray-50 ${!aviso.ativo ? 'opacity-50' : ''}`}>
-                      <td className="px-4 py-3">
+                    <tr key={aviso._id} className={`hover:bg-gray-50 transition-colors ${!aviso.ativo ? 'opacity-50' : ''}`}>
+                      <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
-                          <div className={`w-8 h-8 rounded-lg ${tipo.cor} flex items-center justify-center text-white`}>
+                          <div className={`w-10 h-10 rounded-lg ${tipo.cor} flex items-center justify-center text-white shadow-sm flex-shrink-0`}>
                             <i className={tipo.icon}></i>
                           </div>
-                          <div>
-                            <p className="font-medium text-gray-900">{aviso.titulo}</p>
-                            <p className="text-xs text-gray-500 truncate max-w-xs">{aviso.mensagem}</p>
+                          <div className="min-w-0 flex-1">
+                            <p className="font-semibold text-gray-900 truncate">{aviso.titulo}</p>
+                            <p className="text-sm text-gray-500 truncate">{aviso.mensagem}</p>
                           </div>
                         </div>
                       </td>
-                      <td className="px-4 py-3 hidden md:table-cell">
-                        <p className="text-sm text-gray-900">{formatarData(aviso.dataInicio)}</p>
+                      <td className="px-6 py-4 hidden md:table-cell">
+                        <p className="text-sm font-medium text-gray-900">{formatarData(aviso.dataInicio)}</p>
                         <p className="text-xs text-gray-500">até {formatarData(aviso.dataFim)}</p>
                       </td>
-                      <td className="px-4 py-3 hidden lg:table-cell">
+                      <td className="px-6 py-4 hidden lg:table-cell">
                         {aviso.modalidadesAfetadas && aviso.modalidadesAfetadas.length > 0 ? (
                           <div className="flex flex-wrap gap-1">
                             {aviso.modalidadesAfetadas.slice(0, 2).map(m => (
@@ -336,22 +457,22 @@ export default function AvisosPage() {
                           <span className="text-xs text-gray-400">Todas</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-center">
+                      <td className="px-6 py-4 text-center">
                         {vigente ? (
-                          <span className="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-700">
-                            Ativo
+                          <span className="inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800 border border-green-200">
+                            <i className="fas fa-check-circle mr-1"></i>Ativo
                           </span>
                         ) : aviso.ativo ? (
-                          <span className="px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-600">
-                            Agendado
+                          <span className="inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800 border border-blue-200">
+                            <i className="fas fa-clock mr-1"></i>Agendado
                           </span>
                         ) : (
-                          <span className="px-2 py-1 text-xs font-medium rounded-full bg-red-100 text-red-700">
-                            Inativo
+                          <span className="inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-800 border border-gray-200">
+                            <i className="fas fa-pause-circle mr-1"></i>Inativo
                           </span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-right">
+                      <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-1">
                           <button
                             onClick={() => toggleAtivo(aviso)}
@@ -360,18 +481,18 @@ export default function AvisosPage() {
                             }`}
                             title={aviso.ativo ? 'Desativar' : 'Ativar'}
                           >
-                            <i className={`fas ${aviso.ativo ? 'fa-toggle-on' : 'fa-toggle-off'}`}></i>
+                            <i className={`fas fa-lg ${aviso.ativo ? 'fa-toggle-on' : 'fa-toggle-off'}`}></i>
                           </button>
                           <button
                             onClick={() => abrirEdicao(aviso)}
-                            className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+                            className="p-2 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
                             title="Editar"
                           >
                             <i className="fas fa-edit"></i>
                           </button>
                           <button
                             onClick={() => excluirAviso(aviso._id)}
-                            className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                             title="Excluir"
                           >
                             <i className="fas fa-trash"></i>
@@ -551,6 +672,7 @@ export default function AvisosPage() {
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </ProtectedPage>
   );
 }

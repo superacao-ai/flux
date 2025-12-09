@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import ReagendarAulaModal from '@/components/ReagendarAulaModal';
-import ReporFaltaModal from '@/components/ReporFaltaModal';
 
 interface Modalidade {
   _id: string;
@@ -27,6 +26,8 @@ interface Aluno {
   email?: string;
   telefone?: string;
   endereco?: string;
+  cpf?: string;
+  dataNascimento?: string;
   modalidadeId?: Modalidade;
   plano?: string;
   observacoes?: string;
@@ -53,24 +54,15 @@ const AlunoRowModal: React.FC<Props> = ({ isOpen, onClose, alunoId, onRefresh })
   const [loading, setLoading] = useState(false);
   const [modalidades, setModalidades] = useState<Modalidade[]>([]);
   
-  // Estado para modal de faltas
-  const [showModalFaltas, setShowModalFaltas] = useState(false);
-  const [faltasAlunoSelecionado, setFaltasAlunoSelecionado] = useState<any[]>([]);
-  
   // Estado para modal de edição
   const [showEditModal, setShowEditModal] = useState(false);
-  const [editFormData, setEditFormData] = useState({ nome: '', email: '', telefone: '', endereco: '', observacoes: '' });
+  const [editFormData, setEditFormData] = useState({ nome: '', email: '', telefone: '', endereco: '', observacoes: '', cpf: '', dataNascimento: '' });
   const [editFlags, setEditFlags] = useState<{ congelado: boolean; ausente: boolean; periodoTreino: string | null; parceria: string | null; ativo: boolean }>({ congelado: false, ausente: false, periodoTreino: null, parceria: null, ativo: true });
   const [editCaracteristicas, setEditCaracteristicas] = useState<string[]>([]);
   
   // Estado para reagendamento
   const [showReagendarModal, setShowReagendarModal] = useState(false);
   const [reagendarData, setReagendarData] = useState<any>(null);
-  
-  // Estado para reposição de falta
-  const [showReporModal, setShowReporModal] = useState(false);
-  const [reporData, setReporData] = useState<any>(null);
-  const [loadingFaltas, setLoadingFaltas] = useState(false);
 
   const diasSemana = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
@@ -225,41 +217,35 @@ const AlunoRowModal: React.FC<Props> = ({ isOpen, onClose, alunoId, onRefresh })
     return found?.cor || m.cor || '#3B82F6';
   };
 
-  // Função para abrir modal de faltas - usando nova API com status de reposição
-  const abrirModalFaltas = async () => {
-    if (!aluno) return;
-    setShowModalFaltas(true);
-    setLoadingFaltas(true);
-    try {
-      const token = localStorage.getItem('token');
-      const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
-      
-      // Usar nova API que retorna faltas com status de reposição
-      const res = await fetch(`/api/alunos/${aluno._id}/faltas`, { headers });
-      const json = res.ok ? await res.json() : null;
-      
-      if (json && json.success && Array.isArray(json.data)) {
-        setFaltasAlunoSelecionado(json.data);
-      } else {
-        setFaltasAlunoSelecionado([]);
-      }
-    } catch (err) {
-      console.error('Erro ao buscar faltas:', err);
-      setFaltasAlunoSelecionado([]);
-    } finally {
-      setLoadingFaltas(false);
-    }
-  };
-
   // Função para abrir modal de edição
   const abrirEdicao = () => {
     if (!aluno) return;
+    // Formatar data de nascimento para input date (YYYY-MM-DD)
+    let dataNascimentoFormatted = '';
+    if (aluno.dataNascimento) {
+      try {
+        const d = new Date(aluno.dataNascimento);
+        dataNascimentoFormatted = d.toISOString().split('T')[0];
+      } catch { /* ignore */ }
+    }
+    // Formatar CPF com máscara (XXX.XXX.XXX-XX)
+    let cpfFormatted = '';
+    if (aluno.cpf) {
+      const cpfLimpo = String(aluno.cpf).replace(/\D/g, '');
+      if (cpfLimpo.length === 11) {
+        cpfFormatted = `${cpfLimpo.slice(0,3)}.${cpfLimpo.slice(3,6)}.${cpfLimpo.slice(6,9)}-${cpfLimpo.slice(9)}`;
+      } else {
+        cpfFormatted = aluno.cpf;
+      }
+    }
     setEditFormData({
       nome: aluno.nome,
       email: aluno.email || '',
       telefone: aluno.telefone || '',
       endereco: aluno.endereco || '',
-      observacoes: aluno.observacoes || ''
+      observacoes: aluno.observacoes || '',
+      cpf: cpfFormatted,
+      dataNascimento: dataNascimentoFormatted
     });
     setEditFlags({
       congelado: aluno.congelado === true,
@@ -281,12 +267,21 @@ const AlunoRowModal: React.FC<Props> = ({ isOpen, onClose, alunoId, onRefresh })
         return;
       }
 
+      // Limpar CPF (apenas números)
+      const cpfLimpo = editFormData.cpf ? editFormData.cpf.replace(/\D/g, '') : '';
+      if (cpfLimpo && cpfLimpo.length !== 11) {
+        toast.warning('CPF deve ter 11 dígitos');
+        return;
+      }
+
       const payload: any = {
         nome: editFormData.nome,
         email: editFormData.email?.trim() || undefined,
         telefone: editFormData.telefone?.trim() || undefined,
         endereco: editFormData.endereco?.trim() || undefined,
-        observacoes: editFormData.observacoes?.trim() || undefined,
+        observacoes: editFormData.observacoes?.trim() ?? '',
+        cpf: cpfLimpo || undefined,
+        dataNascimento: editFormData.dataNascimento || undefined,
         congelado: !!editFlags.congelado,
         ausente: !!editFlags.ausente,
         periodoTreino: editFlags.periodoTreino,
@@ -295,9 +290,12 @@ const AlunoRowModal: React.FC<Props> = ({ isOpen, onClose, alunoId, onRefresh })
         caracteristicas: editCaracteristicas.length > 0 ? editCaracteristicas : undefined,
       };
 
-      // Remove empty fields
+      // Remove empty fields, but keep observacoes even if empty (to allow clearing)
       Object.keys(payload).forEach(key => {
-        if (payload[key] === undefined || payload[key] === '') {
+        if (key === 'observacoes') {
+          // Keep observacoes even if empty string
+          if (payload[key] === undefined) delete payload[key];
+        } else if (payload[key] === undefined || payload[key] === '') {
           delete payload[key];
         }
       });
@@ -344,8 +342,21 @@ const AlunoRowModal: React.FC<Props> = ({ isOpen, onClose, alunoId, onRefresh })
         {/* Content */}
         <div className="p-4 overflow-y-auto flex-1">
           {loading ? (
-            <div className="flex items-center justify-center py-12">
-              <i className="fas fa-spinner fa-spin text-2xl text-primary-600" />
+            <div className="space-y-4 animate-pulse">
+              {/* Skeleton for header info */}
+              <div className="flex items-start justify-between p-4 rounded-lg border border-gray-200">
+                <div className="flex items-center gap-3">
+                  <div className="h-6 w-12 bg-gray-200 rounded"></div>
+                  <div className="h-6 w-48 bg-gray-200 rounded"></div>
+                </div>
+                <div className="h-8 w-8 bg-gray-200 rounded"></div>
+              </div>
+              {/* Skeleton for table rows */}
+              <div className="space-y-3">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="h-16 bg-gray-100 rounded-lg"></div>
+                ))}
+              </div>
             </div>
           ) : aluno ? (
             <>
@@ -378,6 +389,24 @@ const AlunoRowModal: React.FC<Props> = ({ isOpen, onClose, alunoId, onRefresh })
                   <div className="text-sm text-gray-600 mb-3">
                     <i className="fas fa-phone mr-2 text-gray-400" />
                     {aluno.telefone}
+                  </div>
+                )}
+
+                {/* CPF e Data de Nascimento */}
+                {(aluno.cpf || aluno.dataNascimento) && (
+                  <div className="flex flex-wrap gap-3 mb-3">
+                    {aluno.cpf && (
+                      <div className="text-sm text-gray-600">
+                        <i className="fas fa-id-card mr-2 text-gray-400" />
+                        {aluno.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}
+                      </div>
+                    )}
+                    {aluno.dataNascimento && (
+                      <div className="text-sm text-gray-600">
+                        <i className="fas fa-birthday-cake mr-2 text-gray-400" />
+                        {new Date(aluno.dataNascimento).toLocaleDateString('pt-BR')}
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -440,16 +469,6 @@ const AlunoRowModal: React.FC<Props> = ({ isOpen, onClose, alunoId, onRefresh })
                     )}
                   </div>
                 </div>
-
-                {/* Botão Ver Faltas */}
-                <div className="border-t border-gray-100 pt-3 mt-3">
-                  <button
-                    className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-md bg-yellow-50 text-yellow-700 text-sm font-medium border border-yellow-200 hover:bg-yellow-100"
-                    onClick={abrirModalFaltas}
-                  >
-                    <i className="fas fa-history"></i> Ver Faltas
-                  </button>
-                </div>
               </div>
             </div>
 
@@ -460,7 +479,6 @@ const AlunoRowModal: React.FC<Props> = ({ isOpen, onClose, alunoId, onRefresh })
                   <tr className="bg-gray-50">
                     <th className="px-3 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider text-center border-b">Aluno</th>
                     <th className="px-3 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider text-center border-b">Modalidade / Horários</th>
-                    <th className="px-3 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider text-center border-b">Faltas</th>
                     <th className="px-3 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider text-center border-b">Características</th>
                     <th className="px-3 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider text-center border-b">Telefone</th>
                     <th className="px-3 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider text-center border-b">Ações</th>
@@ -531,17 +549,6 @@ const AlunoRowModal: React.FC<Props> = ({ isOpen, onClose, alunoId, onRefresh })
                           </div>
                         )}
                       </div>
-                    </td>
-
-                    {/* Coluna: Faltas */}
-                    <td className="px-3 py-3 text-sm border-r border-b border-gray-200 text-center">
-                      <button
-                        className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-yellow-50 text-yellow-700 text-xs font-medium border border-yellow-200 hover:bg-yellow-100"
-                        onClick={abrirModalFaltas}
-                        title="Ver faltas do aluno"
-                      >
-                        <i className="fas fa-history"></i> Ver Faltas
-                      </button>
                     </td>
 
                     {/* Coluna: Características */}
@@ -616,159 +623,6 @@ const AlunoRowModal: React.FC<Props> = ({ isOpen, onClose, alunoId, onRefresh })
         </div>
       </div>
 
-      {/* Modal de Faltas */}
-      {showModalFaltas && aluno && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 z-50 flex items-center justify-center p-4" style={{ zIndex: 10000 }} onClick={() => setShowModalFaltas(false)}>
-          <div className="relative mx-auto w-full max-w-2xl bg-white rounded-2xl shadow-lg border p-4 sm:p-6 max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                  <i className="fas fa-history text-orange-500" />
-                  Faltas de {aluno.nome}
-                </h3>
-                <p className="text-xs text-gray-500 mt-1">
-                  Você tem até 7 dias após cada falta para solicitar a reposição
-                </p>
-              </div>
-              <button onClick={() => setShowModalFaltas(false)} className="text-gray-400 hover:text-gray-600">
-                <i className="fas fa-times" />
-              </button>
-            </div>
-            
-            {loadingFaltas ? (
-              <div className="flex items-center justify-center py-8">
-                <i className="fas fa-spinner fa-spin text-primary-600 text-xl" />
-              </div>
-            ) : faltasAlunoSelecionado.length === 0 ? (
-              <div className="text-center py-8">
-                <i className="fas fa-check-circle text-green-500 text-4xl mb-3" />
-                <p className="text-gray-500">Nenhuma falta registrada</p>
-              </div>
-            ) : (
-              <div className="space-y-3 max-h-96 overflow-y-auto">
-                {faltasAlunoSelecionado.map((falta, idx) => {
-                  // Determinar cor e ícone baseado no status
-                  const getStatusInfo = () => {
-                    switch (falta.statusReposicao) {
-                      case 'aprovada':
-                        return { 
-                          bgColor: 'bg-green-50 border-green-200', 
-                          badgeColor: 'bg-green-100 text-green-700',
-                          icon: 'fa-check-circle text-green-500',
-                          label: 'Reposta'
-                        };
-                      case 'pendente':
-                        return { 
-                          bgColor: 'bg-yellow-50 border-yellow-200', 
-                          badgeColor: 'bg-yellow-100 text-yellow-700',
-                          icon: 'fa-clock text-yellow-500',
-                          label: 'Aguardando aprovação'
-                        };
-                      case 'rejeitada':
-                        return { 
-                          bgColor: 'bg-red-50 border-red-200', 
-                          badgeColor: 'bg-red-100 text-red-700',
-                          icon: 'fa-times-circle text-red-500',
-                          label: 'Rejeitada'
-                        };
-                      case 'expirada':
-                        return { 
-                          bgColor: 'bg-gray-50 border-gray-200', 
-                          badgeColor: 'bg-gray-100 text-gray-500',
-                          icon: 'fa-ban text-gray-400',
-                          label: 'Prazo expirado'
-                        };
-                      default: // disponivel
-                        return { 
-                          bgColor: 'bg-orange-50 border-orange-200', 
-                          badgeColor: 'bg-orange-100 text-orange-700',
-                          icon: 'fa-exclamation-circle text-orange-500',
-                          label: `${falta.diasRestantes} dia${falta.diasRestantes !== 1 ? 's' : ''} restante${falta.diasRestantes !== 1 ? 's' : ''}`
-                        };
-                    }
-                  };
-                  
-                  const statusInfo = getStatusInfo();
-                  
-                  return (
-                    <div key={idx} className={`p-3 border rounded-lg ${statusInfo.bgColor}`}>
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
-                            <i className={`fas ${statusInfo.icon}`} />
-                            <span className="font-medium text-sm text-gray-900">{falta.dataFormatada}</span>
-                            <span className={`text-xs px-2 py-0.5 rounded-full ${statusInfo.badgeColor}`}>
-                              {statusInfo.label}
-                            </span>
-                          </div>
-                          <div className="text-xs text-gray-600">
-                            <span className="font-medium">{falta.modalidade || 'Modalidade não informada'}</span>
-                            <span className="mx-1">•</span>
-                            <span>{falta.horarioInicio} - {falta.horarioFim}</span>
-                          </div>
-                          <div className="text-xs text-gray-500 mt-0.5">
-                            Professor: {falta.professorNome}
-                          </div>
-                          
-                          {/* Info da reposição se existir */}
-                          {falta.reposicao && falta.statusReposicao !== 'rejeitada' && (
-                            <div className="mt-2 text-xs text-gray-600 bg-white bg-opacity-50 rounded p-2">
-                              <i className="fas fa-arrow-right mr-1" />
-                              Reposição: {new Date(falta.reposicao.novaData).toLocaleDateString('pt-BR')} às {falta.reposicao.novoHorarioInicio}-{falta.reposicao.novoHorarioFim}
-                            </div>
-                          )}
-                        </div>
-                        
-                        {/* Botão de repor - só mostra se disponível ou rejeitada (pode tentar de novo) */}
-                        {(falta.statusReposicao === 'disponivel' || falta.statusReposicao === 'rejeitada') && (
-                          <button
-                            onClick={() => {
-                              setReporData({
-                                aulaRealizadaId: falta.aulaRealizadaId,
-                                data: falta.data,
-                                horarioInicio: falta.horarioInicio,
-                                horarioFim: falta.horarioFim,
-                                horarioFixoId: falta.horarioFixoId,
-                                modalidade: falta.modalidade,
-                                diasRestantes: falta.diasRestantes,
-                                prazoFinal: falta.prazoFinal,
-                              });
-                              setShowReporModal(true);
-                            }}
-                            className="px-3 py-1.5 text-xs bg-orange-600 text-white rounded-md hover:bg-orange-700 flex items-center gap-1 whitespace-nowrap"
-                          >
-                            <i className="fas fa-redo" />
-                            Repor
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-            
-            {/* Footer com legenda */}
-            <div className="mt-4 pt-3 border-t border-gray-200 flex-shrink-0">
-              <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 sm:gap-3 text-xs text-gray-500">
-                <span className="flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-orange-400" /> Disponível para repor
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-yellow-400" /> Aguardando aprovação
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-green-400" /> Reposição aprovada
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-gray-400" /> Prazo expirado
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Modal de Edição */}
       {showEditModal && aluno && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-600 bg-opacity-50 p-4" style={{ zIndex: 10000 }}>
@@ -820,12 +674,81 @@ const AlunoRowModal: React.FC<Props> = ({ isOpen, onClose, alunoId, onRefresh })
                   <input
                     type="tel"
                     value={editFormData.telefone}
-                    onChange={(e) => setEditFormData({...editFormData, telefone: e.target.value})}
+                    onChange={(e) => {
+                      const input = e.target.value;
+                      // Se começar com letra, permitir texto livre (ex: "Não informado")
+                      if (/^[a-zA-ZÀ-ÿ]/.test(input)) {
+                        setEditFormData({...editFormData, telefone: input});
+                        return;
+                      }
+                      // Aceitar apenas números e limitar a 11 dígitos
+                      const value = input.replace(/\D/g, '').slice(0, 11);
+                      // Formatar com máscara (XX) XXXXX-XXXX ou (XX) XXXX-XXXX
+                      let formatted = value;
+                      if (value.length > 10) {
+                        formatted = `(${value.slice(0,2)}) ${value.slice(2,7)}-${value.slice(7)}`;
+                      } else if (value.length > 6) {
+                        formatted = `(${value.slice(0,2)}) ${value.slice(2,6)}-${value.slice(6)}`;
+                      } else if (value.length > 2) {
+                        formatted = `(${value.slice(0,2)}) ${value.slice(2)}`;
+                      } else if (value.length > 0) {
+                        formatted = `(${value}`;
+                      }
+                      setEditFormData({...editFormData, telefone: formatted});
+                    }}
                     className="block w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-medium focus:outline-none focus:ring-primary-500 focus:border-primary-500"
                     placeholder="(11) 99999-9999 ou Não informado"
                   />
                 </div>
               </div>
+
+              {/* Dados para Acesso ao Sistema */}
+              <div className="relative border border-gray-200 rounded-md p-4 mt-3">
+                <div className="absolute -top-3 left-4 bg-white px-2 text-sm font-medium text-gray-700">
+                  <i className="fas fa-key mr-1 text-primary-600" /> Dados para Acesso
+                </div>
+                <p className="text-xs text-gray-500 mb-3">
+                  Preencha estes campos para permitir que o aluno acesse o sistema e solicite reagendamentos.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      CPF <span className="text-gray-400 text-xs">(apenas números)</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={editFormData.cpf}
+                      onChange={(e) => {
+                        // Aceitar apenas números e limitar a 11 dígitos
+                        const value = e.target.value.replace(/\D/g, '').slice(0, 11);
+                        // Formatar com máscara
+                        let formatted = value;
+                        if (value.length > 9) {
+                          formatted = `${value.slice(0,3)}.${value.slice(3,6)}.${value.slice(6,9)}-${value.slice(9)}`;
+                        } else if (value.length > 6) {
+                          formatted = `${value.slice(0,3)}.${value.slice(3,6)}.${value.slice(6)}`;
+                        } else if (value.length > 3) {
+                          formatted = `${value.slice(0,3)}.${value.slice(3)}`;
+                        }
+                        setEditFormData({...editFormData, cpf: formatted});
+                      }}
+                      className="block w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-medium focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                      placeholder="000.000.000-00"
+                      maxLength={14}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Data de Nascimento</label>
+                    <input
+                      type="date"
+                      value={editFormData.dataNascimento}
+                      onChange={(e) => setEditFormData({...editFormData, dataNascimento: e.target.value})}
+                      className="block w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-medium focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
               <div className="mb-3">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Observações</label>
                 <textarea
@@ -907,23 +830,6 @@ const AlunoRowModal: React.FC<Props> = ({ isOpen, onClose, alunoId, onRefresh })
             setShowReagendarModal(false);
             setReagendarData(null);
             if (onRefresh) onRefresh();
-          }}
-        />
-      )}
-      
-      {/* Modal de Reposição de Falta */}
-      {showReporModal && reporData && aluno && (
-        <ReporFaltaModal
-          open={showReporModal}
-          onClose={() => { setShowReporModal(false); setReporData(null); }}
-          alunoId={aluno._id}
-          alunoNome={aluno.nome}
-          falta={reporData}
-          onSuccess={() => {
-            setShowReporModal(false);
-            setReporData(null);
-            // Recarregar faltas
-            abrirModalFaltas();
           }}
         />
       )}

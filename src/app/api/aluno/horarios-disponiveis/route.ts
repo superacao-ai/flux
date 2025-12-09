@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import connectDB from '@/lib/mongodb';
 import { HorarioFixo } from '@/models/HorarioFixo';
 import { Matricula } from '@/models/Matricula';
+import { User } from '@/models/User';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'aluno-secret-key-2025';
 
@@ -38,10 +39,16 @@ export async function GET(req: NextRequest) {
     
     await connectDB();
     
+    // Garantir que o modelo User esteja registrado
+    void User;
+    
+    const { searchParams } = new URL(req.url);
+    const incluirTodos = searchParams.get('todos') === 'true';
+    
     // Buscar todos os horários ativos
     const horarios = await HorarioFixo.find({ ativo: true })
       .populate('modalidadeId', 'nome cor limiteAlunos')
-      .populate('professorId', 'nome cor')
+      .populate({ path: 'professorId', model: 'User', select: 'nome' })
       .lean();
     
     // Para cada horário, buscar quantos alunos estão matriculados
@@ -77,12 +84,14 @@ export async function GET(req: NextRequest) {
       })
     );
     
-    // Filtrar apenas horários com vagas
-    const horariosDisponiveis = horariosComVagas.filter(h => h.temVaga);
+    // Se incluirTodos, retorna todos, senão filtra apenas com vagas
+    const horariosRetorno = incluirTodos 
+      ? horariosComVagas 
+      : horariosComVagas.filter(h => h.temVaga);
     
     return NextResponse.json({
       success: true,
-      horarios: horariosDisponiveis
+      horarios: horariosRetorno
     });
     
   } catch (error) {

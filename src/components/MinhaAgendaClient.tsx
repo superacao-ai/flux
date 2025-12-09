@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { toast } from 'react-toastify';
+import { refreshPendingCounts } from '@/lib/events';
 
 // Tipos
 interface Aluno {
@@ -44,6 +45,7 @@ interface Modalidade {
   _id: string;
   nome: string;
   cor: string;
+  linkWhatsapp?: string;
 }
 
 interface HorarioFixo {
@@ -122,10 +124,24 @@ interface AulaExperimental {
   compareceu: boolean | null;
 }
 
+interface UsoCredito {
+  _id: string;
+  alunoId: {
+    _id: string;
+    nome: string;
+    email?: string;
+    telefone?: string;
+  };
+  agendamentoId: string; // HorarioFixoId
+  dataUso: string;
+  observacao?: string;
+}
+
 export default function MinhaAgendaClient() {
   const [horarios, setHorarios] = useState<HorarioFixo[]>([]);
   const [reagendamentos, setReagendamentos] = useState<Reagendamento[]>([]);
   const [aulasExperimentais, setAulasExperimentais] = useState<AulaExperimental[]>([]);
+  const [usosCredito, setUsosCredito] = useState<UsoCredito[]>([]);
   const [presencasExperimentais, setPresencasExperimentais] = useState<Map<string, boolean>>(new Map()); // Presença local das experimentais
   const [presencas, setPresencas] = useState<Presenca[]>([]); // Rascunho local
   const [loading, setLoading] = useState(true);
@@ -135,6 +151,8 @@ export default function MinhaAgendaClient() {
   const [aulaStatus, setAulaStatus] = useState<Map<string, AulaStatus>>(new Map());
   const [enviandoAula, setEnviandoAula] = useState(false);
   const [horariosExpandidos, setHorariosExpandidos] = useState<Set<string>>(new Set());
+  const [aulasPendentes, setAulasPendentes] = useState<any[]>([]);
+  const [aulasHoje, setAulasHoje] = useState<any[]>([]);
   const searchParams = useSearchParams();
 
   // Encontrar próximo dia com horários
@@ -254,7 +272,7 @@ export default function MinhaAgendaClient() {
     fetchReagendamentos();
   }, []);
 
-  // Buscar aulas experimentais aprovadas do dia selecionado
+  // Buscar aulas experimentais do dia selecionado (agendadas OU aprovadas)
   useEffect(() => {
     const fetchAulasExperimentais = async () => {
       if (!dataSelecionada) return;
@@ -267,10 +285,10 @@ export default function MinhaAgendaClient() {
           const data = await res.json();
           const list = Array.isArray(data) ? data : (data.data || []);
           console.log('[MinhaAgenda] Aulas experimentais do dia:', list);
-          // Filtrar apenas aulas aprovadas (não pendentes, não canceladas, não realizadas)
-          const aprovadas = list.filter((a: AulaExperimental) => a.status === 'aprovada');
-          console.log('[MinhaAgenda] Aulas experimentais aprovadas:', aprovadas);
-          setAulasExperimentais(aprovadas);
+          // Filtrar aulas agendadas OU aprovadas (não canceladas, não realizadas)
+          const ativas = list.filter((a: AulaExperimental) => a.status === 'agendada' || a.status === 'aprovada');
+          console.log('[MinhaAgenda] Aulas experimentais ativas:', ativas);
+          setAulasExperimentais(ativas);
         }
       } catch (err) {
         console.error('[MinhaAgenda] Erro ao buscar aulas experimentais:', err);
@@ -278,6 +296,29 @@ export default function MinhaAgendaClient() {
     };
 
     fetchAulasExperimentais();
+  }, [dataSelecionada]);
+
+  // Buscar usos de crédito do dia selecionado (alunos extras)
+  useEffect(() => {
+    const fetchUsosCredito = async () => {
+      if (!dataSelecionada) return;
+      
+      try {
+        const dataFormatada = dataSelecionada.toISOString().split('T')[0];
+        const res = await fetch(`/api/creditos-reposicao/usos?data=${dataFormatada}`);
+        
+        if (res.ok) {
+          const data = await res.json();
+          const list = Array.isArray(data) ? data : (data.usos || []);
+          console.log('[MinhaAgenda] Usos de crédito do dia:', list);
+          setUsosCredito(list);
+        }
+      } catch (err) {
+        console.error('[MinhaAgenda] Erro ao buscar usos de crédito:', err);
+      }
+    };
+
+    fetchUsosCredito();
   }, [dataSelecionada]);
 
   // Buscar presenças do dia selecionado
@@ -350,6 +391,92 @@ export default function MinhaAgendaClient() {
 
     fetchAulasStatus();
   }, [dataSelecionada, horarios]);
+
+  // Buscar aulas pendentes e calcular aulas do dia
+  useEffect(() => {
+    const fetchAulasPendentes = async () => {
+      if (horarios.length === 0) return;
+      
+      try {
+        const token = localStorage.getItem('token');
+        const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+        
+        // Buscar todas as aulas enviadas
+        const resEnviadas = await fetch('/api/aulas-realizadas?listarTodas=true', { headers });
+        const dataEnviadas = await resEnviadas.json();
+        
+        const hoje = new Date();
+        hoje.setHours(0, 0, 0, 0);
+        const inicioDate = new Date(hoje);
+        inicioDate.setDate(hoje.getDate() - 30);
+        
+        // Data de início da plataforma
+        const dataInicioPlataforma = typeof window !== 'undefined' 
+          ? localStorage.getItem('dataInicioPlataforma') || ''
+          : '';
+        
+        const pendentes: any[] = [];
+        const hojeStr = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(hoje.getDate()).padStart(2, '0')}`;
+        const aulasMap = new Map<string, boolean>();
+        
+        // Map aulas enviadas
+        (Array.isArray(dataEnviadas) ? dataEnviadas : (dataEnviadas.data || [])).forEach((a: any) => {
+          if (a.status === 'enviada' || a.status === 'corrigida') {
+            const dStr = (a.data || '').split('T')[0] || '';
+            const key = `${a.horarioFixoId || ''}_${dStr}`;
+            aulasMap.set(key, true);
+          }
+        });
+        
+        // Calcular pendentes
+        horarios.filter((h: any) => h.ativo !== false).forEach((h: any) => {
+          const horarioId = h._id || h.horarioFixoId;
+          if (!horarioId) return;
+          
+          const raw = Number(h.diaSemana);
+          const candidateDays = new Set<number>();
+          if (!isNaN(raw)) {
+            if (raw >= 0 && raw <= 6) candidateDays.add(raw);
+            if (raw >= 1 && raw <= 7) candidateDays.add(raw % 7);
+          }
+          if (candidateDays.size === 0) candidateDays.add(0);
+          
+          for (let cur = new Date(inicioDate); cur <= hoje; cur.setDate(cur.getDate() + 1)) {
+            if (candidateDays.has(cur.getDay())) {
+              const dateStr = `${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, '0')}-${String(cur.getDate()).padStart(2, '0')}`;
+              const dentroDataPlataforma = !dataInicioPlataforma || dateStr >= dataInicioPlataforma;
+              
+              if (dentroDataPlataforma) {
+                const key = `${horarioId}_${dateStr}`;
+                if (!aulasMap.has(key)) {
+                  pendentes.push({
+                    data: dateStr,
+                    horario: h.horarioInicio && h.horarioFim ? `${h.horarioInicio} - ${h.horarioFim}` : 'N/A',
+                    modalidade: h.modalidadeId?.nome || 'N/A',
+                    horarioFixoId: horarioId
+                  });
+                }
+              }
+            }
+          }
+        });
+        
+        // Ordenar por data
+        pendentes.sort((a, b) => b.data.localeCompare(a.data));
+        setAulasPendentes(pendentes);
+        
+        // Aulas de hoje (horários do dia atual)
+        const diaHoje = hoje.getDay();
+        const aulasDeHoje = horarios.filter((h: any) => h.diaSemana === diaHoje && h.ativo);
+        setAulasHoje(aulasDeHoje);
+        
+      } catch (err) {
+        console.error('[MinhaAgenda] Erro ao buscar aulas pendentes:', err);
+      }
+    };
+    
+    fetchAulasPendentes();
+  }, [horarios]);
 
   // Agrupar horários por dia/hora e juntar todos os alunos
   const agruparHorarios = (horariosList: HorarioFixo[], diaSemana: number): HorarioAgrupado[] => {
@@ -488,6 +615,20 @@ export default function MinhaAgendaClient() {
       });
     }
     return result;
+  };
+
+  // Função para buscar alunos com crédito usado neste horário
+  const alunosComCreditoDoHorario = (horarioId?: string) => {
+    if (!horarioId) return [];
+    return usosCredito
+      .filter(u => String(u.agendamentoId) === String(horarioId))
+      .map(u => ({
+        _id: u.alunoId._id,
+        nome: u.alunoId.nome,
+        email: u.alunoId.email,
+        telefone: u.alunoId.telefone,
+        _usoCredito: u
+      }));
   };
 
   // Calcular estatísticas do dia
@@ -688,6 +829,7 @@ export default function MinhaAgendaClient() {
         }
 
         toast.success('Aula enviada com sucesso!');
+        refreshPendingCounts();
       } else {
         console.error('Erro na API:', data);
         console.error('Status:', res.status);
@@ -943,16 +1085,64 @@ export default function MinhaAgendaClient() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-4 md:p-6">
       <div className="max-w-7xl mx-auto">
-        {/* Cabeçalho */}
-        <div className="mb-8 fade-in-1">
-          <h1 className="text-2xl font-semibold text-gray-900">
-            <i className="fas fa-calendar-alt mr-3 text-primary-600"></i>
+        {/* Header Desktop */}
+        <div className="hidden md:block mb-6 fade-in-1">
+          <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+            <i className="fas fa-calendar-alt text-primary-600"></i>
             Minha Agenda
           </h1>
-          <p className="text-gray-600 mt-1">Gerenciamento de aulas e alunos</p>
+          <p className="text-sm text-gray-600 mt-1">Gerenciamento de aulas e alunos</p>
         </div>
+        
+        {/* Header Mobile - Compacto */}
+        <div className="md:hidden mb-3 fade-in-1">
+          <h1 className="text-lg font-bold text-gray-900">
+            <i className="fas fa-calendar-alt text-primary-600 mr-1.5"></i>
+            Minha Agenda
+          </h1>
+        </div>
+
+      {/* Cards de Dashboard */}
+      <div className="grid grid-cols-2 gap-3 md:gap-4 mb-6 fade-in-2">
+        {/* Card Aulas de Hoje */}
+        <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 md:w-12 md:h-12 bg-green-100 rounded-lg flex items-center justify-center">
+              <i className="fas fa-calendar-day text-green-600 text-lg md:text-xl"></i>
+            </div>
+            <div>
+              <div className="text-2xl md:text-3xl font-bold text-gray-900">{aulasHoje.length}</div>
+              <div className="text-xs md:text-sm text-gray-500">Aulas Hoje</div>
+            </div>
+          </div>
+        </div>
+        
+        {/* Card Aulas Pendentes */}
+        <a 
+          href="/professor/aulas"
+          className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+        >
+          <div className="flex items-center gap-3">
+            <div className={`w-10 h-10 md:w-12 md:h-12 rounded-lg flex items-center justify-center ${aulasPendentes.length > 0 ? 'bg-yellow-100' : 'bg-gray-100'}`}>
+              <i className={`fas fa-clock text-lg md:text-xl ${aulasPendentes.length > 0 ? 'text-yellow-600' : 'text-gray-400'}`}></i>
+            </div>
+            <div>
+              <div className={`text-2xl md:text-3xl font-bold ${aulasPendentes.length > 0 ? 'text-yellow-600' : 'text-gray-900'}`}>
+                {aulasPendentes.length}
+              </div>
+              <div className="text-xs md:text-sm text-gray-500">Pendentes</div>
+            </div>
+          </div>
+          {aulasPendentes.length > 0 && (
+            <div className="mt-2 text-xs text-yellow-600 font-medium flex items-center gap-1">
+              <i className="fas fa-exclamation-circle"></i>
+              Clique para preencher
+            </div>
+          )}
+        </a>
+      </div>
 
       {/* Seletor de Data */}
       <div className="bg-gradient-to-r from-blue-50 to-blue-100 rounded-md shadow-sm border border-blue-200 p-6 mb-6 fade-in-2">
@@ -1112,7 +1302,7 @@ export default function MinhaAgendaClient() {
               {/* Conteúdo expandido */}
               {horariosExpandidos.has(horario.horarioFixoId || '') && (
                 <div className={`border-t ${aulaStatus.get(horario.horarioFixoId || '')?.enviada ? 'border-gray-300 bg-gray-50' : 'border-gray-200 bg-white'}`}>
-                  <div className="p-4">{horario.alunos.length === 0 && alunosReagendadosParaDentro(horario.horarioFixoId).length === 0 && aulasExperimentaisDoHorario(horario.horarioFixoId).length === 0 ? (
+                  <div className="p-4">{horario.alunos.length === 0 && alunosReagendadosParaDentro(horario.horarioFixoId).length === 0 && aulasExperimentaisDoHorario(horario.horarioFixoId).length === 0 && alunosComCreditoDoHorario(horario.horarioFixoId).length === 0 ? (
                     <div className="p-6 text-center">
                       <i className="fas fa-inbox text-gray-300 text-4xl mb-3 mx-auto"></i>
                       <p className="text-gray-500 font-medium">Nenhum aluno neste horário</p>
@@ -1410,6 +1600,83 @@ export default function MinhaAgendaClient() {
                                     <span className={`${aulaEnviada ? 'text-gray-400' : (statusPresenca ? 'text-green-600' : 'text-gray-700')} text-xs font-semibold`}>PRESENTE</span>
                                   </div>
                                 )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                      {/* Alunos usando Crédito de Reposição */}
+                      {alunosComCreditoDoHorario(horario.horarioFixoId).map((alunoCredito) => {
+                        const aulaEnviada = aulaStatus.get(horario.horarioFixoId || '')?.enviada ?? false;
+                        const presencaAtual = getPresencaStatus(alunoCredito._id, horario.horarioFixoId || '');
+
+                        return (
+                          <div
+                            key={`credito-${alunoCredito._id}`}
+                            className={`p-3 rounded-md border shadow-sm transition-all ${
+                              aulaEnviada
+                                ? 'bg-gray-100 border-gray-200' 
+                                : 'border-teal-300 bg-teal-50'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <div
+                                className={`w-10 h-10 rounded-full overflow-hidden flex items-center justify-center font-bold text-sm flex-shrink-0 ${
+                                  aulaEnviada ? 'bg-gray-200 text-gray-600' : 'bg-teal-500 text-white'
+                                }`}
+                              >
+                                <i className="fas fa-ticket text-sm"></i>
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className={`${aulaEnviada ? 'text-gray-600' : 'font-semibold text-gray-900'} text-sm`}>
+                                  {alunoCredito.nome}
+                                </div>
+                                
+                                {/* Badge de Crédito */}
+                                <div className="mt-1 flex items-center gap-2 flex-wrap">
+                                  <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium ${
+                                    aulaEnviada
+                                      ? 'bg-gray-200 text-gray-600 border border-gray-300'
+                                      : 'bg-teal-100 text-teal-800 border border-teal-300'
+                                  }`}>
+                                    <i className={`fas fa-ticket ${aulaEnviada ? 'text-gray-500' : 'text-teal-600'}`}></i>
+                                    Usando Crédito
+                                  </span>
+                                  
+                                  {alunoCredito.telefone && (
+                                    <a
+                                      href={`https://wa.me/55${alunoCredito.telefone.replace(/\D/g, '')}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700 border border-green-200 hover:bg-green-200 transition-colors"
+                                    >
+                                      <i className="fab fa-whatsapp"></i>
+                                      {alunoCredito.telefone}
+                                    </a>
+                                  )}
+                                </div>
+
+                                {/* Switch de Presença/Falta */}
+                                <div className="flex items-center gap-2 mt-2">
+                                  <span className={`${aulaEnviada ? 'text-gray-400' : 'text-gray-700'} text-xs font-semibold`}>FALTOU</span>
+
+                                  <label className={`relative inline-flex items-center ${aulaEnviada ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
+                                    <input
+                                      type="checkbox"
+                                      className="sr-only"
+                                      checked={presencaAtual}
+                                      disabled={aulaEnviada}
+                                      onChange={(e) => marcarPresenca(alunoCredito._id, horario.horarioFixoId || '', e.target.checked)}
+                                      aria-label={`Marcar presença de ${alunoCredito.nome}`}
+                                    />
+
+                                    <div className={`w-12 h-6 rounded-full transition-colors ${presencaAtual ? 'bg-green-500' : 'bg-gray-300'}`}></div>
+                                    <div className={`absolute left-1 top-1 w-4 h-4 bg-white rounded-full shadow transform transition-transform ${presencaAtual ? 'translate-x-6' : ''}`}></div>
+                                  </label>
+
+                                  <span className={`${aulaEnviada ? 'text-gray-400' : (presencaAtual ? 'text-green-600' : 'text-gray-700')} text-xs font-semibold`}>PRESENTE</span>
+                                </div>
                               </div>
                             </div>
                           </div>

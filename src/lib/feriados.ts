@@ -168,7 +168,7 @@ export function getFeriadosPeriodo(
 }
 
 /**
- * Retorna feriados personalizados do localStorage
+ * Retorna feriados personalizados do localStorage (fallback)
  */
 export function getFeriadosPersonalizados(): Feriado[] {
   if (typeof window === 'undefined') return [];
@@ -178,6 +178,87 @@ export function getFeriadosPersonalizados(): Feriado[] {
     return stored ? JSON.parse(stored) : [];
   } catch {
     return [];
+  }
+}
+
+/**
+ * Busca feriados personalizados da API (dias sem expediente cadastrados)
+ */
+export async function fetchFeriadosPersonalizados(inicio?: string, fim?: string): Promise<Feriado[]> {
+  if (typeof window === 'undefined') return [];
+  
+  try {
+    const token = localStorage.getItem('token');
+    const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+    
+    let url = '/api/feriados';
+    const params = new URLSearchParams();
+    if (inicio) params.append('inicio', inicio);
+    if (fim) params.append('fim', fim);
+    if (params.toString()) url += `?${params.toString()}`;
+    
+    const res = await fetch(url, { headers });
+    if (!res.ok) return [];
+    
+    const json = await res.json();
+    if (!json.success || !Array.isArray(json.data)) return [];
+    
+    return json.data.map((f: any) => ({
+      data: new Date(f.data).toISOString().split('T')[0],
+      nome: f.motivo || 'Sem Expediente',
+      tipo: 'personalizado' as const,
+      recorrente: false,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Adiciona um feriado/dia sem expediente via API
+ */
+export async function adicionarFeriadoAPI(data: string, motivo?: string): Promise<boolean> {
+  if (typeof window === 'undefined') return false;
+  
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) return false;
+    
+    const res = await fetch('/api/feriados', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ data, motivo }),
+    });
+    
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Remove um feriado/dia sem expediente via API
+ */
+export async function removerFeriadoAPI(data: string): Promise<boolean> {
+  if (typeof window === 'undefined') return false;
+  
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) return false;
+    
+    const res = await fetch(`/api/feriados?data=${data}`, {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    
+    return res.ok;
+  } catch {
+    return false;
   }
 }
 

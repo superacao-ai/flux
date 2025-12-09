@@ -20,6 +20,8 @@ export interface Modalidade {
   limiteAlunos: number;
   diasSemana?: number[]; // Dias da semana que a modalidade tem aula
   horariosDisponiveis: HorarioDisponivel[];
+  linkWhatsapp?: string; // Link do grupo do WhatsApp da modalidade
+  modalidadesVinculadas?: string[]; // IDs das modalidades que compartilham o mesmo espaço
   ativo: boolean;
 }
 
@@ -55,7 +57,9 @@ export default function ModalidadesPage() {
     horarioFuncionamento: {
       manha: { inicio: '', fim: '' },
       tarde: { inicio: '', fim: '' }
-    }
+    },
+    linkWhatsapp: '',
+    modalidadesVinculadas: [] as string[]
   });
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
@@ -181,6 +185,8 @@ export default function ModalidadesPage() {
         diasSemana: Array.from(new Set([...(formData.diasSemana || []), ...(formData.diasSemanaManha || []), ...(formData.diasSemanaTarde || [])])).sort(),
         horarioFuncionamento: formData.horarioFuncionamento,
         horariosDisponiveis: [] as any[],
+        linkWhatsapp: formData.linkWhatsapp?.trim() || '',
+        modalidadesVinculadas: formData.modalidadesVinculadas || [],
       };
 
       // If morning times and days provided, add to horariosDisponiveis
@@ -228,7 +234,9 @@ export default function ModalidadesPage() {
           diasSemana: [],
           diasSemanaManha: [],
           diasSemanaTarde: [],
-          horarioFuncionamento: { manha: { inicio: '', fim: '' }, tarde: { inicio: '', fim: '' } }
+          horarioFuncionamento: { manha: { inicio: '', fim: '' }, tarde: { inicio: '', fim: '' } },
+          linkWhatsapp: '',
+          modalidadesVinculadas: []
         });
         fetchModalidades();
         try {
@@ -265,7 +273,9 @@ export default function ModalidadesPage() {
       horarioFuncionamento: {
         manha: { inicio: (modalidade as any).horarioFuncionamento?.manha?.inicio || '', fim: (modalidade as any).horarioFuncionamento?.manha?.fim || '' },
         tarde: { inicio: (modalidade as any).horarioFuncionamento?.tarde?.inicio || '', fim: (modalidade as any).horarioFuncionamento?.tarde?.fim || '' }
-      }
+      },
+      linkWhatsapp: modalidade.linkWhatsapp || '',
+      modalidadesVinculadas: modalidade.modalidadesVinculadas || []
     });
     setShowModal(true);
   };
@@ -595,7 +605,7 @@ export default function ModalidadesPage() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Pesquisar modalidade..."
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm"
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-0 focus:border-gray-300 outline-none text-sm"
             />
           </div>
         </div>
@@ -634,10 +644,10 @@ export default function ModalidadesPage() {
                 return (
                   <div
                     key={(modalidade as any).id || (modalidade as any)._id || idx}
-                    className={`relative rounded-xl border shadow-sm overflow-hidden transition-all duration-200 hover:shadow-lg ${fadeClass} ${
+                    className={`relative rounded-xl border shadow-sm overflow-hidden ${fadeClass} ${
                       isInativo 
                         ? 'bg-gray-50 border-gray-200 opacity-70' 
-                        : 'bg-white border-gray-200 hover:border-green-400'
+                        : 'bg-white border-gray-200'
                     }`}
                   >
                     {/* Barra colorida no topo */}
@@ -727,6 +737,27 @@ export default function ModalidadesPage() {
                               <span>{(modalidade as any).horarioFuncionamento.tarde.inicio} – {(modalidade as any).horarioFuncionamento.tarde.fim}</span>
                             </div>
                           )}
+                        </div>
+                      )}
+
+                      {/* Aviso de modalidades vinculadas */}
+                      {modalidade.modalidadesVinculadas && modalidade.modalidadesVinculadas.length > 0 && (
+                        <div className="mb-4 p-2 bg-orange-50 border border-orange-200 rounded-lg">
+                          <div className="flex items-start gap-2">
+                            <i className="fas fa-link text-orange-500 text-xs mt-0.5"></i>
+                            <div>
+                              <p className="text-xs font-medium text-orange-700">Espaço compartilhado com:</p>
+                              <p className="text-xs text-orange-600">
+                                {modalidade.modalidadesVinculadas
+                                  .map(vinculadaId => {
+                                    const vinculada = modalidades.find(m => m._id === vinculadaId);
+                                    return vinculada?.nome || '';
+                                  })
+                                  .filter(Boolean)
+                                  .join(', ')}
+                              </p>
+                            </div>
+                          </div>
                         </div>
                       )}
 
@@ -855,6 +886,27 @@ export default function ModalidadesPage() {
                         </div>
                       )}
 
+                      {/* Aviso de modalidades vinculadas - Mobile */}
+                      {modalidade.modalidadesVinculadas && modalidade.modalidadesVinculadas.length > 0 && (
+                        <div className="mb-3 p-1.5 bg-orange-50 border border-orange-200 rounded-lg">
+                          <div className="flex items-start gap-1.5">
+                            <i className="fas fa-link text-orange-500 text-[10px] mt-0.5"></i>
+                            <div>
+                              <p className="text-[10px] font-medium text-orange-700">Espaço compartilhado:</p>
+                              <p className="text-[10px] text-orange-600">
+                                {modalidade.modalidadesVinculadas
+                                  .map(vinculadaId => {
+                                    const vinculada = modalidades.find(m => m._id === vinculadaId);
+                                    return vinculada?.nome || '';
+                                  })
+                                  .filter(Boolean)
+                                  .join(', ')}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
                       {/* Botões de ação - compact */}
                       <div className="flex gap-2">
                         {showInactive ? (
@@ -902,8 +954,9 @@ export default function ModalidadesPage() {
         {/* Modal para nova modalidade */}
         {showModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-600 bg-opacity-50 p-3 sm:p-4">
-            <div className="relative w-full max-w-xl bg-white rounded-lg shadow-lg border p-4 sm:p-6 max-h-[90vh] overflow-y-auto">
-              <div className="flex items-start justify-between mb-4 border-b pb-4">
+            <div className="relative w-full max-w-xl bg-white rounded-lg shadow-lg border flex flex-col max-h-[90vh]">
+              {/* Header Fixo */}
+              <div className="flex items-start justify-between p-4 sm:p-6 border-b bg-white rounded-t-lg flex-shrink-0">
                 <div>
                   <h3 className="text-base font-semibold text-gray-900">
                     {editingModalidade ? (
@@ -933,7 +986,9 @@ export default function ModalidadesPage() {
                 </button>
               </div>
 
-              <form onSubmit={handleSubmit} className="space-y-3">
+              <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
+                {/* Conteúdo com scroll */}
+                <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-3">
                 <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 items-end">
                   <div className="sm:col-span-2">
                     <label className="block text-sm font-medium text-gray-700">Nome *</label>
@@ -973,6 +1028,26 @@ export default function ModalidadesPage() {
                 </div>
 
                 <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Cor</label>
+                  <div className="inline-flex flex-wrap gap-1 p-1.5 bg-gray-50 border border-gray-200 rounded-md">
+                    {coresSugeridas.map((cor) => (
+                      <button
+                        key={cor}
+                        type="button"
+                        onClick={() => setFormData({...formData, cor})}
+                        className={`relative h-5 w-5 rounded-full border-2 flex items-center justify-center transition-all duration-150 hover:scale-110 hover:border-primary-400 focus:outline-none ${formData.cor === cor ? 'border-primary-600 ring-2 ring-primary-400' : 'border-gray-300'}`}
+                        style={{ backgroundColor: cor }}
+                        title={cor}
+                      >
+                        {formData.cor === cor && (
+                          <i className="fas fa-check text-white text-[6px] drop-shadow" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
                   <label className="block text-sm font-medium text-gray-700">Descrição</label>
                   <textarea
                     value={formData.descricao}
@@ -984,27 +1059,68 @@ export default function ModalidadesPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Cor</label>
-                  <div className="flex items-center justify-center gap-3">
-                    <div className="flex flex-wrap gap-2 p-2 bg-gray-50 border border-gray-200 border-t rounded-md justify-center">
-                      {coresSugeridas.map((cor) => (
-                        <button
-                          key={cor}
-                          type="button"
-                          onClick={() => setFormData({...formData, cor})}
-                          className={`relative h-8 w-8 rounded-full border-2 flex items-center justify-center transition-all duration-150 hover:scale-110 hover:border-primary-400 focus:outline-none ${formData.cor === cor ? 'border-primary-600 ring-2 ring-primary-400' : 'border-gray-300'}`}
-                          style={{ backgroundColor: cor }}
-                          title={cor}
-                        >
-                          {formData.cor === cor && (
-                            <span className="absolute inset-0 flex items-center justify-center">
-                              <i className="fas fa-check text-white text-xs drop-shadow" />
-                            </span>
-                          )}
-                        </button>
-                      ))}
-                    </div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    <i className="fab fa-whatsapp text-green-500 mr-1"></i>
+                    Link do Grupo do WhatsApp
+                  </label>
+                  <input
+                    type="url"
+                    value={formData.linkWhatsapp}
+                    onChange={(e) => setFormData({...formData, linkWhatsapp: e.target.value})}
+                    className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm font-medium focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                    placeholder="https://chat.whatsapp.com/..."
+                  />
+                  <p className="mt-1 text-xs text-gray-500">
+                    Cole aqui o link de convite do grupo da modalidade (ex: https://chat.whatsapp.com/AbCdEf123)
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    <i className="fas fa-link text-gray-500 mr-1"></i>
+                    Modalidades Vinculadas (mesmo espaço)
+                  </label>
+                  <div className="mt-1 flex flex-wrap gap-2 p-2 bg-gray-50 border border-gray-200 rounded-md min-h-[42px]">
+                    {modalidades
+                      .filter(m => m.ativo && m._id !== editingModalidade?._id)
+                      .map(m => {
+                        const isSelected = formData.modalidadesVinculadas.includes(m._id);
+                        return (
+                          <button
+                            key={m._id}
+                            type="button"
+                            onClick={() => {
+                              if (isSelected) {
+                                setFormData({
+                                  ...formData,
+                                  modalidadesVinculadas: formData.modalidadesVinculadas.filter(id => id !== m._id)
+                                });
+                              } else {
+                                setFormData({
+                                  ...formData,
+                                  modalidadesVinculadas: [...formData.modalidadesVinculadas, m._id]
+                                });
+                              }
+                            }}
+                            className={`px-2 py-1 text-xs font-medium rounded-md transition-colors flex items-center gap-1 ${
+                              isSelected
+                                ? 'text-white border-2'
+                                : 'bg-white text-gray-700 border-2 border-gray-300 hover:bg-gray-100'
+                            }`}
+                            style={isSelected ? { backgroundColor: m.cor, borderColor: m.cor } : {}}
+                          >
+                            {isSelected && <i className="fas fa-check text-[10px]" />}
+                            {m.nome}
+                          </button>
+                        );
+                      })}
+                    {modalidades.filter(m => m.ativo && m._id !== editingModalidade?._id).length === 0 && (
+                      <span className="text-xs text-gray-400 italic">Nenhuma outra modalidade disponível</span>
+                    )}
                   </div>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Selecione modalidades que usam o mesmo espaço físico (não poderão ter aulas simultâneas)
+                  </p>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1138,8 +1254,10 @@ export default function ModalidadesPage() {
                     </div>
                   </div>
                 </div>
+                </div>
 
-                <div className="flex justify-end gap-3 pt-3 border-t">
+                {/* Footer Fixo */}
+                <div className="flex justify-end gap-3 p-4 sm:p-6 border-t bg-gray-50 rounded-b-lg flex-shrink-0">
                   <button
                     type="button"
                     onClick={() => {
@@ -1154,10 +1272,12 @@ export default function ModalidadesPage() {
                         diasSemana: [],
                         diasSemanaManha: [],
                         diasSemanaTarde: [],
-                        horarioFuncionamento: { manha: { inicio: '', fim: '' }, tarde: { inicio: '', fim: '' } }
+                        horarioFuncionamento: { manha: { inicio: '', fim: '' }, tarde: { inicio: '', fim: '' } },
+                        linkWhatsapp: '',
+                        modalidadesVinculadas: []
                       });
                     }}
-                    className="px-3 py-2  border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none"
+                    className="px-3 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none"
                   >
                     <i className="fas fa-times mr-2" />
                     Cancelar

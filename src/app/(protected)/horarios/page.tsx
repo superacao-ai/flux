@@ -6,6 +6,7 @@ import Swal from 'sweetalert2';
 import StudentDetailModal from '@/components/StudentDetailModal';
 import AlunoRowModal from '@/components/AlunoRowModal';
 import ProtectedPage from '@/components/ProtectedPage';
+import { permissoesHorarios } from '@/lib/permissoes';
 
 interface Aluno {
   _id: string;
@@ -36,6 +37,7 @@ interface Modalidade {
   cor: string;
   duracao: number;
   limiteAlunos: number;
+  modalidadesVinculadas?: string[];
   horarioFuncionamento?: {
     inicio?: string | null;
     fim?: string | null;
@@ -54,6 +56,7 @@ interface HorarioFixo {
   congelado?: boolean;
   ausente?: boolean;
   emEspera?: boolean;
+  limiteAlunos?: number; // Limite específico da turma (sobrescreve modalidade)
 }
 
 export default function HorariosPage() {
@@ -119,26 +122,43 @@ export default function HorariosPage() {
   const [alunoRowModalId, setAlunoRowModalId] = useState<string | null>(null);
   // blocked slots state: keyed by `${horarioSlot}-${dayIndex}`
   const [blockedSlots, setBlockedSlots] = useState<Record<string, boolean>>({});
+  
+  // Horários de modalidades vinculadas (conflito de espaço)
+  // Estrutura: { [slotKey: string]: { modalidadeNome: string, modalidadeCor: string, horarioInicio: string, horarioFim: string } }
+  const [horariosVinculados, setHorariosVinculados] = useState<Record<string, { modalidadeNome: string; modalidadeCor: string; horarioInicio: string; horarioFim: string }>>({});
 
-  // Load persisted blocked slots from server on mount
+  // Load persisted blocked slots from server when modalidade changes
   useEffect(() => {
+    if (!modalidadeSelecionada) {
+      setBlockedSlots({});
+      return;
+    }
+    
     (async () => {
       try {
-        const resp = await fetch('/api/blocked-slots');
+        const resp = await fetch(`/api/blocked-slots?modalidadeId=${modalidadeSelecionada}`);
         const j = await resp.json();
         if (j && j.success && j.data) {
-          // j.data expected as map { slotKey: { horarioSlot, dayIndex } }
+          // j.data expected as map { slotKey: { horarioSlot, dayIndex, modalidadeId } }
           const map: Record<string, boolean> = {};
           for (const k of Object.keys(j.data)) map[k] = true;
           setBlockedSlots(map);
+        } else {
+          setBlockedSlots({});
         }
       } catch (e) {
         console.error('Erro ao buscar blocked-slots:', e);
+        setBlockedSlots({});
       }
     })();
-  }, []);
+  }, [modalidadeSelecionada]);
 
-  const toggleBlockSlot = async (slotKey: string) => {
+  const toggleBlockSlot = async (horarioSlot: string, dayIndex: number) => {
+    if (!modalidadeSelecionada) return;
+    
+    // slotKey agora inclui modalidadeId para ser único por modalidade
+    const slotKey = `${horarioSlot}-${dayIndex}-${modalidadeSelecionada}`;
+    
     try {
       const currently = !!blockedSlots[slotKey];
       if (currently) {
@@ -154,12 +174,10 @@ export default function HorariosPage() {
           toast.error('Erro ao desbloquear horário');
         }
       } else {
-        // Derive horarioSlot and dayIndex from the key (format: `${horarioSlot}-${dayIndex}`)
-        const idx = slotKey.lastIndexOf('-');
-        const horarioSlot = idx >= 0 ? slotKey.substring(0, idx) : slotKey;
-        const dayIndex = idx >= 0 ? parseInt(slotKey.substring(idx + 1), 10) : 0;
         const resp = await fetch('/api/blocked-slots', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slotKey, horarioSlot, dayIndex })
+          method: 'POST', 
+          headers: { 'Content-Type': 'application/json' }, 
+          body: JSON.stringify({ slotKey, horarioSlot, dayIndex, modalidadeId: modalidadeSelecionada })
         });
         const j = await resp.json();
         if (j && j.success) {
@@ -173,6 +191,21 @@ export default function HorariosPage() {
       toast.error('Erro ao atualizar bloqueio');
     }
   };
+
+  // Função para centralizar elemento clicado na tela
+  const scrollToCenter = (event: React.MouseEvent<HTMLElement>) => {
+    const element = event.currentTarget;
+    const rect = element.getBoundingClientRect();
+    const elementCenter = rect.top + rect.height / 2;
+    const viewportCenter = window.innerHeight / 2;
+    const scrollOffset = elementCenter - viewportCenter;
+    
+    window.scrollBy({
+      top: scrollOffset,
+      behavior: 'smooth'
+    });
+  };
+
   const [editingMode, setEditingMode] = useState<'create' | 'single' | 'turma'>('create');
   const [editingMemberIds, setEditingMemberIds] = useState<string[] | null>(null);
   const [selectedHorarioId, setSelectedHorarioId] = useState<string | null>(null);
@@ -184,7 +217,8 @@ export default function HorariosPage() {
     horarioFim: '',
     observacoes: '',
     observacaoTurma: '',
-    modalidadeId: ''
+    modalidadeId: '',
+    limiteAlunos: '' as string | number // Limite específico da turma (opcional)
   });
   const [loading, setLoading] = useState(false);
   const [bulkAlunoText, setBulkAlunoText] = useState('');
@@ -611,6 +645,56 @@ export default function HorariosPage() {
     }
   }, [modalidadeSelecionada]);
 
+  // Buscar horários das modalidades vinculadas (conflito de espaço)
+  useEffect(() => {
+    if (!modalidadeSelecionada || modalidades.length === 0) {
+      setHorariosVinculados({});
+      return;
+    }
+    
+    const mod = modalidades.find(m => getMid(m) === modalidadeSelecionada) as any;
+    if (!mod || !mod.modalidadesVinculadas || mod.modalidadesVinculadas.length === 0) {
+      setHorariosVinculados({});
+      return;
+    }
+    
+    // Buscar horários das modalidades vinculadas
+    const fetchHorariosVinculados = async () => {
+      try {
+        const vinculadasIds = mod.modalidadesVinculadas;
+        const horariosMap: Record<string, { modalidadeNome: string; modalidadeCor: string; horarioInicio: string; horarioFim: string }> = {};
+        
+        for (const vinculadaId of vinculadasIds) {
+          const vinculadaMod = modalidades.find(m => getMid(m) === vinculadaId);
+          if (!vinculadaMod) continue;
+          
+          // Buscar horários dessa modalidade
+          const resp = await fetch(`/api/horarios?modalidadeId=${vinculadaId}`);
+          const json = await resp.json();
+          const horariosData = (json && json.success && Array.isArray(json.data)) ? json.data : [];
+          
+          for (const h of horariosData) {
+            if (!h.ativo) continue;
+            const key = `${h.horarioInicio}-${h.diaSemana}`;
+            horariosMap[key] = {
+              modalidadeNome: vinculadaMod.nome,
+              modalidadeCor: vinculadaMod.cor,
+              horarioInicio: h.horarioInicio,
+              horarioFim: h.horarioFim
+            };
+          }
+        }
+        
+        setHorariosVinculados(horariosMap);
+      } catch (err) {
+        console.error('Erro ao buscar horários vinculados:', err);
+        setHorariosVinculados({});
+      }
+    };
+    
+    fetchHorariosVinculados();
+  }, [modalidadeSelecionada, modalidades]);
+
   // Ajustar mobileDiaSelecionado quando a modalidade mudar para garantir que seja um dia válido
   useEffect(() => {
     if (!modalidadeSelecionada || modalidades.length === 0) return;
@@ -676,6 +760,9 @@ export default function HorariosPage() {
     try {
       const url = modalidadeSelecionada ? `/api/horarios?modalidadeId=${modalidadeSelecionada}` : '/api/horarios';
       const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
       const data = await response.json();
       if (data.success) {
         setHorarios(data.data);
@@ -683,7 +770,10 @@ export default function HorariosPage() {
         return data.data;
       }
     } catch (error) {
-      console.error('Erro ao buscar horários:', error);
+      // Silently ignore fetch errors (network issues, tab switching, etc.)
+      if (error instanceof Error && error.message !== 'Failed to fetch') {
+        console.error('Erro ao buscar horários:', error);
+      }
     }
     return null;
   };
@@ -819,7 +909,8 @@ export default function HorariosPage() {
       horarioFim: rep.horarioFim,
       observacoes: '',
       observacaoTurma: (turma as any).observacaoTurma || '',
-      modalidadeId: ''
+      modalidadeId: '',
+      limiteAlunos: rep.limiteAlunos || ''
     });
     setShowModal(true);
   };
@@ -998,12 +1089,18 @@ export default function HorariosPage() {
   const fetchModalidades = async () => {
     try {
       const response = await fetch('/api/modalidades');
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
       const data = await response.json();
       if (data.success) {
         setModalidades(data.data);
       }
     } catch (error) {
-      console.error('Erro ao buscar modalidades:', error);
+      // Silently ignore fetch errors (network issues, tab switching, etc.)
+      if (error instanceof Error && error.message !== 'Failed to fetch') {
+        console.error('Erro ao buscar modalidades:', error);
+      }
     }
   };
 
@@ -1043,7 +1140,8 @@ export default function HorariosPage() {
             horarioFim: formData.horarioFim,
             // Do NOT include per-student `observacoes` here to avoid overwriting individual notes.
             // Only set turma-level observation.
-            observacaoTurma: (formData.observacaoTurma !== undefined ? formData.observacaoTurma : undefined)
+            observacaoTurma: (formData.observacaoTurma !== undefined ? formData.observacaoTurma : undefined),
+            limiteAlunos: formData.limiteAlunos ? Number(formData.limiteAlunos) : undefined
           };
 
           const response = await fetch('/api/horarios/turma', {
@@ -1065,7 +1163,7 @@ export default function HorariosPage() {
             setShowModal(false);
             setEditingMode('create');
             setEditingMemberIds(null);
-            setFormData({ alunoId: '', professorId: '', diaSemana: 1, horarioInicio: '', horarioFim: '', observacoes: '', observacaoTurma: '', modalidadeId: '' });
+            setFormData({ alunoId: '', professorId: '', diaSemana: 1, horarioInicio: '', horarioFim: '', observacoes: '', observacaoTurma: '', modalidadeId: '', limiteAlunos: '' });
             await fetchHorarios();
           } else {
             toast.error('Erro: ' + data.error);
@@ -1168,7 +1266,7 @@ export default function HorariosPage() {
           setLoading(false);
           setShowModal(false);
           setNovoHorarioAlunosText('');
-          setFormData({ alunoId: '', professorId: '', diaSemana: 1, horarioInicio: '', horarioFim: '', observacoes: '', observacaoTurma: '', modalidadeId: '' });
+          setFormData({ alunoId: '', professorId: '', diaSemana: 1, horarioInicio: '', horarioFim: '', observacoes: '', observacaoTurma: '', modalidadeId: '', limiteAlunos: '' });
           await fetchHorarios();
           
           if (failures.length === 0) {
@@ -1220,7 +1318,7 @@ export default function HorariosPage() {
 
             // Success: close modal and refresh
             setShowModal(false);
-            setFormData({ alunoId: '', professorId: '', diaSemana: 1, horarioInicio: '', horarioFim: '', observacoes: '', observacaoTurma: '', modalidadeId: '' });
+            setFormData({ alunoId: '', professorId: '', diaSemana: 1, horarioInicio: '', horarioFim: '', observacoes: '', observacaoTurma: '', modalidadeId: '', limiteAlunos: '' });
             await fetchHorarios();
             setLoading(false);
             return;
@@ -1538,6 +1636,7 @@ export default function HorariosPage() {
   type Turma = {
     professorId: string;
     professorNome: string;
+    horarioInicio: string;
     horarioFim: string;
     alunos: HorarioFixo[];
     observacaoTurma?: string;
@@ -1581,8 +1680,8 @@ export default function HorariosPage() {
         return;
       }
 
-      // Procurar turma do mesmo professor nesse slot usando o id string
-      let turma = grade[key].find(t => t.professorId === professorIdStr && t.horarioFim === horario.horarioFim);
+      // Procurar turma do mesmo professor nesse slot usando o id string (precisa ter mesmo horarioInicio e horarioFim)
+      let turma = grade[key].find(t => t.professorId === professorIdStr && t.horarioInicio === horario.horarioInicio && t.horarioFim === horario.horarioFim);
       if (!turma) {
         // Resolve professorNome: prefer populated nome, otherwise lookup in fetched `professores` list by id, fallback to id string
         let professorNome = '';
@@ -1607,6 +1706,7 @@ export default function HorariosPage() {
         turma = {
           professorId: professorIdStr,
           professorNome: professorNome,
+          horarioInicio: horario.horarioInicio,
           horarioFim: horario.horarioFim,
           alunos: [],
           // Carry explicit turma-level observation if present on the horario document
@@ -1654,7 +1754,7 @@ export default function HorariosPage() {
         const hf = timeToMinutes(h.horarioFim);
                 return m >= hi && m < hf;
       });
-      // Group by professor + horarioFim to form turmas similar to criarGradeHorarios
+      // Group by professor + horarioInicio + horarioFim to form turmas similar to criarGradeHorarios
       const groups: Record<string, any> = {};
       covering.forEach(h => {
         const rawProf = (h as any).professorId;
@@ -1663,7 +1763,7 @@ export default function HorariosPage() {
         else if (typeof rawProf === 'string') professorIdStr = rawProf;
         else if (rawProf._id) professorIdStr = String(rawProf._id);
         else professorIdStr = String(rawProf);
-        const key = `${professorIdStr}::${h.horarioFim}`;
+        const key = `${professorIdStr}::${h.horarioInicio}::${h.horarioFim}`;
   if (!groups[key]) {
     // Resolve professorNome similarly to criarGradeHorarios: prefer populated nome, otherwise lookup in professores state
     let profNome = '';
@@ -1684,7 +1784,7 @@ export default function HorariosPage() {
     } catch (e) {
       profNome = String(professorIdStr || '');
     }
-    groups[key] = { professorId: professorIdStr, professorNome: (profNome && profNome !== 'Sem professor') ? (String(profNome).startsWith('Personal') ? String(profNome) : 'Personal ' + String(profNome)) : 'Sem professor', horarioFim: h.horarioFim, alunos: [], observacaoTurma: (h as any).observacaoTurma || '' };
+    groups[key] = { professorId: professorIdStr, professorNome: (profNome && profNome !== 'Sem professor') ? (String(profNome).startsWith('Personal') ? String(profNome) : 'Personal ' + String(profNome)) : 'Sem professor', horarioInicio: h.horarioInicio, horarioFim: h.horarioFim, alunos: [], observacaoTurma: (h as any).observacaoTurma || '' };
   }
         // Prefer any explicit observacaoTurma found among members
         if (!groups[key].observacaoTurma && (h as any).observacaoTurma) groups[key].observacaoTurma = (h as any).observacaoTurma || '';
@@ -1769,26 +1869,9 @@ export default function HorariosPage() {
       }
 
       // Build rowspan/skip maps relative to visibleTimesArr
-      for (const h of horariosFiltrados) {
-        const day = (h as any).diaSemana;
-        if (!visibleDaysSet.has(day)) continue;
-        const startTime = h.horarioInicio;
-        const endTime = h.horarioFim;
-        const coveredIndices: number[] = [];
-        visibleTimesArr.forEach((vt, idx) => {
-          const m = timeToMinutes(vt);
-          if (m >= timeToMinutes(startTime) && m < timeToMinutes(endTime)) coveredIndices.push(idx);
-        });
-        if (coveredIndices.length === 0) continue;
-        const span = coveredIndices.length;
-        const startKey = `${visibleTimesArr[coveredIndices[0]]}-${day}`;
-        const prev = startRowSpanMap.get(startKey) || 1;
-        startRowSpanMap.set(startKey, Math.max(prev, span));
-        for (let i = 1; i < span; i++) {
-          const skipKey = `${visibleTimesArr[coveredIndices[0] + i]}-${day}`;
-          skipCellsSet.add(skipKey);
-        }
-      }
+      // DISABLED: rowspan was causing incorrect cell merging
+      // Each cell now renders independently without merging
+      // This ensures each time slot shows its own content correctly
 
       return { visibleDays, visibleTimes: visibleTimesArr, startRowSpanMap, skipCellsSet };
     } catch (e) {
@@ -1798,6 +1881,8 @@ export default function HorariosPage() {
 
   // Handler moved out of JSX to avoid large inline blocks and JSX parse issues
   const handleImportClick = async () => {
+    // Prevent double-click
+    if (importing) return;
     // iniciar importação
     setImporting(true);
     // Only import entries that are checked
@@ -2379,14 +2464,16 @@ export default function HorariosPage() {
             </p>
           </div>
           <div>
-            <button
-              type="button"
-              onClick={() => { setShowGradeProfessorModal(true); setGradeProfessorId(''); setGradeSlotsSelected(new Set()); }}
-              className="inline-flex items-center gap-2 px-4 py-2 border border-primary-600 rounded-md text-sm font-medium text-primary-600 bg-white hover:bg-primary-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-all"
-            >
-              <i className="fas fa-th text-primary-600" aria-hidden="true" />
-              Montar Grade Professor
-            </button>
+            {permissoesHorarios.gerenciarTurmas() && (
+              <button
+                type="button"
+                onClick={() => { setShowGradeProfessorModal(true); setGradeProfessorId(''); setGradeSlotsSelected(new Set()); }}
+                className="inline-flex items-center gap-2 px-4 py-2 border border-primary-600 rounded-md text-sm font-medium text-primary-600 bg-white hover:bg-primary-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-all"
+              >
+                <i className="fas fa-th text-primary-600" aria-hidden="true" />
+                Montar Grade Professor
+              </button>
+            )}
           </div>
         </div>
 
@@ -2438,6 +2525,33 @@ export default function HorariosPage() {
           </div>
         </div>
 
+        {/* Aviso de modalidades vinculadas */}
+        {(() => {
+          const mod = modalidades.find(m => getMid(m) === modalidadeSelecionada) as any;
+          const vinculadas = mod?.modalidadesVinculadas || [];
+          if (vinculadas.length === 0) return null;
+          
+          const nomesVinculadas = vinculadas
+            .map((vid: string) => modalidades.find(m => getMid(m) === vid)?.nome)
+            .filter(Boolean);
+          
+          if (nomesVinculadas.length === 0) return null;
+          
+          return (
+            <div className="mb-4 p-3 bg-orange-50 border border-orange-200 rounded-lg flex items-start gap-3 fade-in-2">
+              <i className="fas fa-link text-orange-500 mt-0.5"></i>
+              <div>
+                <p className="text-sm font-medium text-orange-800">
+                  Espaço compartilhado com: <span className="font-bold">{nomesVinculadas.join(', ')}</span>
+                </p>
+                <p className="text-xs text-orange-600 mt-0.5">
+                  Os horários ocupados por essas modalidades são exibidos na grade e não podem receber novas aulas.
+                </p>
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Grade de horários - Versão Desktop */}
         {/* Only render the heavy schedule after hydration on client to avoid SSR/CSR mismatch */}
         {mounted && (
@@ -2474,7 +2588,8 @@ export default function HorariosPage() {
                   </td>
                   {visibleDays.map((dayIndex) => {
                     const key = `${horarioSlot}-${dayIndex}`;
-                    const isBlocked = !!blockedSlots[key];
+                    const blockedKey = `${horarioSlot}-${dayIndex}-${modalidadeSelecionada}`;
+                    const isBlocked = !!blockedSlots[blockedKey];
                     // If this cell is covered by a rowspan from a previous slot, don't render a td here
                     if (skipCellsSet.has(key)) return null;
                     const turmas = getTurmasForSlot(horarioSlot, dayIndex); // Array de turmas neste slot (covers multi-slot turmas)
@@ -2496,7 +2611,11 @@ export default function HorariosPage() {
                           return (turma.alunos || []).filter((h: any) => h && h.alunoId && (h.alunoId.nome || h.alunoId._id));
                         })();
                         let capacity: number | undefined = undefined;
-                        if (modalidadeSelecionada) {
+                        // Prioridade: 1) limite da turma, 2) limite da modalidade selecionada, 3) limite da modalidade do aluno
+                        const turmaTemplate = turma.alunos && turma.alunos[0];
+                        if (turmaTemplate && typeof turmaTemplate.limiteAlunos === 'number') {
+                          capacity = turmaTemplate.limiteAlunos;
+                        } else if (modalidadeSelecionada) {
                           const mod = modalidades.find(m => getMid(m) === modalidadeSelecionada) as any;
                           if (mod && typeof mod.limiteAlunos === 'number') capacity = mod.limiteAlunos;
                         }
@@ -2567,15 +2686,26 @@ export default function HorariosPage() {
                         }
                       }
                     }
-                    // Respect manual blocked slots
+                    // Respect manual blocked slots - guardamos separadamente para diferenciar na UI
+                    const isManuallyBlocked = isBlocked;
+                    const isOutsideSchedule = !isOpen; // fora do horário de funcionamento da modalidade
                     if (isBlocked) isOpen = false;
+
+                    // Verificar se há conflito com modalidade vinculada
+                    const conflitoVinculado = horariosVinculados[key];
+                    const hasConflito = !!conflitoVinculado;
 
                     return (
                       <td
                         key={key}
                         rowSpan={rowSpan}
-                        onClick={() => {
+                        className="h-24"
+                        onClick={(e) => {
+                          scrollToCenter(e);
                           if (!isOpen) return; // blocked slot
+                          if (hasConflito) return; // conflito com modalidade vinculada
+                          // Se não tem permissão de gerenciar turmas, não faz nada
+                          if (!permissoesHorarios.gerenciarTurmas()) return;
                           // If this cell already has one or more turmas, do NOT open edit/create modal
                           // Clicking the cell should be a no-op in that case. Use the buttons inside
                           // each turma card to edit/add students or the small '+' button to add a new turma.
@@ -2598,14 +2728,15 @@ export default function HorariosPage() {
                           setEditingMemberIds([]);
                           setShowModal(true);
                         }}
-                        className={`p-2 border-r border-b border-gray-200 h-full ${(!isOpen) ? 'cursor-not-allowed opacity-80' : ((isOpen && (!turmas || turmas.length === 0)) ? 'cursor-pointer' : 'cursor-default')}`}
+                        className={`border-r border-b border-gray-200 ${(!isOpen || hasConflito) ? 'cursor-not-allowed opacity-90' : ''} ${hasConflito ? 'bg-orange-50' : (!isOpen ? 'bg-red-50' : '')} ${(isOpen && !hasConflito && (!turmas || turmas.length === 0) && permissoesHorarios.gerenciarTurmas()) ? 'cursor-pointer' : 'cursor-default'}`}
+                        style={{ verticalAlign: 'middle' }}
                       >
-                            <div className={`${!isOpen ? 'bg-red-50' : (turmas && turmas.length > 0) ? 'bg-white' : 'bg-white hover:bg-gray-50'} rounded-md p-2 flex flex-col justify-center h-full`}>
+                            <div className={`h-full ${!isOpen ? '' : (turmas && turmas.length > 0) ? 'bg-white p-2 w-full' : ''} ${!isOpen ? 'p-4 flex items-center justify-center' : (turmas && turmas.length > 0) ? 'rounded-md flex flex-col w-full' : ''}`}>
                           {isOpen ? (
                             // open interval: show turmas or 'TURMA VAGA'
                             (turmas && turmas.length > 0) ? (
-                              <div className="flex flex-col">
-                                <div className="flex flex-col space-y-2">
+                              <div className="flex flex-col w-full">
+                                <div className="flex flex-col space-y-2 w-full">
                                   {turmas.map((turma, turmaIdx) => {
                                     const visibleAlunos = (() => {
                                       try {
@@ -2615,10 +2746,14 @@ export default function HorariosPage() {
                                       } catch (e) {}
                                       return (turma.alunos || []).filter((h: any) => h && h.alunoId && (h.alunoId.nome || h.alunoId._id));
                                     })();
-                                    // Determine capacity: prefer selected modalidade, otherwise infer from first aluno
+                                    // Determine capacity: prefer turma-specific limit, then selected modalidade, otherwise infer from first aluno
                                     let capacity: number | undefined = undefined;
                                     try {
-                                      if (modalidadeSelecionada) {
+                                      // Prioridade: 1) limite da turma, 2) limite da modalidade
+                                      const turmaTemplate = turma.alunos && turma.alunos[0];
+                                      if (turmaTemplate && typeof turmaTemplate.limiteAlunos === 'number') {
+                                        capacity = turmaTemplate.limiteAlunos;
+                                      } else if (modalidadeSelecionada) {
                                         const mod = modalidades.find(m => getMid(m) === modalidadeSelecionada) as any;
                                         if (mod && typeof mod.limiteAlunos === 'number') capacity = mod.limiteAlunos;
                                       }
@@ -2646,6 +2781,9 @@ export default function HorariosPage() {
                                     }).length;
                                     const exceeded = capacity !== undefined && count >= capacity;
                                     const over = capacity !== undefined && count > capacity; // aluno a mais
+                                    // Verificar se o limite é personalizado da turma
+                                    const turmaTemplate = turma.alunos && turma.alunos[0];
+                                    const isCustomLimit = turmaTemplate && typeof turmaTemplate.limiteAlunos === 'number';
                                     const explicitTurmaObs = (turma as any).observacaoTurma;
                                     const turmaObsStr = explicitTurmaObs ? String(explicitTurmaObs).trim() : '';
                                     // determine professor/modalidade color (fallback to primary) and compute a pastel background
@@ -2687,7 +2825,7 @@ export default function HorariosPage() {
                                       if (pastelBg) bgStyle = { backgroundColor: pastelBg };
                                     }
 
-                                    const turmaClass = `${borderCls} ${textCls} border px-3 py-2 rounded-md text-xs mb-1 flex flex-col`;
+                                    const turmaClass = `${borderCls} ${textCls} border px-3 py-2 rounded-md text-xs mb-1 flex flex-col w-full`;
                                     try { if (typeof window !== 'undefined') console.debug('renderTurma: turma', { professor: turma.professorNome, turmaObs: turma.observacaoTurma, visibleAlunos: visibleAlunos.map((a:any)=>({id:a._id, obs: a.observacoes})) }); } catch(e) {}
 
                                     return (
@@ -2723,7 +2861,12 @@ export default function HorariosPage() {
                                               })()
                                             )}
                                           </div>
-                                          <div className={`text-[11px] ${exceeded ? 'text-red-700 font-semibold' : 'text-gray-600'}`}>{count}{capacity ? `/${capacity}` : ''}</div>
+                                          <div 
+                                            className={`text-[11px] ${exceeded ? 'text-red-700 font-semibold' : 'text-gray-600'}`}
+                                            title={isCustomLimit ? 'Limite personalizado desta turma' : 'Limite da modalidade'}
+                                          >
+                                            {count}{capacity ? `/${capacity}` : ''}{isCustomLimit ? ' ✱' : ''}
+                                          </div>
                                         </div>
                                         {turmaObsStr ? (
                                           <div className="mb-2 text-left">
@@ -2787,6 +2930,7 @@ export default function HorariosPage() {
                                                   {studentObs ? <div className="text-[11px] text-gray-500 mt-0.5 truncate">{studentObs}</div> : null}
                                                 </div>
 
+                                                {permissoesHorarios.removerAluno() && (
                                                 <div className="flex-shrink-0">
                                                   <button
                                                     onClick={async (e) => {
@@ -2834,6 +2978,7 @@ export default function HorariosPage() {
                                                     <span className={`text-xs ${(isAusente || isCongelado) ? 'text-gray-400' : 'text-gray-800'}`} aria-hidden>×</span>
                                                   </button>
                                                 </div>
+                                                )}
                                               </div>
                                             );
                                           })}
@@ -2841,9 +2986,9 @@ export default function HorariosPage() {
                                         {/* Botões de ação da turma */}
                                         <div className="mt-2 flex items-center justify-center gap-1.5">
                                           
-
+                                          {permissoesHorarios.adicionarAluno() && (
                                           <button
-                                            onClick={(e) => { e.stopPropagation(); if (exceeded) return; setAddAlunoTurma({ professorId: String((turma as any).professorId?._id || (turma as any).professorId || ''), diaSemana: dayIndex, horarioInicio: horarioSlot, horarioFim: turma.horarioFim }); setShowAddSingleAlunoModal(true); setSingleAlunoSearch(''); setSingleAlunoSelectedId(null); setSingleAlunoName(''); setSingleAlunoObservacoes(''); }}
+                                            onClick={(e) => { e.stopPropagation(); if (exceeded) return; setAddAlunoTurma({ professorId: String((turma as any).professorId?._id || (turma as any).professorId || ''), diaSemana: dayIndex, horarioInicio: turma.horarioInicio, horarioFim: turma.horarioFim }); setShowAddSingleAlunoModal(true); setSingleAlunoSearch(''); setSingleAlunoSelectedId(null); setSingleAlunoName(''); setSingleAlunoObservacoes(''); }}
                                             title={exceeded ? 'Turma lotada' : 'Adicionar 1 aluno'}
                                             type="button"
                                             disabled={exceeded}
@@ -2852,7 +2997,9 @@ export default function HorariosPage() {
                                           >
                                             <i className="fas fa-user-plus text-xs" aria-hidden="true" />
                                           </button>
+                                          )}
 
+                                          {permissoesHorarios.gerenciarTurmas() && (
                                           <button
                                             onClick={(e) => { e.stopPropagation(); openEditTurmaGroup(turma); }}
                                             title="Editar turma"
@@ -2860,7 +3007,9 @@ export default function HorariosPage() {
                                           >
                                             <i className="fas fa-edit text-xs" aria-hidden="true" />
                                           </button>
+                                          )}
 
+                                          {permissoesHorarios.gerenciarTurmas() && (
                                           <button
                                             onClick={async (e) => { 
                                               e.stopPropagation(); 
@@ -2882,12 +3031,14 @@ export default function HorariosPage() {
                                           >
                                             <i className="fas fa-trash text-xs" aria-hidden="true" />
                                           </button>
+                                          )}
                                         </div>
                                       </div>
                                     );
                                   })}
                                 </div>
                                 {/* add-button: render outside the turma card list so it visually indicates adding another turma for this slot */}
+                                {permissoesHorarios.gerenciarTurmas() && (
                                 <div className="mt-2 w-full flex items-center justify-center">
                                   <button
                                     type="button"
@@ -2915,42 +3066,91 @@ export default function HorariosPage() {
                                     <i className="fas fa-plus text-xs"></i>
                                   </button>
                                 </div>
+                                )}
+                              </div>
+                            ) : hasConflito ? (
+                              // Célula com conflito de modalidade vinculada
+                              <div className="h-full w-full flex items-center justify-center p-2">
+                                <div 
+                                  className="text-center p-3 rounded-lg border-2 border-dashed w-full"
+                                  style={{ 
+                                    backgroundColor: `${conflitoVinculado.modalidadeCor}15`,
+                                    borderColor: conflitoVinculado.modalidadeCor
+                                  }}
+                                >
+                                  <i 
+                                    className="fas fa-link text-base mb-1"
+                                    style={{ color: conflitoVinculado.modalidadeCor }}
+                                  ></i>
+                                  <p 
+                                    className="text-xs font-bold"
+                                    style={{ color: conflitoVinculado.modalidadeCor }}
+                                  >
+                                    {conflitoVinculado.modalidadeNome}
+                                  </p>
+                                  <p className="text-[10px] text-gray-600 mt-0.5">
+                                    {conflitoVinculado.horarioInicio} - {conflitoVinculado.horarioFim}
+                                  </p>
+                                  <p className="text-[9px] text-orange-600 font-medium mt-1">
+                                    <i className="fas fa-exclamation-triangle mr-1"></i>
+                                    Espaço ocupado
+                                  </p>
+                                </div>
                               </div>
                             ) : (
                               <div className="h-full w-full flex items-center justify-center p-4">
                                 <div className="text-center">
                                   <i className="fas fa-check-circle text-green-600 text-base mb-1"></i>
                                   <p className="text-xs font-semibold text-green-700">TURMA VAGA</p>
-                                  <p className="text-xs text-gray-500 mt-1">Clique para adicionar</p>
+                                  {permissoesHorarios.gerenciarTurmas() && (
+                                    <p className="text-xs text-gray-500 mt-1">Clique para adicionar</p>
+                                  )}
                                   <div className="mt-2 flex items-center justify-center">
+                                    {permissoesHorarios.bloquearHorarios() && (
                                     <button
-                                      onClick={(e) => { e.stopPropagation(); toggleBlockSlot(key); }}
+                                      onClick={(e) => { e.stopPropagation(); toggleBlockSlot(horarioSlot, dayIndex); }}
                                       className="text-xs text-gray-600 px-2 py-1 border rounded-md hover:bg-gray-50"
                                       title="Bloquear horário"
                                     >
                                       Bloquear
                                     </button>
+                                    )}
                                   </div>
                                 </div>
                               </div>
                             )
                           ) : (
-                            // blocked slot for this modalidade/day/time
-                            <div className="flex items-center justify-center flex-1 p-4">
-                              <div className="text-center">
-                                <i className="fas fa-ban text-red-600 text-base mb-1"></i>
-                                <p className="text-xs font-semibold text-red-700 bg-red-50 px-3 py-1.5 rounded-md">INDISPONÍVEL</p>
-                                <div className="mt-2 flex items-center justify-center">
-                                  <button
-                                    onClick={(e) => { e.stopPropagation(); toggleBlockSlot(key); }}
-                                    className="text-xs text-primary-600 px-2 py-1 border rounded-md bg-white hover:bg-gray-50"
-                                    title="Desbloquear horário"
-                                  >
-                                    Desbloquear
-                                  </button>
+                            // blocked slot - diferencia bloqueio manual vs fora do horário
+                            isManuallyBlocked ? (
+                              // Bloqueio manual - mostra opção de desbloquear
+                              <div className="h-full w-full flex items-center justify-center p-4">
+                                <div className="text-center">
+                                  <i className="fas fa-ban text-red-600 text-base mb-1"></i>
+                                  <p className="text-xs font-semibold text-red-700">BLOQUEADO</p>
+                                  <p className="text-[10px] text-gray-500 mt-0.5">Bloqueio manual</p>
+                                  <div className="mt-2 flex items-center justify-center">
+                                    {permissoesHorarios.bloquearHorarios() && (
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); toggleBlockSlot(horarioSlot, dayIndex); }}
+                                      className="text-xs text-primary-600 px-2 py-1 border rounded-md bg-white hover:bg-gray-50"
+                                      title="Desbloquear horário"
+                                    >
+                                      Desbloquear
+                                    </button>
+                                    )}
+                                  </div>
                                 </div>
                               </div>
-                            </div>
+                            ) : (
+                              // Fora do horário de funcionamento - não mostra opção de desbloquear
+                              <div className="h-full w-full flex items-center justify-center p-4">
+                                <div className="text-center">
+                                  <i className="fas fa-clock text-gray-400 text-base mb-1"></i>
+                                  <p className="text-xs font-semibold text-gray-500">SEM AULA</p>
+                                  <p className="text-[10px] text-gray-400 mt-0.5">Fora do horário</p>
+                                </div>
+                              </div>
+                            )
                           )}
                         </div>
                       </td>
@@ -3023,11 +3223,12 @@ export default function HorariosPage() {
                   .filter(h => h.diaSemana === mobileDiaSelecionado)
                   .sort((a, b) => a.horarioInicio.localeCompare(b.horarioInicio));
 
-                if (horariosNoDia.length === 0) {
+                  if (horariosNoDia.length === 0) {
                   return (
                     <div className="bg-white rounded-lg border border-gray-200 p-8 text-center">
                       <i className="fas fa-calendar-times text-3xl text-gray-300 mb-3"></i>
                       <p className="text-gray-500">Nenhum horário cadastrado para {diasSemana[mobileDiaSelecionado]}</p>
+                      {permissoesHorarios.gerenciarTurmas() && (
                       <button
                         onClick={() => {
                           setEditingMode('create');
@@ -3050,11 +3251,10 @@ export default function HorariosPage() {
                         <i className="fas fa-plus"></i>
                         Adicionar Horário
                       </button>
+                      )}
                     </div>
                   );
-                }
-
-                // Agrupar por horário de início + professor
+                }                // Agrupar por horário de início + professor
                 const grupos: Record<string, typeof horariosNoDia> = {};
                 horariosNoDia.forEach(h => {
                   const profId = typeof h.professorId === 'object' ? h.professorId?._id : h.professorId;
@@ -3217,6 +3417,7 @@ export default function HorariosPage() {
                                         </span>
                                       )}
                                       {/* Botão remover aluno */}
+                                      {permissoesHorarios.removerAluno() && (
                                       <button
                                         onClick={async (e) => {
                                           e.stopPropagation();
@@ -3274,6 +3475,7 @@ export default function HorariosPage() {
                                       >
                                         <i className="fas fa-trash-alt text-xs"></i>
                                       </button>
+                                      )}
                                     </div>
                                   </div>
                                 );
@@ -3283,14 +3485,15 @@ export default function HorariosPage() {
 
                           {/* Footer com ações */}
                           <div className="px-4 py-3 bg-gray-50 border-t border-gray-100 flex justify-between gap-2">
-                            <button
-                              onClick={() => {
-                                // Editar turma - abre o modal de edição
-                                const profId = typeof primeiro.professorId === 'object' ? primeiro.professorId?._id : primeiro.professorId;
-                                setEditingMode('turma');
-                                setFormData({
-                                  alunoId: '',
-                                  professorId: profId || '',
+                            {permissoesHorarios.gerenciarTurmas() && (
+                              <button
+                                onClick={() => {
+                                  // Editar turma - abre o modal de edição
+                                  const profId = typeof primeiro.professorId === 'object' ? primeiro.professorId?._id : primeiro.professorId;
+                                  setEditingMode('turma');
+                                  setFormData({
+                                    alunoId: '',
+                                    professorId: profId || '',
                                   diaSemana: primeiro.diaSemana,
                                   horarioInicio: primeiro.horarioInicio,
                                   horarioFim: primeiro.horarioFim,
@@ -3309,6 +3512,8 @@ export default function HorariosPage() {
                               <i className="fas fa-edit"></i>
                               Editar Turma
                             </button>
+                            )}
+                            {permissoesHorarios.adicionarAluno() && (
                             <button
                               onClick={() => {
                                 setAddAlunoTurma({
@@ -3328,6 +3533,7 @@ export default function HorariosPage() {
                               <i className="fas fa-user-plus"></i>
                               Adicionar Aluno
                             </button>
+                            )}
                           </div>
                         </>
                       )}
@@ -3338,6 +3544,7 @@ export default function HorariosPage() {
             </div>
 
             {/* Botão para adicionar novo horário no dia selecionado */}
+            {permissoesHorarios.gerenciarTurmas() && (
             <button
               onClick={() => {
                 setEditingMode('create');
@@ -3360,6 +3567,7 @@ export default function HorariosPage() {
               <i className="fas fa-plus-circle"></i>
               Adicionar Nova Turma em {['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'][mobileDiaSelecionado]}
             </button>
+            )}
           </div>
         )}
 
@@ -3475,6 +3683,10 @@ export default function HorariosPage() {
                     <div className="text-sm font-semibold">{(editingMemberIds && editingMemberIds.length) || 0} aluno{(editingMemberIds && editingMemberIds.length) === 1 ? '' : 's'}</div>
                     <div className="text-xs text-gray-500">{(() => {
                       try {
+                        // Prioridade: limite da turma (formData) > limite da modalidade
+                        if (formData.limiteAlunos && Number(formData.limiteAlunos) > 0) {
+                          return `Limite: ${formData.limiteAlunos} (turma)`;
+                        }
                         const mid = formData.modalidadeId || modalidadeSelecionada || '';
                         const mod = modalidades.find(m => getMid(m) === mid) as any;
                         return mod && typeof mod.limiteAlunos === 'number' ? `Limite: ${mod.limiteAlunos}` : 'Limite: —';
@@ -3593,6 +3805,30 @@ export default function HorariosPage() {
                     className="mt-1 block w-full h-10 border border-gray-300 rounded-md px-3 py-2 text-sm font-medium focus:outline-none focus:ring-primary-500 focus:border-primary-500 transition-all"
                     placeholder="Ex.: Turma iniciante, foco em cardio, aquecimento de 10min..."
                   />
+                </div>
+              )}
+
+              {(editingMode === 'turma' || editingMode === 'create') && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Limite de Alunos da Turma
+                    <span className="text-gray-400 font-normal ml-1">(opcional - sobrescreve limite da modalidade)</span>
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={formData.limiteAlunos}
+                    onChange={(e) => setFormData({...formData, limiteAlunos: e.target.value})}
+                    className="mt-1 block w-full h-10 border border-gray-300 rounded-md px-3 py-2 text-sm font-medium focus:outline-none focus:ring-primary-500 focus:border-primary-500 transition-all"
+                    placeholder="Ex.: 10 (turma com pais) ou 5 (turma normal)"
+                  />
+                  {modalidadeSelecionada && (() => {
+                    const mod = modalidades.find(m => (m as any)._id === modalidadeSelecionada || (m as any).id === modalidadeSelecionada) as any;
+                    if (mod && typeof mod.limiteAlunos === 'number') {
+                      return <p className="text-xs text-gray-500 mt-1">Limite padrão da modalidade: {mod.limiteAlunos} alunos</p>;
+                    }
+                    return null;
+                  })()}
                 </div>
               )}
 
@@ -3892,6 +4128,7 @@ export default function HorariosPage() {
               </div>
 
               {/* Botão para adicionar em lote */}
+              {permissoesHorarios.importarLote() && (
               <button
                 type="button"
                 onClick={() => { 
@@ -3905,6 +4142,7 @@ export default function HorariosPage() {
                 <i className="fas fa-users" aria-hidden="true" />
                 Adicionar vários alunos de uma vez
               </button>
+              )}
 
               {/* Botões de ação */}
               <div className="flex justify-end gap-3 pt-3 border-t">
@@ -3917,6 +4155,9 @@ export default function HorariosPage() {
                 </button>
                 <button
                   onClick={async () => {
+                    // Prevent double-click
+                    if (loading) return;
+                    
                     try {
                       setLoading(true);
                       // Require an existing aluno to be selected
@@ -3960,8 +4201,8 @@ export default function HorariosPage() {
                       setLoading(false);
                     }
                   }}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 transition-colors flex items-center gap-2 ${!singleAlunoSelectedId ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  disabled={!singleAlunoSelectedId}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 transition-colors flex items-center gap-2 ${(!singleAlunoSelectedId || loading) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  disabled={!singleAlunoSelectedId || loading}
                 >
                   {loading ? (
                     <>
@@ -4067,9 +4308,9 @@ export default function HorariosPage() {
                           <th className="px-2 py-2 text-center text-xs font-bold text-gray-700 uppercase w-20 border-r border-gray-200">
                             Horário
                           </th>
-                          {diasSemana.slice(1, 7).map((dia, idx) => (
-                            <th key={idx + 1} className="px-2 py-2 text-center text-xs font-bold text-gray-700 uppercase border-r border-gray-200">
-                              {dia.substring(0, 3)}
+                          {visibleDays.filter(d => d > 0).map((dayIndex) => (
+                            <th key={dayIndex} className="px-2 py-2 text-center text-xs font-bold text-gray-700 uppercase border-r border-gray-200">
+                              {diasSemana[dayIndex]?.substring(0, 3)}
                             </th>
                           ))}
                         </tr>
@@ -4080,11 +4321,21 @@ export default function HorariosPage() {
                             <td className="px-2 py-1 text-center text-xs font-medium text-gray-700 bg-gray-50 border-r border-b border-gray-200">
                               {horarioSlot}
                             </td>
-                            {diasSemana.slice(1, 7).map((_, idx) => {
-                              const dayIndex = idx + 1;
+                            {visibleDays.filter(d => d > 0).map((dayIndex) => {
                               const slotKey = `${horarioSlot}-${dayIndex}`;
                               const isSelected = gradeSlotsSelected.has(slotKey);
                               const professorCor = professores.find(p => String((p as any)._id || '') === gradeProfessorId)?.cor || '#3B82F6';
+                              
+                              // Check if there's already a turma in this slot
+                              const turmasNoSlot = getTurmasForSlot(horarioSlot, dayIndex);
+                              const hasTurma = turmasNoSlot && turmasNoSlot.length > 0;
+                              const alunosCount = hasTurma ? turmasNoSlot.reduce((acc: number, t: any) => {
+                                const alunos = t.alunos || [];
+                                if (alunos.length === 1 && Array.isArray(alunos[0]?.matriculas)) {
+                                  return acc + alunos[0].matriculas.length;
+                                }
+                                return acc + alunos.length;
+                              }, 0) : 0;
                               
                               return (
                                 <td
@@ -4100,10 +4351,15 @@ export default function HorariosPage() {
                                       return next;
                                     });
                                   }}
-                                  className={`px-2 py-2 text-center border-r border-b border-gray-200 cursor-pointer transition-all ${isSelected ? 'text-white' : 'hover:bg-gray-100'}`}
+                                  className={`px-2 py-2 text-center border-r border-b border-gray-200 cursor-pointer transition-all ${isSelected ? 'text-white' : hasTurma ? 'bg-amber-50 hover:bg-amber-100' : 'hover:bg-gray-100'}`}
                                   style={{ backgroundColor: isSelected ? professorCor : undefined }}
+                                  title={hasTurma ? `${alunosCount} aluno(s) neste horário` : 'Horário vago'}
                                 >
-                                  {isSelected && <i className="fas fa-check text-xs" aria-hidden="true" />}
+                                  {isSelected ? (
+                                    <i className="fas fa-check text-xs" aria-hidden="true" />
+                                  ) : hasTurma ? (
+                                    <span className="text-amber-600 text-xs font-medium">{alunosCount}</span>
+                                  ) : null}
                                 </td>
                               );
                             })}
@@ -4150,75 +4406,53 @@ export default function HorariosPage() {
                 type="button"
                 disabled={gradeLoading || !gradeProfessorId || gradeSlotsSelected.size === 0}
                 onClick={async () => {
+                  // Prevent double-click
+                  if (gradeLoading) return;
                   if (!gradeProfessorId || gradeSlotsSelected.size === 0) return;
                   
                   setGradeLoading(true);
                   let successes = 0;
                   let failures = 0;
                   
-                  // Agrupar slots consecutivos por dia para criar horários com duração correta
-                  const slotsByDay: Record<number, string[]> = {};
-                  gradeSlotsSelected.forEach(slotKey => {
+                  const step = getCurrentStep();
+                  
+                  // Criar um horário para CADA slot selecionado (não agrupar consecutivos)
+                  for (const slotKey of gradeSlotsSelected) {
                     const [horario, dia] = slotKey.split('-');
                     const dayNum = parseInt(dia);
-                    if (!slotsByDay[dayNum]) slotsByDay[dayNum] = [];
-                    slotsByDay[dayNum].push(horario);
-                  });
-                  
-                  // Para cada dia, ordenar horários e criar blocos consecutivos
-                  for (const [dayStr, slots] of Object.entries(slotsByDay)) {
-                    const dayNum = parseInt(dayStr);
-                    const sortedSlots = slots.sort((a, b) => timeToMinutes(a) - timeToMinutes(b));
                     
-                    // Agrupar slots consecutivos
-                    const step = getCurrentStep();
-                    let blockStart = sortedSlots[0];
-                    let blockEnd = sortedSlots[0];
+                    const horarioInicio = horario;
+                    const horarioFimMinutes = timeToMinutes(horario) + step;
+                    const horarioFim = `${String(Math.floor(horarioFimMinutes / 60)).padStart(2, '0')}:${String(horarioFimMinutes % 60).padStart(2, '0')}`;
                     
-                    for (let i = 1; i <= sortedSlots.length; i++) {
-                      const currentSlot = sortedSlots[i];
-                      const prevSlotEnd = timeToMinutes(blockEnd) + step;
+                    try {
+                      const payload = {
+                        professorId: gradeProfessorId,
+                        diaSemana: dayNum,
+                        horarioInicio,
+                        horarioFim,
+                        modalidadeId: modalidadeSelecionada || undefined
+                      };
                       
-                      if (currentSlot && timeToMinutes(currentSlot) === prevSlotEnd) {
-                        // Slot consecutivo, estender o bloco
-                        blockEnd = currentSlot;
+                      const resp = await fetch('/api/horarios', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                      });
+                      
+                      const data = await resp.json();
+                      if (data && data.success) {
+                        successes++;
                       } else {
-                        // Fim do bloco ou último slot - criar horário
-                        const horarioInicio = blockStart;
-                        const horarioFimMinutes = timeToMinutes(blockEnd) + step;
-                        const horarioFim = `${String(Math.floor(horarioFimMinutes / 60)).padStart(2, '0')}:${String(horarioFimMinutes % 60).padStart(2, '0')}`;
-                        
-                        try {
-                          const payload = {
-                            professorId: gradeProfessorId,
-                            diaSemana: dayNum,
-                            horarioInicio,
-                            horarioFim,
-                            modalidadeId: modalidadeSelecionada || undefined
-                          };
-                          
-                          const resp = await fetch('/api/horarios', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(payload)
-                          });
-                          
-                          const data = await resp.json();
-                          if (data && data.success) {
-                            successes++;
-                          } else {
-                            failures++;
-                          }
-                        } catch (err) {
+                        // Se o erro for "já existe turma", considerar como sucesso (turma já criada)
+                        if (data && data.error && data.error.includes('Já existe uma turma')) {
+                          // Turma já existe, não contar como falha
+                        } else {
                           failures++;
                         }
-                        
-                        // Iniciar novo bloco se houver mais slots
-                        if (currentSlot) {
-                          blockStart = currentSlot;
-                          blockEnd = currentSlot;
-                        }
                       }
+                    } catch (err) {
+                      failures++;
                     }
                   }
                   
@@ -4229,7 +4463,11 @@ export default function HorariosPage() {
                     setShowGradeProfessorModal(false);
                     setGradeProfessorId('');
                     setGradeSlotsSelected(new Set());
-                    toast.success(`${successes} horário${successes !== 1 ? 's' : ''} criado${successes !== 1 ? 's' : ''} com sucesso!`);
+                    if (successes > 0) {
+                      toast.success(`${successes} horário${successes !== 1 ? 's' : ''} criado${successes !== 1 ? 's' : ''} com sucesso!`);
+                    } else {
+                      toast.info('Todos os horários já existiam');
+                    }
                   } else {
                     toast.warning(`Criados: ${successes}. Falhas: ${failures}`);
                   }

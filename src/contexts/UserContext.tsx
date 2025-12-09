@@ -77,9 +77,15 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       const token = localStorage.getItem('token');
       if (!token) return;
 
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+
       const res = await fetch('/api/auth/me', {
-        headers: { 'Authorization': `Bearer ${token}` }
+        headers: { 'Authorization': `Bearer ${token}` },
+        signal: controller.signal
       });
+      
+      clearTimeout(timeoutId);
       
       if (res.ok) {
         const data = await res.json();
@@ -105,7 +111,10 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         }
       }
     } catch (e) {
-      console.error('Erro ao sincronizar usuário:', e);
+      // Ignora erros de rede (podem ser causados por extensões de segurança)
+      if (e instanceof Error && e.name !== 'AbortError') {
+        console.warn('Erro ao sincronizar usuário (pode ser extensão de segurança):', e.message);
+      }
     }
   }, []);
 

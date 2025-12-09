@@ -236,15 +236,25 @@ export default function ProfessorAlunosPage() {
 
   return (
     <ProtectedPage tab="professor:alunos" title="Meus Alunos - Superação Flux">
-        <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6">
+        <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-4 md:p-6">
           <div className="max-w-6xl mx-auto">
-            <div className="mb-8 fade-in-1 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-              <div>
-                <h1 className="text-2xl font-semibold text-gray-900">
-                  <i className="fas fa-users mr-3 text-primary-600"></i>
-                  Meus Alunos
-                </h1>
-              </div>
+            {/* Header Desktop */}
+            <div className="hidden md:block mb-6 fade-in-1">
+              <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                <i className="fas fa-users text-primary-600"></i>
+                Meus Alunos
+              </h1>
+              <p className="text-sm text-gray-600 mt-1">Visualize e gerencie os alunos das suas turmas</p>
+            </div>
+            
+            {/* Header Mobile - Compacto */}
+            <div className="md:hidden mb-3 fade-in-1">
+              <h1 className="text-lg font-bold text-gray-900">
+                <i className="fas fa-users text-primary-600 mr-1.5"></i>
+                Meus Alunos
+              </h1>
+            </div>
+
       {/* Modal de faltas do aluno */}
       {showModalFaltas && (
         <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50" onClick={() => setShowModalFaltas(false)}>
@@ -290,8 +300,6 @@ export default function ProfessorAlunosPage() {
           matricula={reagendarData.matricula}
         />
       )}
-           
-            </div>
 
             <div className="mb-6 fade-in-2">
               <div className="relative">
