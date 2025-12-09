@@ -2699,7 +2699,6 @@ export default function HorariosPage() {
                       <td
                         key={key}
                         rowSpan={rowSpan}
-                        className="h-24"
                         onClick={(e) => {
                           scrollToCenter(e);
                           if (!isOpen) return; // blocked slot

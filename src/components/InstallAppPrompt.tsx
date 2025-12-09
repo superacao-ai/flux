@@ -157,11 +157,11 @@ export default function InstallAppPrompt() {
             </li>
             <li className="flex items-start gap-3">
               <span className="w-6 h-6 bg-primary-100 text-primary-700 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-xs">2</span>
-              <span>Role e toque em <strong>"Adicionar à Tela de Início"</strong></span>
+              <span>Role e toque em <strong>&quot;Adicionar à Tela de Início&quot;</strong></span>
             </li>
             <li className="flex items-start gap-3">
               <span className="w-6 h-6 bg-primary-100 text-primary-700 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-xs">3</span>
-              <span>Toque em <strong>"Adicionar"</strong> no canto superior direito</span>
+              <span>Toque em <strong>&quot;Adicionar&quot;</strong> no canto superior direito</span>
             </li>
           </ol>
           <button
