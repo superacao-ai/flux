@@ -209,6 +209,17 @@ export default function AdminLoginPage() {
                 Solicite ao admin
               </button>
             </p>
+
+            {/* Links de Privacidade e Termos */}
+            <div className="flex items-center justify-center gap-3 pt-2 text-xs text-gray-400">
+              <Link href="/privacidade" className="hover:text-primary-600 transition-colors">
+                Privacidade
+              </Link>
+              <span>•</span>
+              <Link href="/termos" className="hover:text-primary-600 transition-colors">
+                Termos de Uso
+              </Link>
+            </div>
           </div>
         </div>
 

@@ -1,35 +1,24 @@
 import { NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
-import { User } from '@/models/User';
+import { Configuracao } from '@/models/Configuracao';
 
-// GET - Busca o telefone do usuário root/admin para contato
+// GET - Busca o telefone do suporte para contato
 export async function GET() {
   try {
     await connectDB();
     
-    // Primeiro tenta buscar usuário root
-    let admin = await User.findOne({ 
-      tipo: 'root',
-      ativo: true 
-    }).select('telefone nome');
+    // Buscar configuração de WhatsApp do suporte
+    const configSuporte = await Configuracao.findOne({ chave: 'whatsapp_suporte' });
 
-    // Se não encontrar root, busca admin
-    if (!admin) {
-      admin = await User.findOne({ 
-        tipo: 'admin',
-        ativo: true 
-      }).select('telefone nome');
-    }
-
-    if (!admin || !admin.telefone) {
+    if (!configSuporte || !configSuporte.valor) {
       return NextResponse.json({
         success: false,
-        error: 'Contato do administrador não disponível'
+        error: 'Contato do suporte não disponível'
       }, { status: 404 });
     }
 
     // Formata o telefone para WhatsApp (remove caracteres não numéricos)
-    const telefoneFormatado = admin.telefone.replace(/\D/g, '');
+    const telefoneFormatado = String(configSuporte.valor).replace(/\D/g, '');
     
     // Adiciona código do país se não tiver
     const whatsapp = telefoneFormatado.startsWith('55') 
@@ -39,10 +28,10 @@ export async function GET() {
     return NextResponse.json({
       success: true,
       whatsapp,
-      nome: admin.nome
+      nome: 'Suporte'
     });
   } catch (error) {
-    console.error('Erro ao buscar contato admin:', error);
+    console.error('Erro ao buscar contato suporte:', error);
     return NextResponse.json({
       success: false,
       error: 'Erro ao buscar contato'

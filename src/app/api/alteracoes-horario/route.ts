@@ -6,27 +6,21 @@ import { AlteracaoHorario } from '@/models/AlteracaoHorario';
 import { Matricula } from '@/models/Matricula';
 import { Aluno } from '@/models/Aluno';
 import { User } from '@/models/User';
-
-const JWT_SECRET = process.env.JWT_SECRET || 'sua_chave_secreta_super_forte';
+import { JWT_SECRET } from '@/lib/auth';
 
 async function isAdmin() {
   try {
     const cookieStore = await cookies();
     const token = cookieStore.get('token')?.value;
     
-    console.log('[API Alterações] Token encontrado:', !!token);
-    
     if (!token) {
-      console.log('[API Alterações] Sem token');
       return false;
     }
     
     const decoded = jwt.verify(token, JWT_SECRET) as { userId?: string; id?: string; tipo: string };
-    console.log('[API Alterações] Token decodificado:', decoded);
     
     const tipoLower = decoded.tipo?.toLowerCase() || '';
     const isAuthorized = tipoLower === 'adm' || tipoLower === 'professor' || tipoLower === 'root' || tipoLower === 'admin';
-    console.log('[API Alterações] Tipo:', decoded.tipo, '| Autorizado:', isAuthorized);
     
     return isAuthorized;
   } catch (error) {

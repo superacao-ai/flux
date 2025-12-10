@@ -3,6 +3,7 @@ import connectDB from '@/lib/mongodb';
 import mongoose from 'mongoose';
 import { User } from '@/models/User';
 import { Professor } from '@/models/Professor';
+import { JWT_SECRET } from '@/lib/auth';
 
 export async function GET(request: NextRequest, context: any) {
   try {
@@ -53,7 +54,7 @@ export async function PUT(request: NextRequest, context: any) {
         try {
           const token = authHeader.split(' ')[1];
           const jwt = await import('jsonwebtoken');
-          const decoded: any = jwt.default.verify(token, process.env.JWT_SECRET || 'sua_chave_secreta_super_forte');
+          const decoded: any = jwt.default.verify(token, JWT_SECRET);
           const currentUser = await User.findById(decoded.userId);
           currentUserTipo = currentUser?.tipo || '';
         } catch (e) {}
@@ -158,7 +159,7 @@ export async function DELETE(request: NextRequest, context: any) {
         try {
           const token = authHeader.split(' ')[1];
           const jwt = await import('jsonwebtoken');
-          const decoded: any = jwt.default.verify(token, process.env.JWT_SECRET || 'sua_chave_secreta_super_forte');
+          const decoded: any = jwt.default.verify(token, JWT_SECRET);
           const currentUser = await User.findById(decoded.userId);
           currentUserTipo = currentUser?.tipo || '';
         } catch (e) {}

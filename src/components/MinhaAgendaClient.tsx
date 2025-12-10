@@ -135,6 +135,7 @@ interface UsoCredito {
   agendamentoId: string; // HorarioFixoId
   dataUso: string;
   observacao?: string;
+  compareceu?: boolean | null;
 }
 
 export default function MinhaAgendaClient() {
@@ -189,11 +190,24 @@ export default function MinhaAgendaClient() {
         setLoading(true);
         const token = localStorage.getItem('token');
         
+        if (!token) {
+          setError('Sessão expirada. Faça login novamente.');
+          return;
+        }
+        
         const res = await fetch('/api/me/horarios', {
-          headers: { Authorization: token ? `Bearer ${token}` : '' }
+          headers: { Authorization: `Bearer ${token}` }
         });
 
-        if (!res.ok) throw new Error('Erro ao buscar horários');
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => ({}));
+          if (res.status === 401) {
+            setError('Sessão expirada. Faça login novamente.');
+          } else {
+            setError(errorData.error || 'Erro ao buscar horários');
+          }
+          return;
+        }
         
         const data = await res.json();
         
@@ -810,6 +824,28 @@ export default function MinhaAgendaClient() {
             );
           } catch (e) {
             console.error('Erro ao registrar presença experimental:', e);
+          }
+        }
+
+        // Enviar presenças dos alunos usando crédito neste horário
+        const alunosCreditoDoHorario = alunosComCreditoDoHorario(horarioFixoId);
+        for (const alunoCredito of alunosCreditoDoHorario) {
+          const usoCredito = (alunoCredito as any)._usoCredito;
+          const presente = getPresencaStatus(alunoCredito._id, horarioFixoId);
+          try {
+            await fetch(`/api/creditos-reposicao/usos/${usoCredito._id}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                compareceu: presente ?? false
+              })
+            });
+            // Atualizar estado local dos usos de crédito
+            setUsosCredito(prev => 
+              prev.map(u => u._id === usoCredito._id ? { ...u, compareceu: presente ?? false } : u)
+            );
+          } catch (e) {
+            console.error('Erro ao registrar presença de aluno com crédito:', e);
           }
         }
 

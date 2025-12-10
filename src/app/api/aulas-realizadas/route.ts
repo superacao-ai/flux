@@ -10,8 +10,7 @@ import { Aluno } from '@/models/Aluno';
 import { Reagendamento } from '@/models/Reagendamento';
 import { User } from '@/models/User';
 import { Professor } from '@/models/Professor';
-
-const JWT_SECRET = process.env.JWT_SECRET || 'sua_chave_secreta_super_forte';
+import { JWT_SECRET } from '@/lib/auth';
 
 // POST - Enviar/finalizar aula
 export async function POST(request: NextRequest) {

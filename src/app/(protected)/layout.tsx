@@ -9,7 +9,7 @@ export default function ProtectedLayout({
   children: React.ReactNode;
 }) {
   return (
-    <RequireAuth showLoginRedirect={false}>
+    <RequireAuth showLoginRedirect={true}>
       <AppShell>
         {children}
       </AppShell>

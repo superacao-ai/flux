@@ -1,15 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
 import connectDB from '@/lib/mongodb';
 import { User } from '@/models/User';
-
-const JWT_SECRET = process.env.JWT_SECRET || 'sua_chave_secreta_super_forte';
+import { JWT_SECRET, generateAdminToken, checkRateLimit, resetRateLimit } from '@/lib/auth';
 
 export async function POST(request: NextRequest) {
   try {
-    await connectDB();
-    
     const { email, senha } = await request.json();
 
     // Validações básicas
@@ -23,9 +19,25 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const emailLower = email.toLowerCase();
+    
+    // Verificar rate limiting por email
+    const rateCheck = checkRateLimit(emailLower);
+    if (!rateCheck.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Muitas tentativas de login. Tente novamente em ${rateCheck.blockTimeRemaining} minutos.`
+        },
+        { status: 429 }
+      );
+    }
+
+    await connectDB();
+
     // Buscar usuário por email
     const user = await User.findOne({ 
-      email: email.toLowerCase(),
+      email: emailLower,
       ativo: true 
     }).select('+senha');
 
@@ -52,16 +64,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Gerar token JWT
-    const token = jwt.sign(
-      { 
-        userId: user._id,
-        email: user.email,
-        tipo: user.tipo 
-      },
-      JWT_SECRET,
-      { expiresIn: '24h' }
-    );
+    // Login bem sucedido - resetar rate limiting
+    resetRateLimit(emailLower);
+
+    // Gerar token JWT usando lib centralizada
+    const token = generateAdminToken({
+      userId: user._id.toString(),
+      email: user.email,
+      tipo: user.tipo
+    });
 
     // Dados do usuário (sem a senha)
     const userData = {
@@ -74,15 +85,23 @@ export async function POST(request: NextRequest) {
       cor: user.cor || '#3B82F6'
     };
 
-    // Return token in an HttpOnly cookie (so middleware / server-side checks can use it)
+    // Retornar token no body para o frontend salvar no localStorage
     const res = NextResponse.json({
       success: true,
       message: 'Login realizado com sucesso',
-      token,
-      user: userData
+      user: userData,
+      token: token
     });
-    // cookie options: keep for 24h, httpOnly, secure in production
-    res.cookies.set('token', token, { httpOnly: true, path: '/', maxAge: 60 * 60 * 24, sameSite: 'lax', secure: process.env.NODE_ENV === 'production' });
+    
+    // Também salvar no cookie HttpOnly para APIs que preferem cookies
+    res.cookies.set('token', token, { 
+      httpOnly: true, 
+      path: '/', 
+      maxAge: 60 * 60 * 24, 
+      sameSite: 'lax', 
+      secure: process.env.NODE_ENV === 'production' 
+    });
+    
     return res;
 
   } catch (error) {

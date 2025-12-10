@@ -280,6 +280,17 @@ export default function AlunoLoginPage() {
               <i className="fas fa-user-shield text-gray-400 text-xs"></i>
               <span>Sou Funcionário / Admin</span>
             </Link>
+
+            {/* Links de Privacidade e Termos */}
+            <div className="flex items-center justify-center gap-3 mt-4 text-xs text-gray-400">
+              <Link href="/privacidade" className="hover:text-primary-600 transition-colors">
+                Privacidade
+              </Link>
+              <span>•</span>
+              <Link href="/termos" className="hover:text-primary-600 transition-colors">
+                Termos de Uso
+              </Link>
+            </div>
           </div>
 
           {/* Copyright */}
@@ -335,7 +346,7 @@ export default function AlunoLoginPage() {
                   className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-green-600 hover:bg-green-700 text-white text-sm font-semibold rounded-lg transition-colors"
                 >
                   <i className="fab fa-whatsapp text-lg"></i>
-                  Falar com {adminContact.nome || 'Suporte'}
+                  Falar no WhatsApp
                 </a>
               ) : (
                 <button

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import { toast } from 'react-toastify';
 import Logo from '@/components/Logo';
 
 interface Aluno {
@@ -524,6 +525,136 @@ export default function AlunoAreaPage() {
     return horarios.filter(h => h.diaSemana === hoje);
   }, [horarios]);
 
+  // Calcular streak de treinos (dias consecutivos sem faltar injustificadamente)
+  const streakData = useMemo(() => {
+    if (horarios.length === 0) {
+      return { streak: 0, proximosTreinos: [] as { diaSemana: number; diaMes: number; status: 'presente' | 'falta' | 'pendente' | 'justificado' | 'reagendado' | 'reposicao' | 'credito' }[] };
+    }
+
+    // Dias que o aluno treina (baseado nos horários fixos) - ordenados
+    const diasQueTreina = [...new Set(horarios.map(h => h.diaSemana))].sort((a, b) => a - b);
+    
+    // Criar set de datas com ausência justificada (avisou com antecedência)
+    const datasJustificadas = new Set(
+      avisosAusencia
+        .filter(a => a.status === 'confirmada' || a.status === 'usada')
+        .map(a => a.dataAusencia.split('T')[0])
+    );
+    
+    // Criar set de datas originais que foram reagendadas (não conta como falta)
+    const datasReagendadas = new Set(
+      reagendamentos
+        .filter(r => r.status === 'aprovado')
+        .map(r => r.dataOriginal.split('T')[0])
+    );
+    
+    // Criar mapa de novas datas de reagendamento (para mostrar no calendário)
+    const novasDatasReagendamento = new Map<string, boolean>();
+    reagendamentos
+      .filter(r => r.status === 'aprovado')
+      .forEach(r => {
+        const novaData = r.novaData.split('T')[0];
+        novasDatasReagendamento.set(novaData, true);
+      });
+    
+    // Criar mapa de datas de uso de crédito (aulas extras agendadas com crédito)
+    const datasCredito = new Map<string, boolean>();
+    creditos.forEach(c => {
+      c.usos?.forEach(uso => {
+        if (uso.dataUso) {
+          const dataUso = uso.dataUso.split('T')[0];
+          datasCredito.set(dataUso, true);
+        }
+      });
+    });
+    
+    // Ordenar presenças por data (mais recente primeiro)
+    const presencasOrdenadas = [...presencas]
+      .filter(p => p.presente !== null) // Apenas aulas que já aconteceram
+      .sort((a, b) => new Date(b.data).getTime() - new Date(a.data).getTime());
+    
+    // Calcular streak: quantos dias de treino consecutivos sem falta injustificada
+    let streak = 0;
+    for (const presenca of presencasOrdenadas) {
+      const dataPresenca = presenca.data.split('T')[0];
+      
+      if (presenca.presente === true) {
+        // Compareceu (incluindo reposições/reagendamentos)
+        streak++;
+      } else if (presenca.presente === false) {
+        // Verificar se foi justificada ou reagendada
+        if (datasJustificadas.has(dataPresenca) || datasReagendadas.has(dataPresenca)) {
+          // Falta justificada ou reagendada - não quebra o streak, mas também não soma
+          continue;
+        }
+        // Falta injustificada - quebra o streak
+        break;
+      }
+    }
+
+    // Buscar os próximos dias de treino (incluindo hoje se for dia de treino)
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    
+    const proximosTreinos: { diaSemana: number; diaMes: number; status: 'presente' | 'falta' | 'pendente' | 'justificado' | 'reagendado' | 'reposicao' | 'credito'; data: Date }[] = [];
+    
+    // Coletar todas as datas relevantes: dias fixos + novas datas de reagendamento + datas de crédito
+    const datasParaMostrar: Date[] = [];
+    let datasVerificadas = 0;
+    
+    while (datasParaMostrar.length < 7 && datasVerificadas < 28) {
+      const dataVerificar = new Date(hoje);
+      dataVerificar.setDate(hoje.getDate() + datasVerificadas);
+      const diaSemana = dataVerificar.getDay();
+      const dataStr = dataVerificar.toISOString().split('T')[0];
+      
+      // Incluir se é dia fixo de treino OU se tem reagendamento OU se tem crédito usado para este dia
+      if (diasQueTreina.includes(diaSemana) || novasDatasReagendamento.has(dataStr) || datasCredito.has(dataStr)) {
+        datasParaMostrar.push(new Date(dataVerificar));
+      }
+      
+      datasVerificadas++;
+    }
+    
+    // Processar cada data
+    for (const dataVerificar of datasParaMostrar) {
+      const diaSemana = dataVerificar.getDay();
+      const dataStr = dataVerificar.toISOString().split('T')[0];
+      const presencaDoDia = presencas.find(p => p.data.startsWith(dataStr));
+      
+      let status: 'presente' | 'falta' | 'pendente' | 'justificado' | 'reagendado' | 'reposicao' | 'credito' = 'pendente';
+      
+      // É uma data de reposição/reagendamento (nova data)?
+      const ehReposicao = novasDatasReagendamento.has(dataStr);
+      // É uma data de aula com crédito?
+      const ehCredito = datasCredito.has(dataStr);
+      
+      // Verificar se tem reagendamento aprovado SAINDO desta data (data original)
+      if (datasReagendadas.has(dataStr)) {
+        status = 'reagendado';
+      } else if (datasJustificadas.has(dataStr)) {
+        status = 'justificado';
+      } else if (presencaDoDia && presencaDoDia.presente === true) {
+        status = 'presente';
+      } else if (presencaDoDia && presencaDoDia.presente === false) {
+        status = 'falta';
+      } else if (ehReposicao) {
+        status = 'reposicao'; // Reposição agendada mas ainda não aconteceu
+      } else if (ehCredito) {
+        status = 'credito'; // Aula com crédito agendada mas ainda não aconteceu
+      }
+      
+      proximosTreinos.push({
+        diaSemana,
+        diaMes: dataVerificar.getDate(),
+        status,
+        data: dataVerificar
+      });
+    }
+
+    return { streak, proximosTreinos };
+  }, [presencas, horarios, avisosAusencia, reagendamentos, creditos]);
+
   const abrirModalReagendamento = (horario: Horario) => {
     setHorarioSelecionado(horario);
     setDataOriginal('');
@@ -542,7 +673,7 @@ export default function AlunoAreaPage() {
 
   const enviarReagendamento = async () => {
     if (!horarioSelecionado || !dataOriginal || !novaData || !novoHorarioId) {
-      alert('Preencha todos os campos obrigatórios');
+      toast.warning('Preencha todos os campos obrigatórios');
       return;
     }
     
@@ -563,13 +694,13 @@ export default function AlunoAreaPage() {
       if (res.ok) {
         setShowReagendamentoModal(false);
         fetchDados();
-        alert('Solicitação enviada! Aguarde a aprovação.');
+        toast.success('Solicitação enviada! Aguarde a aprovação.');
       } else {
         const data = await res.json();
-        alert(data.error || 'Erro ao solicitar reagendamento');
+        toast.error(data.error || 'Erro ao solicitar reagendamento');
       }
     } catch {
-      alert('Erro ao enviar solicitação');
+      toast.error('Erro ao enviar solicitação');
     } finally {
       setEnviando(false);
     }
@@ -612,12 +743,12 @@ export default function AlunoAreaPage() {
         localStorage.setItem('aluno', JSON.stringify(alunoAtualizado));
         setAluno(alunoAtualizado as Aluno);
         setShowPerfilModal(false);
-        alert('Dados atualizados com sucesso!');
+        toast.success('Dados atualizados com sucesso!');
       } else {
-        alert(data.error || 'Erro ao atualizar dados');
+        toast.error(data.error || 'Erro ao atualizar dados');
       }
     } catch {
-      alert('Erro ao salvar dados');
+      toast.error('Erro ao salvar dados');
     } finally {
       setSalvandoPerfil(false);
     }
@@ -638,7 +769,7 @@ export default function AlunoAreaPage() {
   // Enviar aviso de ausência
   const enviarAvisoAusencia = async () => {
     if (!ausenciaHorarioId || !ausenciaData || !ausenciaMotivo) {
-      alert('Preencha todos os campos');
+      toast.warning('Preencha todos os campos');
       return;
     }
 
@@ -657,14 +788,14 @@ export default function AlunoAreaPage() {
       const data = await res.json();
       
       if (res.ok) {
-        alert(data.message);
+        toast.success(data.message);
         setShowAvisarAusenciaModal(false);
         fetchDados();
       } else {
-        alert(data.error || 'Erro ao registrar ausência');
+        toast.error(data.error || 'Erro ao registrar ausência');
       }
     } catch {
-      alert('Erro ao enviar aviso de ausência');
+      toast.error('Erro ao enviar aviso de ausência');
     } finally {
       setEnviandoAusencia(false);
     }
@@ -682,13 +813,13 @@ export default function AlunoAreaPage() {
       const data = await res.json();
       
       if (res.ok) {
-        alert(data.message);
+        toast.success(data.message);
         fetchDados();
       } else {
-        alert(data.error || 'Erro ao cancelar aviso');
+        toast.error(data.error || 'Erro ao cancelar aviso');
       }
     } catch {
-      alert('Erro ao cancelar aviso');
+      toast.error('Erro ao cancelar aviso');
     }
   };
 
@@ -703,7 +834,7 @@ export default function AlunoAreaPage() {
   // Enviar solicitação de reposição
   const enviarSolicitacaoReposicao = async () => {
     if (!faltaSelecionada || !reposicaoNovaData || !reposicaoNovoHorarioId) {
-      alert('Selecione a data e horário da reposição');
+      toast.warning('Selecione a data e horário da reposição');
       return;
     }
 
@@ -722,14 +853,14 @@ export default function AlunoAreaPage() {
       const data = await res.json();
       
       if (res.ok) {
-        alert(data.message);
+        toast.success(data.message);
         setShowReposicaoModal(false);
         fetchDados();
       } else {
-        alert(data.error || 'Erro ao solicitar reposição');
+        toast.error(data.error || 'Erro ao solicitar reposição');
       }
     } catch {
-      alert('Erro ao enviar solicitação');
+      toast.error('Erro ao enviar solicitação');
     } finally {
       setEnviandoReposicao(false);
     }
@@ -746,7 +877,7 @@ export default function AlunoAreaPage() {
   // Enviar solicitação de alteração de horário fixo
   const enviarAlteracaoHorario = async () => {
     if (!horarioParaAlterar || !novoHorarioFixoId) {
-      alert('Selecione o novo horário');
+      toast.warning('Selecione o novo horário');
       return;
     }
 
@@ -765,14 +896,14 @@ export default function AlunoAreaPage() {
       const data = await res.json();
       
       if (res.ok) {
-        alert(data.message);
+        toast.success(data.message);
         setShowAlteracaoHorarioModal(false);
         fetchDados();
       } else {
-        alert(data.error || 'Erro ao solicitar alteração');
+        toast.error(data.error || 'Erro ao solicitar alteração');
       }
     } catch {
-      alert('Erro ao enviar solicitação');
+      toast.error('Erro ao enviar solicitação');
     } finally {
       setEnviandoAlteracao(false);
     }
@@ -790,13 +921,13 @@ export default function AlunoAreaPage() {
       const data = await res.json();
       
       if (res.ok) {
-        alert(data.message);
+        toast.success(data.message);
         fetchDados();
       } else {
-        alert(data.error || 'Erro ao cancelar');
+        toast.error(data.error || 'Erro ao cancelar');
       }
     } catch {
-      alert('Erro ao cancelar solicitação');
+      toast.error('Erro ao cancelar solicitação');
     }
   };
 
@@ -1251,8 +1382,66 @@ export default function AlunoAreaPage() {
 
   if (!aluno) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+      <div className="min-h-screen bg-gray-50 pb-20">
+        {/* Header Skeleton */}
+        <header className="bg-white border-b border-gray-200">
+          <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
+            <div className="w-24 h-8 bg-gray-200 rounded animate-pulse"></div>
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 bg-gray-200 rounded-lg animate-pulse"></div>
+              <div className="w-8 h-8 bg-gray-200 rounded-lg animate-pulse"></div>
+            </div>
+          </div>
+        </header>
+
+        {/* Content Skeleton */}
+        <main className="max-w-4xl mx-auto px-4 py-4 animate-pulse">
+          {/* Saudação Skeleton */}
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <div className="h-6 bg-gray-200 rounded w-36 mb-2"></div>
+              <div className="h-4 bg-gray-100 rounded w-48"></div>
+            </div>
+            <div className="text-right">
+              <div className="h-8 bg-gray-200 rounded w-16 mb-1"></div>
+              <div className="h-3 bg-gray-100 rounded w-14"></div>
+            </div>
+          </div>
+
+          {/* Card Status Skeleton */}
+          <div className="rounded-xl p-4 mb-4 bg-gray-100 border border-gray-200">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-gray-300 rounded-full"></div>
+              <div className="flex-1">
+                <div className="h-5 bg-gray-300 rounded w-40 mb-2"></div>
+                <div className="h-4 bg-gray-200 rounded w-56"></div>
+              </div>
+            </div>
+          </div>
+
+          {/* Abas Skeleton */}
+          <div className="flex gap-1 bg-gray-100 p-1 rounded-lg mb-4">
+            {[1, 2, 3, 4, 5].map(i => (
+              <div key={i} className="flex-1 py-4 px-2">
+                <div className="w-6 h-6 bg-gray-300 rounded-full mx-auto mb-2"></div>
+                <div className="h-3 bg-gray-300 rounded w-10 mx-auto"></div>
+              </div>
+            ))}
+          </div>
+
+          {/* Content Skeleton */}
+          <div className="space-y-2">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="bg-white rounded-lg border border-gray-200 p-3 flex items-center gap-3">
+                <div className="w-14 h-14 bg-gray-200 rounded-lg"></div>
+                <div className="flex-1 space-y-2">
+                  <div className="h-4 bg-gray-200 rounded w-24"></div>
+                  <div className="h-3 bg-gray-100 rounded w-32"></div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </main>
       </div>
     );
   }
@@ -1263,6 +1452,13 @@ export default function AlunoAreaPage() {
       <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
           <Logo size="sm" noLink />
+          <span className="text-base font-bold text-primary-600">
+            {abaAtiva === 'hoje' && 'Início'}
+            {abaAtiva === 'calendario' && 'Reagendar'}
+            {abaAtiva === 'horarios' && 'Meu Horário'}
+            {abaAtiva === 'faltas' && 'Reposições'}
+            {abaAtiva === 'creditos' && 'Créditos'}
+          </span>
           <div className="flex items-center gap-2">
             <button
               onClick={abrirModalPerfil}
@@ -1284,8 +1480,11 @@ export default function AlunoAreaPage() {
 
       {/* Conteúdo */}
       <main className="max-w-4xl mx-auto px-4 py-4">
-        {/* Saudação simples */}
-        <div className="mb-4">
+        {/* Conteúdo exclusivo da aba Início */}
+        {abaAtiva === 'hoje' && (
+          <>
+            {/* Saudação simples */}
+            <div className="mb-4">
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-xl font-bold text-gray-800">Olá, {aluno.nome.split(' ')[0]}!</h1>
@@ -1322,6 +1521,51 @@ export default function AlunoAreaPage() {
             </div>
           )}
         </div>
+
+        {/* Card de Streak / Sequência de Treinos */}
+        {horarios.length > 0 && (
+          <div className="mb-4 bg-white rounded-xl px-4 py-3 border border-gray-200">
+            {/* Header compacto */}
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <i className={`fas fa-fire text-lg ${streakData.streak > 0 ? 'text-orange-500' : 'text-gray-300'}`}></i>
+                <span className="text-sm font-medium text-gray-700">Sua Sequência</span>
+              </div>
+              <span className={`text-sm font-bold ${streakData.streak > 0 ? 'text-orange-500' : 'text-gray-400'}`}>
+                {streakData.streak} {streakData.streak === 1 ? 'dia' : 'dias'}
+              </span>
+            </div>
+            
+            {/* Dias de treino em linha */}
+            <div className="flex justify-between">
+              {streakData.proximosTreinos.map((item, idx) => (
+                <div key={idx} className="flex flex-col items-center" title={
+                  item.status === 'justificado' ? 'Falta justificada' :
+                  item.status === 'reagendado' ? 'Aula reagendada para outro dia' :
+                  item.status === 'reposicao' ? 'Reposição agendada' :
+                  item.status === 'credito' ? 'Aula extra (crédito)' : ''
+                }>
+                  <span className="text-[10px] text-gray-400 mb-1">{diasSemanaAbrev[item.diaSemana]}</span>
+                  {item.status === 'presente' ? (
+                    <i className="fas fa-fire text-orange-500 text-base"></i>
+                  ) : item.status === 'falta' ? (
+                    <i className="fas fa-times text-red-400 text-base"></i>
+                  ) : item.status === 'justificado' ? (
+                    <i className="fas fa-user-clock text-blue-400 text-base"></i>
+                  ) : item.status === 'reagendado' ? (
+                    <i className="fas fa-arrow-right text-purple-400 text-base"></i>
+                  ) : item.status === 'reposicao' ? (
+                    <i className="fas fa-redo text-green-500 text-base"></i>
+                  ) : item.status === 'credito' ? (
+                    <i className="fas fa-star text-yellow-500 text-base"></i>
+                  ) : (
+                    <span className="text-gray-300 font-semibold text-sm">{item.diaMes}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Banner WhatsApp do Grupo da Modalidade */}
         {aluno.modalidade?.linkWhatsapp && aluno.modalidade.linkWhatsapp.trim() !== '' && !jaEntrouGrupo && (
@@ -1489,91 +1733,64 @@ export default function AlunoAreaPage() {
             </div>
           </div>
         </div>
+          </>
+        )}
 
         {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+          /* Skeleton Loading */
+          <div className="animate-pulse space-y-4">
+            {/* Skeleton - Abas */}
+            <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
+              {[1, 2, 3, 4, 5].map(i => (
+                <div key={i} className="flex-1 py-4 px-2">
+                  <div className="w-6 h-6 bg-gray-300 rounded-full mx-auto mb-2"></div>
+                  <div className="h-3 bg-gray-300 rounded w-12 mx-auto"></div>
+                </div>
+              ))}
+            </div>
+
+            {/* Skeleton - Título da seção */}
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 bg-gray-200 rounded"></div>
+              <div className="h-4 bg-gray-200 rounded w-32"></div>
+            </div>
+
+            {/* Skeleton - Cards de aulas */}
+            <div className="space-y-2">
+              {[1, 2, 3].map(i => (
+                <div key={i} className="bg-white rounded-lg border border-gray-200 p-3 flex items-center gap-3">
+                  <div className="w-14 h-14 bg-gray-200 rounded-lg flex-shrink-0"></div>
+                  <div className="flex-1 space-y-2">
+                    <div className="h-4 bg-gray-200 rounded w-24"></div>
+                    <div className="h-3 bg-gray-100 rounded w-32"></div>
+                    <div className="h-3 bg-gray-100 rounded w-20"></div>
+                  </div>
+                  <div className="w-8 h-8 bg-gray-200 rounded-lg"></div>
+                </div>
+              ))}
+            </div>
+
+            {/* Skeleton - Segunda seção */}
+            <div className="flex items-center gap-2 mt-6">
+              <div className="w-4 h-4 bg-gray-200 rounded"></div>
+              <div className="h-4 bg-gray-200 rounded w-40"></div>
+            </div>
+
+            {/* Skeleton - Cards menores */}
+            <div className="grid grid-cols-2 gap-3">
+              {[1, 2].map(i => (
+                <div key={i} className="bg-white rounded-lg border border-gray-200 p-4">
+                  <div className="h-5 bg-gray-200 rounded w-16 mb-2"></div>
+                  <div className="h-3 bg-gray-100 rounded w-full"></div>
+                </div>
+              ))}
+            </div>
           </div>
         ) : (
           <>
-            {/* Abas */}
-            <div className="flex gap-1 mb-4 bg-gray-100 p-1 rounded-lg overflow-x-auto">
-              <button
-                onClick={() => setAbaAtiva('hoje')}
-                className={`flex-1 min-w-0 px-2 py-2 text-xs font-medium rounded-md transition-colors flex flex-col items-center ${
-                  abaAtiva === 'hoje' 
-                    ? 'bg-white text-primary-600 shadow-sm' 
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                <i className="fas fa-home text-base mb-1"></i>
-                <span>Início</span>
-              </button>
-              <button
-                onClick={() => setAbaAtiva('calendario')}
-                className={`flex-1 min-w-0 px-2 py-2 text-xs font-medium rounded-md transition-colors flex flex-col items-center ${
-                  abaAtiva === 'calendario' 
-                    ? 'bg-white text-primary-600 shadow-sm' 
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                <i className="fas fa-calendar-alt text-base mb-1"></i>
-                <span>Reagendar</span>
-                <span>Aula</span>
-              </button>
-              <button
-                onClick={() => setAbaAtiva('horarios')}
-                className={`flex-1 min-w-0 px-2 py-2 text-xs font-medium rounded-md transition-colors relative flex flex-col items-center ${
-                  abaAtiva === 'horarios' 
-                    ? 'bg-white text-primary-600 shadow-sm' 
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                <i className="fas fa-clock text-base mb-1"></i>
-                <span>Meu</span>
-                <span>Horário</span>
-                {alteracoesHorario.filter(a => a.status === 'pendente').length > 0 && (
-                  <span className="absolute -top-1 -right-1 w-5 h-5 bg-orange-500 text-white text-xs rounded-full flex items-center justify-center">
-                    {alteracoesHorario.filter(a => a.status === 'pendente').length}
-                  </span>
-                )}
-              </button>
-              <button
-                onClick={() => setAbaAtiva('faltas')}
-                className={`flex-1 min-w-0 px-2 py-2 text-xs font-medium rounded-md transition-colors relative flex flex-col items-center ${
-                  abaAtiva === 'faltas' 
-                    ? 'bg-white text-primary-600 shadow-sm' 
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                <i className="fas fa-redo text-base mb-1"></i>
-                <span>Repor</span>
-                <span>Falta</span>
-                {reposicoesDisponiveis > 0 && (
-                  <span className="absolute -top-1 -right-1 w-5 h-5 bg-green-500 text-white text-xs rounded-full flex items-center justify-center">
-                    {reposicoesDisponiveis}
-                  </span>
-                )}
-              </button>
-              <button
-                onClick={() => setAbaAtiva('creditos')}
-                className={`flex-1 min-w-0 px-2 py-2 text-xs font-medium rounded-md transition-colors relative flex flex-col items-center ${
-                  abaAtiva === 'creditos' 
-                    ? 'bg-white text-primary-600 shadow-sm' 
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                <i className="fas fa-star text-base mb-1"></i>
-                <span>Créditos</span>
-                {creditos.reduce((sum, c) => sum + (c.quantidade - c.quantidadeUsada), 0) > 0 && (
-                  <span className="absolute -top-1 -right-1 w-5 h-5 bg-teal-500 text-white text-xs rounded-full flex items-center justify-center">
-                    {creditos.reduce((sum, c) => sum + (c.quantidade - c.quantidadeUsada), 0)}
-                  </span>
-                )}
-              </button>
-            </div>
+            {/* Conteúdo das abas */}
 
-            {/* Aba Início */}
+            {/* Aba Início - Continuação (Próximas Aulas e Calendário de Presenças) */}
             {abaAtiva === 'hoje' && (
               <div className="space-y-4">
                 {/* Próximas aulas */}
@@ -3486,6 +3703,78 @@ export default function AlunoAreaPage() {
           </div>
         </div>
       )}
+
+      {/* Barra de navegação fixa no footer */}
+      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-50 safe-area-pb">
+        <div className="max-w-4xl mx-auto">
+          <div className="flex">
+            <button
+              onClick={() => setAbaAtiva('hoje')}
+              className={`flex-1 py-2 flex flex-col items-center gap-0.5 transition-colors ${
+                abaAtiva === 'hoje' ? 'text-primary-600' : 'text-gray-400'
+              }`}
+            >
+              <i className="fas fa-home text-xl"></i>
+              <span className="text-[10px] font-medium">Início</span>
+            </button>
+          
+            <button
+              onClick={() => setAbaAtiva('calendario')}
+              className={`flex-1 py-2 flex flex-col items-center gap-0.5 transition-colors ${
+                abaAtiva === 'calendario' ? 'text-primary-600' : 'text-gray-400'
+              }`}
+            >
+              <i className="fas fa-calendar-alt text-xl"></i>
+              <span className="text-[10px] font-medium">Reagendar</span>
+            </button>
+          
+            <button
+              onClick={() => setAbaAtiva('horarios')}
+              className={`flex-1 py-2 flex flex-col items-center gap-0.5 transition-colors relative ${
+                abaAtiva === 'horarios' ? 'text-primary-600' : 'text-gray-400'
+              }`}
+            >
+              <i className="fas fa-clock text-xl"></i>
+              <span className="text-[10px] font-medium">Horário</span>
+              {alteracoesHorario.filter(a => a.status === 'pendente').length > 0 && (
+                <span className="absolute top-1 right-1/4 w-4 h-4 bg-orange-500 text-white text-[10px] rounded-full flex items-center justify-center">
+                  {alteracoesHorario.filter(a => a.status === 'pendente').length}
+                </span>
+              )}
+            </button>
+          
+            <button
+              onClick={() => setAbaAtiva('faltas')}
+              className={`flex-1 py-2 flex flex-col items-center gap-0.5 transition-colors relative ${
+                abaAtiva === 'faltas' ? 'text-primary-600' : 'text-gray-400'
+              }`}
+            >
+              <i className="fas fa-redo text-xl"></i>
+              <span className="text-[10px] font-medium">Repor</span>
+              {reposicoesDisponiveis > 0 && (
+                <span className="absolute top-1 right-1/4 w-4 h-4 bg-green-500 text-white text-[10px] rounded-full flex items-center justify-center">
+                  {reposicoesDisponiveis}
+                </span>
+              )}
+            </button>
+          
+            <button
+              onClick={() => setAbaAtiva('creditos')}
+              className={`flex-1 py-2 flex flex-col items-center gap-0.5 transition-colors relative ${
+                abaAtiva === 'creditos' ? 'text-primary-600' : 'text-gray-400'
+              }`}
+            >
+              <i className="fas fa-star text-xl"></i>
+              <span className="text-[10px] font-medium">Créditos</span>
+              {creditos.reduce((sum, c) => sum + (c.quantidade - c.quantidadeUsada), 0) > 0 && (
+                <span className="absolute top-1 right-1/4 w-4 h-4 bg-teal-500 text-white text-[10px] rounded-full flex items-center justify-center">
+                  {creditos.reduce((sum, c) => sum + (c.quantidade - c.quantidadeUsada), 0)}
+                </span>
+              )}
+            </button>
+          </div>
+        </div>
+      </nav>
     </div>
   );
 }

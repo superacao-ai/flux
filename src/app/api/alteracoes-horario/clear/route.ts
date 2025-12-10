@@ -3,8 +3,7 @@ import { cookies } from 'next/headers';
 import jwt from 'jsonwebtoken';
 import connectDB from '@/lib/mongodb';
 import { AlteracaoHorario } from '@/models/AlteracaoHorario';
-
-const JWT_SECRET = process.env.JWT_SECRET || 'sua_chave_secreta_super_forte';
+import { JWT_SECRET } from '@/lib/auth';
 
 async function isAdmin() {
   try {

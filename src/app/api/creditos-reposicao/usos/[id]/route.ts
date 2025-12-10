@@ -19,8 +19,11 @@ async function verificarAutenticacao() {
   }
 }
 
-// GET - Buscar usos de crédito por data (para MinhaAgenda)
-export async function GET(req: NextRequest) {
+// PUT - Atualizar uso de crédito (registrar presença)
+export async function PUT(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
     const user = await verificarAutenticacao();
     if (!user) {
@@ -32,37 +35,41 @@ export async function GET(req: NextRequest) {
     
     await connectDB();
     
-    const { searchParams } = new URL(req.url);
-    const data = searchParams.get('data'); // YYYY-MM-DD
+    const { id } = await params;
+    const body = await req.json();
+    const { compareceu } = body;
     
-    if (!data) {
+    if (typeof compareceu !== 'boolean') {
       return NextResponse.json(
-        { error: 'Data é obrigatória' },
+        { error: 'Campo compareceu é obrigatório (boolean)' },
         { status: 400 }
       );
     }
     
-    // Buscar usos de crédito para a data específica
-    const dataInicio = new Date(data + 'T00:00:00.000Z');
-    const dataFim = new Date(data + 'T23:59:59.999Z');
+    const uso = await UsoCredito.findByIdAndUpdate(
+      id,
+      { compareceu },
+      { new: true }
+    );
     
-    const usos = await UsoCredito.find({
-      dataUso: { $gte: dataInicio, $lte: dataFim }
-    })
-    .populate({
-      path: 'alunoId',
-      select: 'nome email telefone'
-    })
-    .lean();
+    if (!uso) {
+      return NextResponse.json(
+        { error: 'Uso de crédito não encontrado' },
+        { status: 404 }
+      );
+    }
     
-    console.log(`[API Usos Crédito] Data: ${data}, Encontrados: ${usos.length}`);
+    console.log(`[API Usos Crédito] Atualizado uso ${id}: compareceu=${compareceu}`);
     
-    return NextResponse.json(usos);
+    return NextResponse.json({
+      success: true,
+      uso
+    });
     
   } catch (error) {
-    console.error('[API Usos Crédito GET] Erro:', error);
+    console.error('[API Usos Crédito PUT] Erro:', error);
     return NextResponse.json(
-      { error: 'Erro ao buscar usos de crédito' },
+      { error: 'Erro ao atualizar uso de crédito' },
       { status: 500 }
     );
   }

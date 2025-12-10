@@ -5,8 +5,7 @@ import connectDB from '@/lib/mongodb';
 import { HorarioFixo } from '@/models/HorarioFixo';
 import { User } from '@/models/User';
 import { Matricula } from '@/models/Matricula';
-
-const JWT_SECRET = process.env.JWT_SECRET || 'aluno-secret-key-2025';
+import { JWT_SECRET } from '@/lib/auth';
 
 async function getAlunoFromToken(req: NextRequest) {
   try {

@@ -6,8 +6,7 @@ import { AvisoAusencia } from '@/models/AvisoAusencia';
 import Feriado from '@/models/Feriado';
 import { getFeriadosNacionais } from '@/lib/feriados';
 import mongoose from 'mongoose';
-
-const JWT_SECRET = process.env.JWT_SECRET || 'aluno-secret-key-2025';
+import { JWT_SECRET } from '@/lib/auth';
 
 async function getAlunoFromToken() {
   try {

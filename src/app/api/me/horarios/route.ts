@@ -5,8 +5,7 @@ import { HorarioFixo } from '@/models/HorarioFixo';
 import { Professor } from '@/models/Professor';
 import { Matricula } from '@/models/Matricula';
 import mongoose from 'mongoose';
-
-const JWT_SECRET = process.env.JWT_SECRET || 'sua_chave_secreta_super_forte';
+import { JWT_SECRET } from '@/lib/auth';
 
 export async function GET(request: NextRequest) {
   try {
@@ -33,7 +32,6 @@ export async function GET(request: NextRequest) {
     await connectDB();
 
     const userId = String(payload.userId);
-    console.log('[/api/me/horarios] token payload:', { userId: payload.userId, email: payload.email, tipo: payload.tipo });
 
     // First attempt: treat payload.userId as Professor._id (most direct)
     let professorObjectId: mongoose.Types.ObjectId | null = null;
@@ -66,7 +64,6 @@ export async function GET(request: NextRequest) {
       try {
         const prof = await Professor.findOne({ email: String(payload.email).toLowerCase(), ativo: true }).select('_id nome email');
         if (prof) {
-          console.log('[/api/me/horarios] resolved professor by email:', prof._id.toString());
           horarios = await HorarioFixo.find({ ativo: true, professorId: prof._id })
             .populate({
               path: 'alunoId',
@@ -83,16 +80,12 @@ export async function GET(request: NextRequest) {
             .sort({ diaSemana: 1, horarioInicio: 1 })
             .select('-__v')
             .lean();
-        } else {
-          console.log('[/api/me/horarios] no Professor found for email:', payload.email);
         }
       } catch (err) {
         console.error('[/api/me/horarios] error resolving professor by email:', err);
       }
     }
 
-    console.log('[/api/me/horarios] documentos encontrados:', Array.isArray(horarios) ? horarios.length : 0);
-    
     // Buscar matrículas para adicionar os alunos aos horários
     if (horarios && horarios.length > 0) {
       const horarioIds = horarios.map(h => h._id);
@@ -109,8 +102,6 @@ export async function GET(request: NextRequest) {
           }
         })
         .lean();
-      
-      console.log('[/api/me/horarios] matrículas encontradas:', matriculas.length);
       
       // Agrupar matrículas por horarioFixoId
       const matriculasPorHorario = new Map();

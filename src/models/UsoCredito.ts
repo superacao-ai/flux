@@ -8,6 +8,7 @@ export interface IUsoCredito {
   tipoAgendamento: 'horarioFixo' | 'reposicao' | 'aula'; // Tipo de agendamento onde foi usado
   dataUso: Date;
   observacao?: string; // Observações sobre o uso (opcional)
+  compareceu?: boolean | null; // null = pendente, true = veio, false = faltou
   criadoEm: Date;
 }
 
@@ -45,6 +46,10 @@ const UsoCreditoSchema = new Schema<IUsoCredito>(
       type: String,
       trim: true,
       maxlength: [300, 'Observação deve ter no máximo 300 caracteres']
+    },
+    compareceu: {
+      type: Boolean,
+      default: null // null = pendente, true = veio, false = faltou
     }
   },
   {

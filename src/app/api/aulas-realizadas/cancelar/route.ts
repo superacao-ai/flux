@@ -7,8 +7,7 @@ import { Matricula } from '@/models/Matricula';
 import { Aluno } from '@/models/Aluno';
 import { User } from '@/models/User';
 import CreditoReposicao from '@/models/CreditoReposicao';
-
-const JWT_SECRET = process.env.JWT_SECRET || 'sua_chave_secreta_super_forte';
+import { JWT_SECRET } from '@/lib/auth';
 
 // POST - Cancelar aula pendente (gera crédito de reposição para todos os alunos)
 export async function POST(request: NextRequest) {

@@ -5,8 +5,7 @@ import Feriado from '@/models/Feriado';
 import { Reagendamento } from '@/models/Reagendamento';
 import UsoCredito from '@/models/UsoCredito';
 import CreditoReposicao from '@/models/CreditoReposicao';
-
-const JWT_SECRET = process.env.JWT_SECRET || 'sua_chave_secreta_super_forte';
+import { JWT_SECRET } from '@/lib/auth';
 
 // Helper para verificar token
 function verifyAuth(request: NextRequest): { userId: string } | null {

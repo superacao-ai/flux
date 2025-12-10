@@ -4,8 +4,7 @@ import jwt from 'jsonwebtoken';
 import connectDB from '@/lib/mongodb';
 import AulaRealizada from '@/models/AulaRealizada';
 import mongoose from 'mongoose';
-
-const JWT_SECRET = process.env.JWT_SECRET || 'aluno-secret-key-2025';
+import { JWT_SECRET } from '@/lib/auth';
 
 async function getAlunoFromToken(req: NextRequest) {
   try {

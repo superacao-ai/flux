@@ -4,8 +4,7 @@ import connectDB from '@/lib/mongodb';
 import mongoose from 'mongoose';
 import { Aula } from '@/models/Aula';
 import { Professor } from '@/models/Professor';
-
-const JWT_SECRET = process.env.JWT_SECRET || 'sua_chave_secreta_super_forte';
+import { JWT_SECRET } from '@/lib/auth';
 
 export async function POST(request: NextRequest) {
   try {

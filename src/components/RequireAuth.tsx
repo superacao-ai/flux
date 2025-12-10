@@ -43,9 +43,13 @@ export default function RequireAuth({ children, roles, showLoginRedirect = true 
     }
   }, [router, roles, showLoginRedirect]);
 
-  // Sempre renderizar children durante SSR e antes da montagem para evitar hydration mismatch
+  // Durante verificação, mostrar loading para evitar requisições não autenticadas
   if (!mounted || status === 'checking') {
-    return <>{children}</>;
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+      </div>
+    );
   }
   
   if (status === 'denied') return <AccessDenied />;

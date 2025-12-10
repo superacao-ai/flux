@@ -2,51 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import connectDB from '@/lib/mongodb';
 import { Aluno } from '@/models/Aluno';
+import { JWT_SECRET, checkRateLimit, resetRateLimit } from '@/lib/auth';
 import jwt from 'jsonwebtoken';
-
-const JWT_SECRET = process.env.JWT_SECRET || 'aluno-secret-key-2025';
-
-// Rate limiting simples em memória (em produção, usar Redis)
-const loginAttempts = new Map<string, { count: number; lastAttempt: number }>();
-const MAX_ATTEMPTS = 5;
-const BLOCK_DURATION = 15 * 60 * 1000; // 15 minutos
-
-function checkRateLimit(ip: string): { blocked: boolean; remainingAttempts: number } {
-  const now = Date.now();
-  const attempts = loginAttempts.get(ip);
-  
-  if (!attempts) {
-    return { blocked: false, remainingAttempts: MAX_ATTEMPTS };
-  }
-  
-  // Reset se passou o tempo de bloqueio
-  if (now - attempts.lastAttempt > BLOCK_DURATION) {
-    loginAttempts.delete(ip);
-    return { blocked: false, remainingAttempts: MAX_ATTEMPTS };
-  }
-  
-  if (attempts.count >= MAX_ATTEMPTS) {
-    const remainingTime = Math.ceil((BLOCK_DURATION - (now - attempts.lastAttempt)) / 60000);
-    return { blocked: true, remainingAttempts: 0 };
-  }
-  
-  return { blocked: false, remainingAttempts: MAX_ATTEMPTS - attempts.count };
-}
-
-function recordAttempt(ip: string) {
-  const now = Date.now();
-  const attempts = loginAttempts.get(ip);
-  
-  if (!attempts) {
-    loginAttempts.set(ip, { count: 1, lastAttempt: now });
-  } else {
-    loginAttempts.set(ip, { count: attempts.count + 1, lastAttempt: now });
-  }
-}
-
-function resetAttempts(ip: string) {
-  loginAttempts.delete(ip);
-}
 
 // POST - Login do aluno
 export async function POST(req: NextRequest) {
@@ -54,19 +11,17 @@ export async function POST(req: NextRequest) {
     // Pegar IP para rate limiting
     const ip = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || 'unknown';
     
-    // Verificar rate limit
-    const { blocked, remainingAttempts } = checkRateLimit(ip);
-    if (blocked) {
+    // Verificar rate limit usando lib centralizada
+    const rateCheck = checkRateLimit(`aluno:${ip}`);
+    if (!rateCheck.allowed) {
       return NextResponse.json(
-        { success: false, error: 'Muitas tentativas. Tente novamente em 15 minutos.' },
+        { success: false, error: `Muitas tentativas. Tente novamente em ${rateCheck.blockTimeRemaining} minutos.` },
         { status: 429 }
       );
     }
     
     const body = await req.json();
     const { cpf, dataNascimento } = body;
-    
-    console.log('[API Aluno Auth] Tentativa de login:', { cpf, dataNascimento });
     
     if (!cpf || !dataNascimento) {
       return NextResponse.json(
@@ -77,10 +32,8 @@ export async function POST(req: NextRequest) {
     
     // Limpar CPF (apenas números)
     const cpfLimpo = cpf.replace(/\D/g, '');
-    console.log('[API Aluno Auth] CPF limpo:', cpfLimpo);
     
     if (cpfLimpo.length !== 11) {
-      recordAttempt(ip);
       return NextResponse.json(
         { success: false, error: 'CPF inválido' },
         { status: 400 }
@@ -95,10 +48,7 @@ export async function POST(req: NextRequest) {
       ativo: true 
     }).populate('modalidadeId', 'nome cor linkWhatsapp');
     
-    console.log('[API Aluno Auth] Aluno encontrado:', aluno ? { id: aluno._id, nome: aluno.nome, cpf: aluno.cpf, dataNascimento: aluno.dataNascimento } : null);
-    
     if (!aluno) {
-      recordAttempt(ip);
       return NextResponse.json(
         { success: false, error: 'CPF não encontrado ou inativo' },
         { status: 401 }
@@ -107,7 +57,6 @@ export async function POST(req: NextRequest) {
     
     // Verificar data de nascimento
     if (!aluno.dataNascimento) {
-      recordAttempt(ip);
       return NextResponse.json(
         { success: false, error: 'Data de nascimento não cadastrada. Procure a recepção.' },
         { status: 401 }
@@ -121,10 +70,7 @@ export async function POST(req: NextRequest) {
     const dataInformadaStr = dataInformada.toISOString().split('T')[0];
     const dataCadastradaStr = dataCadastrada.toISOString().split('T')[0];
     
-    console.log('[API Aluno Auth] Comparando datas:', { dataInformadaStr, dataCadastradaStr });
-    
     if (dataInformadaStr !== dataCadastradaStr) {
-      recordAttempt(ip);
       return NextResponse.json(
         { success: false, error: 'Data de nascimento incorreta' },
         { status: 401 }
@@ -132,7 +78,7 @@ export async function POST(req: NextRequest) {
     }
     
     // Login bem-sucedido - resetar tentativas
-    resetAttempts(ip);
+    resetRateLimit(`aluno:${ip}`);
     
     // Gerar token JWT para o aluno
     const token = jwt.sign(
@@ -155,7 +101,7 @@ export async function POST(req: NextRequest) {
       path: '/'
     });
     
-    // Retornar dados do aluno (sem dados sensíveis)
+    // Retornar dados do aluno (sem dados sensíveis e sem token no body)
     return NextResponse.json({
       success: true,
       aluno: {
@@ -172,8 +118,7 @@ export async function POST(req: NextRequest) {
         congelado: aluno.congelado,
         ausente: aluno.ausente,
         emEspera: aluno.emEspera
-      },
-      token
+      }
     });
     
   } catch (error) {

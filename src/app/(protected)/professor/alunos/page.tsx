@@ -66,11 +66,24 @@ export default function ProfessorAlunosPage() {
       setLoading(true);
       const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
 
+      if (!token) {
+        setError('Sessão expirada. Faça login novamente.');
+        return;
+      }
+
       const res = await fetch('/api/me/horarios', {
-        headers: { Authorization: token ? `Bearer ${token}` : '' }
+        headers: { Authorization: `Bearer ${token}` }
       });
 
-      if (!res.ok) throw new Error('Erro ao buscar horários');
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        if (res.status === 401) {
+          setError('Sessão expirada. Faça login novamente.');
+        } else {
+          setError(errorData.error || 'Erro ao buscar horários');
+        }
+        return;
+      }
 
       const data = await res.json();
       const list = Array.isArray(data) ? data : (data.data || []);

@@ -1,7 +1,31 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { jwtVerify } from 'jose';
 
-export function middleware(req: NextRequest) {
+// Função para obter secret como Uint8Array (necessário para jose)
+function getJwtSecretKey(): Uint8Array {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    // Em desenvolvimento, usar secret padrão
+    if (process.env.NODE_ENV === 'development') {
+      return new TextEncoder().encode('dev-secret-key-nao-usar-em-producao-2025');
+    }
+    throw new Error('JWT_SECRET não definido');
+  }
+  return new TextEncoder().encode(secret);
+}
+
+// Valida token JWT
+async function validateToken(token: string): Promise<boolean> {
+  try {
+    await jwtVerify(token, getJwtSecretKey());
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   // Rotas públicas (não precisam de autenticação)
@@ -25,13 +49,28 @@ export function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // Rotas da área do aluno (precisam de alunoToken)
+  // API de configurações - GET é público, PUT precisa de auth (a própria API valida)
+  if (pathname === '/api/configuracoes' && req.method === 'GET') {
+    return NextResponse.next();
+  }
+
+  // Rotas da área do aluno (precisam de alunoToken válido)
   if (pathname.startsWith('/aluno')) {
     const alunoToken = req.cookies.get('alunoToken')?.value;
     if (!alunoToken) {
       const loginUrl = new URL('/', req.url);
       return NextResponse.redirect(loginUrl);
     }
+    
+    // Validar token
+    const isValid = await validateToken(alunoToken);
+    if (!isValid) {
+      const loginUrl = new URL('/', req.url);
+      const response = NextResponse.redirect(loginUrl);
+      response.cookies.delete('alunoToken');
+      return response;
+    }
+    
     return NextResponse.next();
   }
 
@@ -44,14 +83,33 @@ export function middleware(req: NextRequest) {
         { status: 401 }
       );
     }
+    
+    // Validar token
+    const isValid = await validateToken(alunoToken);
+    if (!isValid) {
+      return NextResponse.json(
+        { success: false, error: 'Token inválido ou expirado' },
+        { status: 401 }
+      );
+    }
+    
     return NextResponse.next();
   }
 
-  // Demais rotas (admin/funcionários) - precisam de token normal
+  // Demais rotas (admin/funcionários) - precisam de token válido
   const token = req.cookies.get('token')?.value;
   if (!token) {
     const loginUrl = new URL('/admin/login', req.url);
     return NextResponse.redirect(loginUrl);
+  }
+
+  // Validar token admin
+  const isValid = await validateToken(token);
+  if (!isValid) {
+    const loginUrl = new URL('/admin/login', req.url);
+    const response = NextResponse.redirect(loginUrl);
+    response.cookies.delete('token');
+    return response;
   }
 
   return NextResponse.next();

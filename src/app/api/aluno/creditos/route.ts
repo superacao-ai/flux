@@ -5,8 +5,7 @@ import connectDB from '@/lib/mongodb';
 import CreditoReposicao from '@/models/CreditoReposicao';
 import UsoCredito from '@/models/UsoCredito';
 import { HorarioFixo } from '@/models/HorarioFixo';
-
-const JWT_SECRET = process.env.JWT_SECRET || 'sua_chave_secreta_super_forte';
+import { JWT_SECRET } from '@/lib/auth';
 
 async function getAlunoFromToken() {
   try {
