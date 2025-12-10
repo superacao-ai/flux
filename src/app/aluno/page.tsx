@@ -255,6 +255,13 @@ export default function AlunoAreaPage() {
   const [reposicaoNovoHorarioId, setReposicaoNovoHorarioId] = useState('');
   const [enviandoReposicao, setEnviandoReposicao] = useState(false);
   
+  // Estados do modal de usar crédito
+  const [showUsarCreditoModal, setShowUsarCreditoModal] = useState(false);
+  const [creditoSelecionado, setCreditoSelecionado] = useState<CreditoReposicao | null>(null);
+  const [creditoNovaData, setCreditoNovaData] = useState('');
+  const [creditoHorarioId, setCreditoHorarioId] = useState('');
+  const [enviandoCredito, setEnviandoCredito] = useState(false);
+  
   // Estados do modal de alteração de horário fixo
   const [horarioParaAlterar, setHorarioParaAlterar] = useState<Horario | null>(null);
   const [novoHorarioFixoId, setNovoHorarioFixoId] = useState('');
@@ -866,6 +873,49 @@ export default function AlunoAreaPage() {
     }
   };
 
+  // Abrir modal de usar crédito
+  const abrirModalUsarCredito = (credito: CreditoReposicao) => {
+    setCreditoSelecionado(credito);
+    setCreditoNovaData('');
+    setCreditoHorarioId('');
+    setShowUsarCreditoModal(true);
+  };
+
+  // Enviar solicitação de uso de crédito
+  const enviarUsarCredito = async () => {
+    if (!creditoSelecionado || !creditoNovaData || !creditoHorarioId) {
+      toast.warning('Selecione a data e horário para usar o crédito');
+      return;
+    }
+
+    setEnviandoCredito(true);
+    try {
+      const res = await fetch('/api/aluno/usar-credito', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          creditoId: creditoSelecionado._id,
+          horarioDestinoId: creditoHorarioId,
+          dataAula: creditoNovaData
+        })
+      });
+
+      const data = await res.json();
+      
+      if (res.ok) {
+        toast.success(data.message);
+        setShowUsarCreditoModal(false);
+        fetchDados();
+      } else {
+        toast.error(data.error || 'Erro ao usar crédito');
+      }
+    } catch {
+      toast.error('Erro ao enviar solicitação');
+    } finally {
+      setEnviandoCredito(false);
+    }
+  };
+
   // Abrir modal de alteração de horário fixo
   const abrirModalAlteracaoHorario = (horario: Horario) => {
     setHorarioParaAlterar(horario);
@@ -987,6 +1037,16 @@ export default function AlunoAreaPage() {
       return true;
     });
   }, [reposicaoNovaData, horariosDisponiveis, faltaSelecionada]);
+
+  // Filtrar horários disponíveis pelo dia da semana da data selecionada para uso de crédito
+  const horariosParaCredito = useMemo(() => {
+    if (!creditoNovaData) return [];
+    const diaSemana = new Date(creditoNovaData + 'T12:00:00').getDay();
+    
+    return horariosDisponiveis.filter(h => {
+      return h.diaSemana === diaSemana && h.temVaga;
+    });
+  }, [creditoNovaData, horariosDisponiveis]);
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -2588,10 +2648,21 @@ export default function AlunoAreaPage() {
                                 {expirado ? 'EXPIRADO' : disponivel > 0 ? `${disponivel} DISPONÍVEL` : 'ESGOTADO'}
                               </span>
                             </div>
-                            <span className="text-xs text-gray-400">
-                              <i className="fas fa-calendar-alt mr-1"></i>
-                              Válido até {new Date(credito.validade).toLocaleDateString('pt-BR')}
-                            </span>
+                            <div className="flex items-center gap-2">
+                              {!expirado && disponivel > 0 && (
+                                <button
+                                  onClick={() => abrirModalUsarCredito(credito)}
+                                  className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white font-medium rounded-lg text-sm transition-colors"
+                                >
+                                  <i className="fas fa-plus mr-1"></i>
+                                  Usar
+                                </button>
+                              )}
+                              <span className="text-xs text-gray-400">
+                                <i className="fas fa-calendar-alt mr-1"></i>
+                                Válido até {new Date(credito.validade).toLocaleDateString('pt-BR')}
+                              </span>
+                            </div>
                           </div>
                           
                           <p className="text-sm text-gray-700 mb-2">
@@ -2634,11 +2705,6 @@ export default function AlunoAreaPage() {
                         </div>
                       );
                     })}
-                    
-                    <p className="text-xs text-gray-400 text-center mt-4">
-                      <i className="fas fa-info-circle mr-1"></i>
-                      Para usar seus créditos, entre em contato com a administração
-                    </p>
                   </div>
                 )}
               </section>
@@ -3306,6 +3372,111 @@ export default function AlunoAreaPage() {
             <button onClick={() => setShowHistoricoModal(false)} className="w-full mt-4 px-4 py-2 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50">
               Fechar
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Solicitar Reposição */}
+      {/* Modal de Usar Crédito */}
+      {showUsarCreditoModal && creditoSelecionado && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl p-6 max-w-md w-full shadow-xl">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-gray-900">Usar Crédito</h3>
+              <button onClick={() => setShowUsarCreditoModal(false)} className="text-gray-400 hover:text-gray-600">
+                <i className="fas fa-times"></i>
+              </button>
+            </div>
+
+            <div className="bg-teal-50 rounded-lg p-3 mb-4">
+              <p className="text-sm text-teal-700 font-medium">
+                <i className="fas fa-ticket mr-2"></i>
+                {creditoSelecionado.quantidade - creditoSelecionado.quantidadeUsada} crédito(s) disponível(eis)
+              </p>
+              <p className="text-xs text-teal-600 mt-1">
+                {creditoSelecionado.motivo}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                Válido até {new Date(creditoSelecionado.validade).toLocaleDateString('pt-BR')}
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Data da aula <span className="text-red-500">*</span>
+                </label>
+                {(() => {
+                  const hoje = new Date();
+                  hoje.setHours(0, 0, 0, 0);
+                  const validade = new Date(creditoSelecionado.validade);
+                  validade.setHours(23, 59, 59, 999);
+                  return (
+                    <input
+                      type="date"
+                      value={creditoNovaData}
+                      onChange={e => {
+                        setCreditoNovaData(e.target.value);
+                        setCreditoHorarioId('');
+                      }}
+                      min={hoje.toISOString().split('T')[0]}
+                      max={validade.toISOString().split('T')[0]}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                    />
+                  );
+                })()}
+              </div>
+
+              {creditoNovaData && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Horário disponível <span className="text-red-500">*</span>
+                  </label>
+                  {horariosParaCredito.length === 0 ? (
+                    <p className="text-sm text-yellow-600 bg-yellow-50 p-3 rounded-lg">
+                      <i className="fas fa-exclamation-triangle mr-2"></i>
+                      Nenhum horário disponível neste dia. Tente outra data.
+                    </p>
+                  ) : (
+                    <select
+                      value={creditoHorarioId}
+                      onChange={e => setCreditoHorarioId(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                    >
+                      <option value="">Selecione o horário...</option>
+                      {horariosParaCredito.map(h => (
+                        <option key={h._id} value={h._id}>
+                          {h.horarioInicio} - {h.horarioFim} • {h.modalidade?.nome} ({h.professor?.nome})
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="bg-green-50 border border-green-200 rounded-lg p-3 mt-4">
+              <p className="text-sm text-green-700">
+                <i className="fas fa-check-circle mr-2"></i>
+                Créditos já são pré-aprovados. Sua aula será agendada automaticamente.
+              </p>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button 
+                onClick={() => setShowUsarCreditoModal(false)} 
+                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={enviarUsarCredito} 
+                disabled={enviandoCredito || !creditoHorarioId}
+                className="flex-1 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white font-medium rounded-lg disabled:opacity-50"
+              >
+                {enviandoCredito ? <><i className="fas fa-spinner fa-spin mr-2"></i>Agendando...</> : 'Usar Crédito'}
+              </button>
+            </div>
           </div>
         </div>
       )}

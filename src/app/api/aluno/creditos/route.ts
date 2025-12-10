@@ -10,12 +10,15 @@ import { JWT_SECRET } from '@/lib/auth';
 async function getAlunoFromToken() {
   try {
     const cookieStore = await cookies();
-    const token = cookieStore.get('aluno_token')?.value;
+    const token = cookieStore.get('alunoToken')?.value;
     
     if (!token) return null;
     
-    const decoded = jwt.verify(token, JWT_SECRET) as { alunoId: string };
-    return decoded.alunoId;
+    const decoded = jwt.verify(token, JWT_SECRET) as { id: string; nome: string; tipo: string };
+    
+    if (decoded.tipo !== 'aluno') return null;
+    
+    return decoded.id;
   } catch {
     return null;
   }

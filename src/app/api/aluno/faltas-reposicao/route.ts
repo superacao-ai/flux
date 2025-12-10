@@ -86,15 +86,16 @@ export async function GET(req: NextRequest) {
     const faltasRegistradas = await AulaRealizada.aggregate([
       {
         $match: {
-          'presencas.alunoId': new mongoose.Types.ObjectId(aluno.id),
-          'presencas.presente': false
+          'alunos.alunoId': new mongoose.Types.ObjectId(aluno.id),
+          'alunos.presente': false,
+          status: { $in: ['enviada', 'corrigida'] }
         }
       },
-      { $unwind: '$presencas' },
+      { $unwind: '$alunos' },
       {
         $match: {
-          'presencas.alunoId': new mongoose.Types.ObjectId(aluno.id),
-          'presencas.presente': false
+          'alunos.alunoId': new mongoose.Types.ObjectId(aluno.id),
+          'alunos.presente': false
         }
       },
       {
@@ -127,7 +128,7 @@ export async function GET(req: NextRequest) {
             nome: '$modalidade.nome',
             cor: '$modalidade.cor'
           },
-          presenca: '$presencas'
+          aluno: '$alunos'
         }
       },
       { $sort: { data: -1 } },
