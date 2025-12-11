@@ -2,28 +2,36 @@ import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import connectDB from '@/lib/mongodb';
 import { Aluno } from '@/models/Aluno';
-import { JWT_SECRET, checkRateLimit, resetRateLimit } from '@/lib/auth';
+import { JWT_SECRET } from '@/lib/auth';
 import jwt from 'jsonwebtoken';
+import { 
+  checkRateLimitEnhanced, 
+  resetRateLimitEnhanced, 
+  logSecurityEvent, 
+  extractClientIp,
+  detectSuspiciousActivity,
+  sanitizeInput 
+} from '@/lib/security';
 
 // POST - Login do aluno
 export async function POST(req: NextRequest) {
   try {
-    // Pegar IP para rate limiting
-    const ip = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || 'unknown';
-    
-    // Verificar rate limit usando lib centralizada
-    const rateCheck = checkRateLimit(`aluno:${ip}`);
-    if (!rateCheck.allowed) {
-      return NextResponse.json(
-        { success: false, error: `Muitas tentativas. Tente novamente em ${rateCheck.blockTimeRemaining} minutos.` },
-        { status: 429 }
-      );
-    }
+    // Extrair IP do cliente
+    const clientIp = extractClientIp(
+      req.headers.get('x-forwarded-for'),
+      req.headers.get('x-real-ip')
+    );
     
     const body = await req.json();
-    const { cpf, dataNascimento } = body;
+    const { cpf, dataNascimento, remember } = body;
     
     if (!cpf || !dataNascimento) {
+      logSecurityEvent('ALUNO_LOGIN_INVALID_CREDENTIALS', {
+        cpf: sanitizeInput(cpf?.substring(0, 5) || '***'), // Esconder CPF completo
+        ip: clientIp,
+        reason: 'missing_fields'
+      });
+
       return NextResponse.json(
         { success: false, error: 'CPF e data de nascimento são obrigatórios' },
         { status: 400 }
@@ -34,9 +42,39 @@ export async function POST(req: NextRequest) {
     const cpfLimpo = cpf.replace(/\D/g, '');
     
     if (cpfLimpo.length !== 11) {
+      logSecurityEvent('ALUNO_LOGIN_INVALID_CPF', {
+        cpf: sanitizeInput(cpfLimpo?.substring(0, 5) || '***'),
+        ip: clientIp
+      });
+
       return NextResponse.json(
         { success: false, error: 'CPF inválido' },
         { status: 400 }
+      );
+    }
+
+    // Verificar rate limit - usando CPF como identificador
+    const rateCheck = checkRateLimitEnhanced(`aluno:${cpfLimpo}`, clientIp);
+    if (!rateCheck.allowed) {
+      logSecurityEvent('ALUNO_LOGIN_RATE_LIMIT', {
+        cpf: cpfLimpo.substring(0, 5) + '****',
+        ip: clientIp,
+        blockTimeRemaining: rateCheck.blockTimeRemaining
+      });
+
+      // Detectar atividade suspeita
+      const suspicious = detectSuspiciousActivity(`aluno:${cpfLimpo}`);
+      if (suspicious.isSuspicious) {
+        logSecurityEvent('ALUNO_SUSPICIOUS_ACTIVITY', {
+          cpf: cpfLimpo.substring(0, 5) + '****',
+          ipCount: suspicious.ipCount,
+          message: suspicious.message
+        });
+      }
+
+      return NextResponse.json(
+        { success: false, error: `Muitas tentativas. Tente novamente em ${rateCheck.blockTimeRemaining} minutos.` },
+        { status: 429 }
       );
     }
     
@@ -49,6 +87,11 @@ export async function POST(req: NextRequest) {
     }).populate('modalidadeId', 'nome cor linkWhatsapp');
     
     if (!aluno) {
+      logSecurityEvent('ALUNO_LOGIN_NOT_FOUND', {
+        cpf: cpfLimpo.substring(0, 5) + '****',
+        ip: clientIp
+      });
+
       return NextResponse.json(
         { success: false, error: 'CPF não encontrado ou inativo' },
         { status: 401 }
@@ -57,6 +100,12 @@ export async function POST(req: NextRequest) {
     
     // Verificar data de nascimento
     if (!aluno.dataNascimento) {
+      logSecurityEvent('ALUNO_LOGIN_NO_BIRTHDATE', {
+        cpf: cpfLimpo.substring(0, 5) + '****',
+        ip: clientIp,
+        alunoId: aluno._id.toString()
+      });
+
       return NextResponse.json(
         { success: false, error: 'Data de nascimento não cadastrada. Procure a recepção.' },
         { status: 401 }
@@ -71,6 +120,12 @@ export async function POST(req: NextRequest) {
     const dataCadastradaStr = dataCadastrada.toISOString().split('T')[0];
     
     if (dataInformadaStr !== dataCadastradaStr) {
+      logSecurityEvent('ALUNO_LOGIN_INVALID_BIRTHDATE', {
+        cpf: cpfLimpo.substring(0, 5) + '****',
+        ip: clientIp,
+        alunoId: aluno._id.toString()
+      });
+
       return NextResponse.json(
         { success: false, error: 'Data de nascimento incorreta' },
         { status: 401 }
@@ -78,7 +133,17 @@ export async function POST(req: NextRequest) {
     }
     
     // Login bem-sucedido - resetar tentativas
-    resetRateLimit(`aluno:${ip}`);
+    resetRateLimitEnhanced(`aluno:${cpfLimpo}`);
+    logSecurityEvent('ALUNO_LOGIN_SUCCESS', {
+      cpf: cpfLimpo.substring(0, 5) + '****',
+      ip: clientIp,
+      alunoId: aluno._id.toString()
+    });
+    
+    // Definir expiração baseado no remember
+    // Se remember=true, token dura 30 dias; senão 7 dias
+    const tokenExpiry = remember ? '30d' : '7d';
+    const cookieMaxAge = remember ? 30 * 24 * 60 * 60 : 7 * 24 * 60 * 60;
     
     // Gerar token JWT para o aluno
     const token = jwt.sign(
@@ -88,7 +153,7 @@ export async function POST(req: NextRequest) {
         tipo: 'aluno'
       },
       JWT_SECRET,
-      { expiresIn: '7d' }
+      { expiresIn: tokenExpiry }
     );
     
     // Setar cookie httpOnly
@@ -97,7 +162,7 @@ export async function POST(req: NextRequest) {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60, // 7 dias
+      maxAge: cookieMaxAge,
       path: '/'
     });
     

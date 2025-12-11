@@ -96,7 +96,7 @@ AvisoAusenciaSchema.statics.buscarFaltasParaReposicao = function(alunoId: string
     path: 'horarioFixoId',
     populate: [
       { path: 'modalidadeId', select: 'nome cor' },
-      { path: 'professorId', select: 'nome' }
+      { path: 'professorId', model: 'User', select: 'nome' }
     ]
   })
   .sort({ dataAusencia: -1 });

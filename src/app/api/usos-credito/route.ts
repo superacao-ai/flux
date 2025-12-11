@@ -61,7 +61,7 @@ export async function GET(req: NextRequest) {
         select: 'diaSemana horarioInicio horarioFim modalidadeId professorId',
         populate: [
           { path: 'modalidadeId', select: 'nome cor' },
-          { path: 'professorId', select: 'nome cor' }
+          { path: 'professorId', model: 'User', select: 'nome cor' }
         ]
       })
       .sort({ dataUso: -1 })

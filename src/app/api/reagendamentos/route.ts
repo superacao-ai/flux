@@ -269,7 +269,7 @@ export async function POST(request: NextRequest) {
         path: 'horarioFixoId',
         populate: [
           { path: 'alunoId', select: 'nome email' },
-          { path: 'professorId', select: 'nome especialidade cor' }
+          { path: 'professorId', model: 'User', select: 'nome especialidade cor' }
         ]
       })
       .populate({
@@ -283,6 +283,7 @@ export async function POST(request: NextRequest) {
         path: 'novoHorarioFixoId',
         populate: {
           path: 'professorId',
+          model: 'User',
           select: 'nome especialidade cor'
         }
       })

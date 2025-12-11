@@ -283,14 +283,23 @@ export default function ProfessorAlunosPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {faltasAlunoSelecionado.map((falta, idx) => (
+                  {faltasAlunoSelecionado.map((falta, idx) => {
+                    // Helper para parsear data sem problema de timezone UTC
+                    const parseDataLocal = (dataStr: string): Date => {
+                      if (!dataStr) return new Date();
+                      const str = dataStr.split('T')[0];
+                      const [ano, mes, dia] = str.split('-').map(Number);
+                      return new Date(ano, mes - 1, dia, 12, 0, 0);
+                    };
+                    return (
                     <tr key={idx} className="border-b">
-                      <td className="p-2">{falta.data ? new Date(falta.data).toLocaleDateString('pt-BR') : '-'}</td>
+                      <td className="p-2">{falta.data ? parseDataLocal(falta.data).toLocaleDateString('pt-BR') : '-'}</td>
                       <td className="p-2">{falta.horarioInicio || '-'} - {falta.horarioFim || '-'}</td>
                       <td className="p-2">{falta.modalidade || '-'}</td>
                       {/* ...sem botão de reagendamento... */}
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             ) : (

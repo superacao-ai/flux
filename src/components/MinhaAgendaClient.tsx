@@ -145,6 +145,7 @@ export default function MinhaAgendaClient() {
   const [usosCredito, setUsosCredito] = useState<UsoCredito[]>([]);
   const [presencasExperimentais, setPresencasExperimentais] = useState<Map<string, boolean>>(new Map()); // Presença local das experimentais
   const [presencas, setPresencas] = useState<Presenca[]>([]); // Rascunho local
+  const [avisosAusencia, setAvisosAusencia] = useState<Record<string, { motivo: string; temDireitoReposicao: boolean }>>({}); // Map alunoId_horarioFixoId -> aviso
   const [loading, setLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
   const [error, setError] = useState('');
@@ -333,6 +334,35 @@ export default function MinhaAgendaClient() {
     };
 
     fetchUsosCredito();
+  }, [dataSelecionada]);
+
+  // Buscar avisos de ausência do dia selecionado
+  useEffect(() => {
+    const fetchAvisosAusencia = async () => {
+      if (!dataSelecionada) return;
+      
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) return;
+        
+        const dataFormatada = dataSelecionada.toISOString().split('T')[0];
+        const res = await fetch(`/api/avisos-ausencia?data=${dataFormatada}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && data.avisosMap) {
+            setAvisosAusencia(data.avisosMap);
+            console.log('[MinhaAgenda] Avisos de ausência do dia:', data.avisosMap);
+          }
+        }
+      } catch (err) {
+        console.error('[MinhaAgenda] Erro ao buscar avisos de ausência:', err);
+      }
+    };
+
+    fetchAvisosAusencia();
   }, [dataSelecionada]);
 
   // Buscar presenças do dia selecionado
@@ -699,15 +729,16 @@ export default function MinhaAgendaClient() {
     if (enviandoAula) return;
     
     // Bloquear envio de aulas futuras
-    const hoje = new Date();
-    hoje.setHours(0, 0, 0, 0);
-    const dataAula = new Date(dataSelecionada);
-    dataAula.setHours(0, 0, 0, 0);
+    // COMENTADO PARA TESTES - Permite enviar aulas futuras
+    // const hoje = new Date();
+    // hoje.setHours(0, 0, 0, 0);
+    // const dataAula = new Date(dataSelecionada);
+    // dataAula.setHours(0, 0, 0, 0);
     
-    if (dataAula > hoje) {
-      toast.warning('Não é possível enviar aulas de datas futuras.');
-      return;
-    }
+    // if (dataAula > hoje) {
+    //   toast.warning('Não é possível enviar aulas de datas futuras.');
+    //   return;
+    // }
     
     setEnviandoAula(true);
 
@@ -730,10 +761,15 @@ export default function MinhaAgendaClient() {
             .map(a => {
               // Se for aluno ativo, usar marcação de presença
               if (!a.emEspera && !a.ausente && !a.congelado) {
+                const presente = getPresencaStatus(a._id, h.horarioFixoId || '') ?? null;
+                const avisoAusencia = getAvisoAusencia(a._id, h.horarioFixoId || '');
+                
                 return {
                   alunoId: a._id,
-                  presente: getPresencaStatus(a._id, h.horarioFixoId || '') ?? null,
+                  presente,
                   observacoes: '',
+                  // Marcar se o aluno avisou que ia faltar e realmente faltou
+                  avisouComAntecedencia: avisoAusencia && !presente ? true : false,
                 };
               }
               
@@ -747,6 +783,7 @@ export default function MinhaAgendaClient() {
                 alunoId: a._id,
                 presente: null,
                 observacoes: justificativa,
+                avisouComAntecedencia: false,
               };
             })
         );
@@ -933,6 +970,13 @@ export default function MinhaAgendaClient() {
     );
 
     return presenca ? (presenca.presente === true) : false;
+  };
+
+  // Verificar se o aluno avisou que vai faltar
+  const getAvisoAusencia = (alunoId: string, horarioFixoId: string): { motivo: string; temDireitoReposicao: boolean } | null => {
+    if (!alunoId || !horarioFixoId) return null;
+    const key = `${alunoId}_${horarioFixoId}`;
+    return avisosAusencia[key] || null;
   };
 
   // Marcar presença/falta de aula experimental (salva localmente, envia só ao confirmar aula)
@@ -1408,26 +1452,42 @@ export default function MinhaAgendaClient() {
                                     const status = getPresencaStatus(aluno._id, horario.horarioFixoId || '');
                                     const aulaEnviada = aulaStatus.get(horario.horarioFixoId || '')?.enviada ?? false;
                                     const checked = status === true;
+                                    const avisoAusencia = getAvisoAusencia(aluno._id, horario.horarioFixoId || '');
+
+                                    // Se avisou ausência, bloquear como falta
+                                    const isAusenciaAvisada = !!avisoAusencia;
 
                                     return (
-                                      <div className="flex items-center gap-2 mt-2">
-                                        <span className={`${aulaEnviada ? 'text-gray-400' : 'text-gray-700'} text-xs font-semibold`}>FALTOU</span>
+                                      <div className="flex flex-col gap-1 mt-2">
+                                        {/* Se avisou ausência - mostrar status travado */}
+                                        {isAusenciaAvisada && !aulaEnviada ? (
+                                          <div className="flex items-center gap-2">
+                                            <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-amber-50 border border-amber-200 rounded-lg">
+                                              <i className="fas fa-calendar-check text-amber-600 text-xs"></i>
+                                              <span className="text-amber-700 text-xs font-medium">Ausência agendada</span>
+                                            </div>
+                                          </div>
+                                        ) : (
+                                          <div className="flex items-center gap-2">
+                                            <span className={`${aulaEnviada ? 'text-gray-400' : 'text-gray-700'} text-xs font-semibold`}>FALTOU</span>
 
-                                        <label className={`relative inline-flex items-center ${aulaEnviada ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
-                                          <input
-                                            type="checkbox"
-                                            className="sr-only"
-                                            checked={checked}
-                                            disabled={aulaEnviada}
-                                            onChange={(e) => marcarPresenca(aluno._id, horario.horarioFixoId || '', e.target.checked)}
-                                            aria-label={`Marcar presença de ${aluno.nome}`}
-                                          />
+                                            <label className={`relative inline-flex items-center ${aulaEnviada ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
+                                              <input
+                                                type="checkbox"
+                                                className="sr-only"
+                                                checked={checked}
+                                                disabled={aulaEnviada}
+                                                onChange={(e) => marcarPresenca(aluno._id, horario.horarioFixoId || '', e.target.checked)}
+                                                aria-label={`Marcar presença de ${aluno.nome}`}
+                                              />
 
-                                          <div className={`w-12 h-6 rounded-full transition-colors ${checked ? 'bg-green-500' : 'bg-gray-300'}`}></div>
-                                          <div className={`absolute left-1 top-1 w-4 h-4 bg-white rounded-full shadow transform transition-transform ${checked ? 'translate-x-6' : ''}`}></div>
-                                        </label>
+                                              <div className={`w-12 h-6 rounded-full transition-colors ${checked ? 'bg-green-500' : 'bg-gray-300'}`}></div>
+                                              <div className={`absolute left-1 top-1 w-4 h-4 bg-white rounded-full shadow transform transition-transform ${checked ? 'translate-x-6' : ''}`}></div>
+                                            </label>
 
-                                        <span className={`${aulaEnviada ? 'text-gray-400' : (checked ? 'text-green-600' : 'text-gray-700')} text-xs font-semibold`}>PRESENTE</span>
+                                            <span className={`${aulaEnviada ? 'text-gray-400' : (checked ? 'text-green-600' : 'text-gray-700')} text-xs font-semibold`}>PRESENTE</span>
+                                          </div>
+                                        )}
                                       </div>
                                     );
                                   })()
@@ -1734,11 +1794,12 @@ export default function MinhaAgendaClient() {
 
                   {/* Botão de Enviar Aula */}
                   {horariosExpandidos.has(horario.horarioFixoId || '') && !aulaStatus.get(horario.horarioFixoId || '')?.enviada && (() => {
-                    const hoje = new Date();
-                    hoje.setHours(0, 0, 0, 0);
-                    const dataAula = new Date(dataSelecionada);
-                    dataAula.setHours(0, 0, 0, 0);
-                    const isAulaFutura = dataAula > hoje;
+                    // COMENTADO PARA TESTES - Permite enviar aulas futuras
+                    // const hoje = new Date();
+                    // hoje.setHours(0, 0, 0, 0);
+                    // const dataAula = new Date(dataSelecionada);
+                    // dataAula.setHours(0, 0, 0, 0);
+                    const isAulaFutura = false; // sempre false para permitir envio
                     
                     return (
                       <div className="p-4 border-t bg-blue-50">

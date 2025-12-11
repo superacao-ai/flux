@@ -10,6 +10,7 @@ import { Aluno } from '@/models/Aluno';
 import { Reagendamento } from '@/models/Reagendamento';
 import { User } from '@/models/User';
 import { Professor } from '@/models/Professor';
+import { AvisoAusencia } from '@/models/AvisoAusencia';
 import { JWT_SECRET } from '@/lib/auth';
 
 // POST - Enviar/finalizar aula
@@ -122,6 +123,7 @@ export async function POST(request: NextRequest) {
         },
         era_reagendamento: false,
         observacoes: marcado?.observacoes || '',
+        avisouComAntecedencia: marcado?.avisouComAntecedencia ?? false,
       };
     });
 
@@ -212,6 +214,25 @@ export async function POST(request: NextRequest) {
       total_faltas,
       total_reagendamentos,
     });
+
+    // Atualizar avisos de ausência para 'confirmada' quando a aula é enviada
+    // Isso habilita o direito do aluno a repor a aula
+    const alunosQueFaltaram = todosAlunos.filter(a => a.presente === false && a.avisouComAntecedencia);
+    for (const alunoFalta of alunosQueFaltaram) {
+      await AvisoAusencia.findOneAndUpdate(
+        {
+          alunoId: alunoFalta.alunoId,
+          horarioFixoId: horarioFixoId,
+          dataAusencia: { $gte: dataNormalizada, $lt: new Date(dataNormalizada.getTime() + 24 * 60 * 60 * 1000) },
+          status: 'pendente'
+        },
+        {
+          status: 'confirmada',
+          confirmedAt: new Date()
+        }
+      );
+      console.log(`[POST /api/aulas-realizadas] Aviso de ausência confirmado para aluno ${alunoFalta.alunoId}`);
+    }
 
     // Criar ReagendamentoRealizado para cada reagendamento
     for (const alunoReag of alunosReagendados) {

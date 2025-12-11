@@ -302,13 +302,21 @@ export default function CreditosReposicaoPage() {
     }
   };
 
+  // Helper para parsear data sem problema de timezone UTC
+  const parseDataLocal = (dataStr: string): Date => {
+    if (!dataStr) return new Date();
+    const str = dataStr.split('T')[0];
+    const [ano, mes, dia] = str.split('-').map(Number);
+    return new Date(ano, mes - 1, dia, 12, 0, 0);
+  };
+
   const formatarData = (dataStr: string) => {
-    const data = new Date(dataStr);
+    const data = parseDataLocal(dataStr);
     return data.toLocaleDateString('pt-BR');
   };
 
   const isExpirado = (validadeStr: string) => {
-    return new Date(validadeStr) <= new Date();
+    return parseDataLocal(validadeStr) <= new Date();
   };
 
   // Agrupar créditos por aluno (filtrando créditos com alunoId nulo)

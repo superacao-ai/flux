@@ -22,6 +22,7 @@ export interface Modalidade {
   horariosDisponiveis: HorarioDisponivel[];
   linkWhatsapp?: string; // Link do grupo do WhatsApp da modalidade
   modalidadesVinculadas?: string[]; // IDs das modalidades que compartilham o mesmo espaço
+  permiteReposicao?: boolean; // Se a modalidade permite reposição de faltas
   ativo: boolean;
 }
 
@@ -59,7 +60,8 @@ export default function ModalidadesPage() {
       tarde: { inicio: '', fim: '' }
     },
     linkWhatsapp: '',
-    modalidadesVinculadas: [] as string[]
+    modalidadesVinculadas: [] as string[],
+    permiteReposicao: true
   });
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
@@ -187,6 +189,7 @@ export default function ModalidadesPage() {
         horariosDisponiveis: [] as any[],
         linkWhatsapp: formData.linkWhatsapp?.trim() || '',
         modalidadesVinculadas: formData.modalidadesVinculadas || [],
+        permiteReposicao: formData.permiteReposicao,
       };
 
       // If morning times and days provided, add to horariosDisponiveis
@@ -236,7 +239,8 @@ export default function ModalidadesPage() {
           diasSemanaTarde: [],
           horarioFuncionamento: { manha: { inicio: '', fim: '' }, tarde: { inicio: '', fim: '' } },
           linkWhatsapp: '',
-          modalidadesVinculadas: []
+          modalidadesVinculadas: [],
+          permiteReposicao: true
         });
         fetchModalidades();
         try {
@@ -275,7 +279,8 @@ export default function ModalidadesPage() {
         tarde: { inicio: (modalidade as any).horarioFuncionamento?.tarde?.inicio || '', fim: (modalidade as any).horarioFuncionamento?.tarde?.fim || '' }
       },
       linkWhatsapp: modalidade.linkWhatsapp || '',
-      modalidadesVinculadas: modalidade.modalidadesVinculadas || []
+      modalidadesVinculadas: modalidade.modalidadesVinculadas || [],
+      permiteReposicao: modalidade.permiteReposicao !== false // default true se não definido
     });
     setShowModal(true);
   };
@@ -1075,6 +1080,30 @@ export default function ModalidadesPage() {
                   </p>
                 </div>
 
+                {/* Toggle Permite Reposição */}
+                <div className="flex items-center justify-between p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <i className="fas fa-redo text-blue-500"></i>
+                    <div>
+                      <label className="text-sm font-medium text-gray-700">Permite Reposição</label>
+                      <p className="text-xs text-gray-500">Se desativado, alunos não poderão repor faltas desta modalidade</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setFormData({...formData, permiteReposicao: !formData.permiteReposicao})}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                      formData.permiteReposicao ? 'bg-green-500' : 'bg-gray-300'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        formData.permiteReposicao ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+
                 <div>
                   <label className="block text-sm font-medium text-gray-700">
                     <i className="fas fa-link text-gray-500 mr-1"></i>
@@ -1274,7 +1303,8 @@ export default function ModalidadesPage() {
                         diasSemanaTarde: [],
                         horarioFuncionamento: { manha: { inicio: '', fim: '' }, tarde: { inicio: '', fim: '' } },
                         linkWhatsapp: '',
-                        modalidadesVinculadas: []
+                        modalidadesVinculadas: [],
+                        permiteReposicao: true
                       });
                     }}
                     className="px-3 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none"

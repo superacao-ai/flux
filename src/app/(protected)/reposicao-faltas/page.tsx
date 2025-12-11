@@ -27,6 +27,15 @@ interface Reposicao {
   horarioFixoId?: string;
 }
 
+// Helper para parsear data sem problema de timezone UTC
+const parseDataLocal = (dataStr: string): Date => {
+  if (!dataStr) return new Date();
+  // Se vier no formato ISO (YYYY-MM-DD ou YYYY-MM-DDTHH:mm:ss)
+  const str = dataStr.split('T')[0];
+  const [ano, mes, dia] = str.split('-').map(Number);
+  return new Date(ano, mes - 1, dia, 12, 0, 0);
+};
+
 interface Falta {
   _id: string;
   aulaRealizadaId: string;
@@ -198,7 +207,7 @@ export default function ReposicaoFaltasPage() {
   };
 
   const formatarData = (dataStr: string) => {
-    const data = new Date(dataStr);
+    const data = parseDataLocal(dataStr);
     return data.toLocaleDateString('pt-BR');
   };
 
@@ -354,7 +363,7 @@ export default function ReposicaoFaltasPage() {
                             {grupo.faltas.map((falta) => {
                               const statusInfo = getStatusInfo(falta.statusReposicao, falta.diasRestantes);
                               const diasSemana = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-                              const dataFalta = new Date(falta.data);
+                              const dataFalta = parseDataLocal(falta.data);
                               
                               return (
                                 <div 
@@ -475,7 +484,7 @@ export default function ReposicaoFaltasPage() {
                                     {grupo.faltas.map((falta) => {
                                       const statusInfo = getStatusInfo(falta.statusReposicao, falta.diasRestantes);
                                       const diasSemana = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-                                      const dataFalta = new Date(falta.data);
+                                      const dataFalta = parseDataLocal(falta.data);
                                       
                                       return (
                                         <tr 

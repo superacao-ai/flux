@@ -2,14 +2,34 @@ import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import connectDB from '@/lib/mongodb';
 import { User } from '@/models/User';
-import { JWT_SECRET, generateAdminToken, checkRateLimit, resetRateLimit } from '@/lib/auth';
+import { JWT_SECRET, generateAdminToken } from '@/lib/auth';
+import { 
+  checkRateLimitEnhanced, 
+  resetRateLimitEnhanced, 
+  logSecurityEvent, 
+  extractClientIp,
+  detectSuspiciousActivity,
+  sanitizeInput 
+} from '@/lib/security';
 
 export async function POST(request: NextRequest) {
   try {
-    const { email, senha } = await request.json();
+    const { email, senha, remember } = await request.json();
+
+    // Extrair IP do cliente
+    const clientIp = extractClientIp(
+      request.headers.get('x-forwarded-for'),
+      request.headers.get('x-real-ip')
+    );
 
     // Validações básicas
     if (!email || !senha) {
+      logSecurityEvent('LOGIN_INVALID_CREDENTIALS', {
+        email: sanitizeInput(email),
+        ip: clientIp,
+        reason: 'missing_fields'
+      });
+      
       return NextResponse.json(
         {
           success: false,
@@ -19,11 +39,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const emailLower = email.toLowerCase();
+    const emailLower = sanitizeInput(email.toLowerCase());
     
     // Verificar rate limiting por email
-    const rateCheck = checkRateLimit(emailLower);
+    const rateCheck = checkRateLimitEnhanced(emailLower, clientIp);
     if (!rateCheck.allowed) {
+      logSecurityEvent('LOGIN_RATE_LIMIT_EXCEEDED', {
+        email: emailLower,
+        ip: clientIp,
+        blockTimeRemaining: rateCheck.blockTimeRemaining
+      });
+
+      // Detectar atividade suspeita (múltiplos IPs)
+      const suspicious = detectSuspiciousActivity(emailLower);
+      if (suspicious.isSuspicious) {
+        logSecurityEvent('SUSPICIOUS_ACTIVITY_DETECTED', {
+          email: emailLower,
+          ipCount: suspicious.ipCount,
+          message: suspicious.message
+        });
+      }
+
       return NextResponse.json(
         {
           success: false,
@@ -42,6 +78,11 @@ export async function POST(request: NextRequest) {
     }).select('+senha');
 
     if (!user) {
+      logSecurityEvent('LOGIN_USER_NOT_FOUND', {
+        email: emailLower,
+        ip: clientIp
+      });
+
       return NextResponse.json(
         {
           success: false,
@@ -55,6 +96,12 @@ export async function POST(request: NextRequest) {
     const senhaValida = await bcrypt.compare(senha, user.senha);
 
     if (!senhaValida) {
+      logSecurityEvent('LOGIN_INVALID_PASSWORD', {
+        email: emailLower,
+        ip: clientIp,
+        userId: user._id.toString()
+      });
+
       return NextResponse.json(
         {
           success: false,
@@ -64,8 +111,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Login bem sucedido - resetar rate limiting
-    resetRateLimit(emailLower);
+    // Login bem sucedido - resetar rate limiting e registrar sucesso
+    resetRateLimitEnhanced(emailLower);
+    logSecurityEvent('LOGIN_SUCCESS', {
+      email: emailLower,
+      ip: clientIp,
+      userId: user._id.toString(),
+      tipo: user.tipo
+    });
 
     // Gerar token JWT usando lib centralizada
     const token = generateAdminToken({
@@ -94,10 +147,13 @@ export async function POST(request: NextRequest) {
     });
     
     // Também salvar no cookie HttpOnly para APIs que preferem cookies
+    // Se remember=true, cookie dura 30 dias; senão dura 24 horas
+    const cookieMaxAge = remember ? 60 * 60 * 24 * 30 : 60 * 60 * 24;
+    
     res.cookies.set('token', token, { 
       httpOnly: true, 
       path: '/', 
-      maxAge: 60 * 60 * 24, 
+      maxAge: cookieMaxAge, 
       sameSite: 'lax', 
       secure: process.env.NODE_ENV === 'production' 
     });

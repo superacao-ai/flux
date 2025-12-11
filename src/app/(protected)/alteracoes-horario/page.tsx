@@ -86,23 +86,27 @@ export default function AlteracoesHorarioPage() {
         body: JSON.stringify({ solicitacaoId, acao, motivoRejeicao })
       });
 
+      if (!res.ok) {
+        const data = await res.json();
+        toast.error(data.error || 'Erro ao processar');
+        setProcessando(null);
+        return;
+      }
+
       const data = await res.json();
       
-      if (res.ok) {
-        if (acao === 'aprovar') {
-          toast.success('Alteração de horário aprovada!');
-        } else {
-          toast.success('Solicitação rejeitada!');
-        }
-        fetchAlteracoes();
-        refreshPendingCounts();
-        setShowRejeicaoModal(false);
-        setSolicitacaoParaRejeitar(null);
-        setMotivoRejeicao('');
+      if (acao === 'aprovar') {
+        toast.success('Alteração de horário aprovada!');
       } else {
-        toast.error(data.error || 'Erro ao processar');
+        toast.success('Solicitação rejeitada!');
       }
-    } catch {
+      fetchAlteracoes();
+      refreshPendingCounts();
+      setShowRejeicaoModal(false);
+      setSolicitacaoParaRejeitar(null);
+      setMotivoRejeicao('');
+    } catch (error) {
+      console.error('Erro ao processar solicitação:', error);
       toast.error('Erro ao processar solicitação');
     } finally {
       setProcessando(null);
@@ -159,8 +163,21 @@ export default function AlteracoesHorarioPage() {
     }
   };
 
+  // Helper para parsear data sem problema de timezone UTC (para datas simples)
+  const parseDataLocal = (dataStr: string): Date => {
+    if (!dataStr) return new Date();
+    // Se tem hora (timestamp), usar Date normal
+    if (dataStr.includes('T') && dataStr.length > 10) {
+      return new Date(dataStr);
+    }
+    // Se é só data YYYY-MM-DD
+    const str = dataStr.split('T')[0];
+    const [ano, mes, dia] = str.split('-').map(Number);
+    return new Date(ano, mes - 1, dia, 12, 0, 0);
+  };
+
   const formatarData = (dataStr: string) => {
-    return new Date(dataStr).toLocaleDateString('pt-BR', {
+    return parseDataLocal(dataStr).toLocaleDateString('pt-BR', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',

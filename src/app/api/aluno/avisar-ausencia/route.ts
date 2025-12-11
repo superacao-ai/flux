@@ -44,8 +44,8 @@ export async function GET(req: NextRequest) {
       .populate({
         path: 'horarioFixoId',
         populate: [
-          { path: 'modalidadeId', select: 'nome cor' },
-          { path: 'professorId', select: 'nome' }
+          { path: 'modalidadeId', select: 'nome cor permiteReposicao' },
+          { path: 'professorId', model: 'User', select: 'nome' }
         ]
       })
       .sort({ dataAusencia: -1 })
@@ -113,17 +113,53 @@ export async function POST(req: NextRequest) {
       );
     }
     
-    // Verificar se a data é futura
-    const dataAusenciaDate = new Date(dataAusencia);
+    // Buscar o horário para validar o horário de início
+    const horario = await HorarioFixo.findById(horarioFixoId);
+    if (!horario) {
+      return NextResponse.json(
+        { success: false, error: 'Horário não encontrado' },
+        { status: 404 }
+      );
+    }
+    
+    // Verificar se a data/hora da aula já passou
+    // Usar T12:00:00 para evitar problemas de fuso horário
+    const dataAusenciaStr = typeof dataAusencia === 'string' ? dataAusencia.split('T')[0] : dataAusencia;
+    const dataAusenciaDate = new Date(dataAusenciaStr + 'T12:00:00');
+    const agora = new Date();
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
-    dataAusenciaDate.setHours(0, 0, 0, 0);
     
-    if (dataAusenciaDate < hoje) {
+    const dataAusenciaNormalizada = new Date(dataAusenciaDate);
+    dataAusenciaNormalizada.setHours(0, 0, 0, 0);
+    
+    // Se a data é passada (antes de hoje), bloquear
+    if (dataAusenciaNormalizada < hoje) {
       return NextResponse.json(
         { success: false, error: 'Não é possível avisar ausência para datas passadas' },
         { status: 400 }
       );
+    }
+    
+    // Se é hoje, verificar se o horário da aula ainda não passou
+    if (dataAusenciaNormalizada.getTime() === hoje.getTime()) {
+      const [horaAula, minutoAula] = horario.horarioInicio.split(':').map(Number);
+      const dataHoraAula = new Date();
+      dataHoraAula.setHours(horaAula, minutoAula, 0, 0);
+      
+      // Exigir pelo menos 15 minutos de antecedência
+      const diffMs = dataHoraAula.getTime() - agora.getTime();
+      const diffMinutos = Math.floor(diffMs / (1000 * 60));
+      
+      if (diffMinutos < 15) {
+        const mensagem = diffMinutos < 0 
+          ? 'Esta aula já começou. Não é possível avisar ausência.'
+          : `Faltam apenas ${diffMinutos} minutos para a aula. É necessário avisar com no mínimo 15 minutos de antecedência.`;
+        return NextResponse.json(
+          { success: false, error: mensagem },
+          { status: 400 }
+        );
+      }
     }
     
     // Verificar se já existe aviso para este horário nesta data
@@ -208,7 +244,7 @@ export async function DELETE(req: NextRequest) {
     const aviso = await AvisoAusencia.findOne({
       _id: avisoId,
       alunoId: aluno.id,
-      status: 'pendente'
+      status: { $in: ['pendente', 'confirmada'] }
     });
     
     if (!aviso) {
@@ -221,9 +257,13 @@ export async function DELETE(req: NextRequest) {
     aviso.status = 'cancelada';
     await aviso.save();
     
+    const mensagem = aviso.status === 'confirmada' 
+      ? 'Aviso confirmado cancelado com sucesso!' 
+      : 'Aviso de ausência cancelado. Bom treino!';
+    
     return NextResponse.json({
       success: true,
-      message: 'Aviso de ausência cancelado. Bom treino!'
+      message: mensagem
     });
     
   } catch (error) {

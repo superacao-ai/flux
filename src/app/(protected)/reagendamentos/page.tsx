@@ -163,13 +163,19 @@ export default function ReagendamentosPage() {
         body: JSON.stringify({ status: 'aprovado' }),
       });
 
+      if (!response.ok) {
+        const errorData = await response.json();
+        toast.error(errorData.error || 'Erro ao aprovar reagendamento');
+        return;
+      }
+
       const data = await response.json();
       if (data.success) {
         toast.success('Reagendamento aprovado!');
         fetchReagendamentos();
         refreshPendingCounts();
       } else {
-        toast.error('Erro ao aprovar reagendamento');
+        toast.error(data.error || 'Erro ao aprovar reagendamento');
       }
     } catch (error) {
       console.error('Erro ao aprovar reagendamento:', error);
@@ -187,13 +193,19 @@ export default function ReagendamentosPage() {
         body: JSON.stringify({ status: 'rejeitado' }),
       });
 
+      if (!response.ok) {
+        const errorData = await response.json();
+        toast.error(errorData.error || 'Erro ao rejeitar reagendamento');
+        return;
+      }
+
       const data = await response.json();
       if (data.success) {
         toast.success('Reagendamento rejeitado!');
         fetchReagendamentos();
         refreshPendingCounts();
       } else {
-        toast.error('Erro ao rejeitar reagendamento');
+        toast.error(data.error || 'Erro ao rejeitar reagendamento');
       }
     } catch (error) {
       console.error('Erro ao rejeitar reagendamento:', error);
@@ -211,13 +223,19 @@ export default function ReagendamentosPage() {
         body: JSON.stringify({ status: 'pendente' }),
       });
 
+      if (!response.ok) {
+        const errorData = await response.json();
+        toast.error(errorData.error || 'Erro ao alterar status do reagendamento');
+        return;
+      }
+
       const data = await response.json();
       if (data.success) {
         toast.success('Reagendamento voltou para pendente!');
         fetchReagendamentos();
         refreshPendingCounts();
       } else {
-        toast.error('Erro ao alterar status do reagendamento');
+        toast.error(data.error || 'Erro ao alterar status do reagendamento');
       }
     } catch (error) {
       console.error('Erro ao alterar status:', error);
@@ -284,8 +302,16 @@ export default function ReagendamentosPage() {
     }
   };
 
+  // Helper para parsear data sem problema de timezone UTC
+  const parseDataLocal = (dataStr: string): Date => {
+    if (!dataStr) return new Date();
+    const str = dataStr.split('T')[0];
+    const [ano, mes, dia] = str.split('-').map(Number);
+    return new Date(ano, mes - 1, dia, 12, 0, 0);
+  };
+
   const formatarData = (dataStr: string) => {
-    const data = new Date(dataStr);
+    const data = parseDataLocal(dataStr);
     return data.toLocaleDateString('pt-BR');
   };
 

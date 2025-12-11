@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'react-toastify';
 import Logo from '@/components/Logo';
+import ReporFaltaModal from '@/components/ReporFaltaModal';
+import UsarCreditoModal from '@/components/UsarCreditoModal';
 
 interface Aluno {
   _id: string;
@@ -65,6 +67,22 @@ interface Reagendamento {
   status: 'pendente' | 'aprovado' | 'rejeitado';
   motivo?: string;
   criadoEm: string;
+  horarioFixoId?: {
+    _id: string;
+    horarioInicio: string;
+    horarioFim: string;
+    diaSemana: number;
+    modalidadeId?: { _id: string; nome: string; cor: string };
+    professorId?: { _id: string; nome: string };
+  };
+  novoHorarioFixoId?: {
+    _id: string;
+    horarioInicio: string;
+    horarioFim: string;
+    diaSemana: number;
+    modalidadeId?: { _id: string; nome: string; cor: string };
+    professorId?: { _id: string; nome: string };
+  };
 }
 
 interface Presenca {
@@ -109,9 +127,12 @@ interface CreditoReposicao {
     _id: string;
     dataUso: string;
     agendamentoId?: {
+      _id?: string;
       horarioInicio: string;
-      modalidadeId?: { nome: string };
-      professorId?: { nome: string };
+      horarioFim?: string;
+      diaSemana?: number;
+      modalidadeId?: { _id?: string; nome: string; cor?: string };
+      professorId?: { _id?: string; nome: string };
     };
   }[];
 }
@@ -127,7 +148,7 @@ interface AvisoAusencia {
     horarioInicio: string;
     horarioFim: string;
     diaSemana: number;
-    modalidadeId?: { _id: string; nome: string; cor: string };
+    modalidadeId?: { _id: string; nome: string; cor: string; permiteReposicao?: boolean };
     professorId?: { _id: string; nome: string };
   };
 }
@@ -139,9 +160,11 @@ interface FaltaReposicao {
   horarioFixoId: string;
   horarioInicio: string;
   horarioFim: string;
-  modalidade?: { _id: string; nome: string; cor: string };
+  modalidade?: { _id: string; nome: string; cor: string; permiteReposicao?: boolean };
+  professorId?: { _id: string; nome: string }; // Referencia User
   temDireitoReposicao: boolean;
   motivo?: string;
+  avisouComAntecedencia?: boolean;
 }
 
 interface AlteracaoHorario {
@@ -191,6 +214,13 @@ interface AulaCalendario {
   professor?: { _id: string; nome: string };
   tipo: 'minha' | 'disponivel';
   temVaga?: boolean;
+  // Flags de reagendamento
+  eReagendamento?: boolean; // Esta aula é um reagendamento (nova data)
+  reagendamentoId?: string; // ID do reagendamento relacionado
+  foiReagendada?: boolean; // A aula original foi reagendada para outra data
+  // Flag de uso de crédito
+  eUsoCredito?: boolean; // Esta aula é um uso de crédito de reposição
+  usoCreditoId?: string; // ID do uso de crédito
 }
 
 export default function AlunoAreaPage() {
@@ -675,7 +705,28 @@ export default function AlunoAreaPage() {
     if (!novaData) return [];
     const dataSelecionada = new Date(novaData + 'T12:00:00');
     const diaSemana = dataSelecionada.getDay();
-    return horariosDisponiveis.filter(h => h.diaSemana === diaSemana && h.temVaga);
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    const isHoje = dataSelecionada.toDateString() === hoje.toDateString();
+    
+    return horariosDisponiveis.filter(h => {
+      if (h.diaSemana !== diaSemana || !h.temVaga) return false;
+      
+      // Se é hoje, verificar se o horário ainda não passou (mínimo 15min de antecedência)
+      if (isHoje) {
+        const agora = new Date();
+        const [hora, minuto] = h.horarioInicio.split(':').map(Number);
+        const horaAula = new Date();
+        horaAula.setHours(hora, minuto, 0, 0);
+        
+        const diffMs = horaAula.getTime() - agora.getTime();
+        const diffMinutos = Math.floor(diffMs / (1000 * 60));
+        
+        if (diffMinutos < 15) return false;
+      }
+      
+      return true;
+    });
   }, [novaData, horariosDisponiveis]);
 
   const enviarReagendamento = async () => {
@@ -809,8 +860,12 @@ export default function AlunoAreaPage() {
   };
 
   // Cancelar aviso de ausência
-  const cancelarAvisoAusencia = async (avisoId: string) => {
-    if (!confirm('Confirma que você vai comparecer a esta aula?')) return;
+  const cancelarAvisoAusencia = async (avisoId: string, isConfirmada: boolean = false) => {
+    const mensagemConfirmacao = isConfirmada 
+      ? 'Tem certeza que deseja cancelar este aviso confirmado? (Ação para testes)'
+      : 'Confirma que você vai comparecer a esta aula?';
+    
+    if (!confirm(mensagemConfirmacao)) return;
     
     try {
       const res = await fetch(`/api/aluno/avisar-ausencia?id=${avisoId}`, {
@@ -833,27 +888,22 @@ export default function AlunoAreaPage() {
   // Abrir modal de solicitar reposição
   const abrirModalReposicao = (falta: FaltaReposicao) => {
     setFaltaSelecionada(falta);
-    setReposicaoNovaData('');
-    setReposicaoNovoHorarioId('');
     setShowReposicaoModal(true);
   };
 
-  // Enviar solicitação de reposição
-  const enviarSolicitacaoReposicao = async () => {
-    if (!faltaSelecionada || !reposicaoNovaData || !reposicaoNovoHorarioId) {
-      toast.warning('Selecione a data e horário da reposição');
-      return;
-    }
+  // Enviar solicitação de reposição com o novo modal
+  const enviarSolicitacaoReposicaoCalendario = async (novoHorarioId: string, novaData: string) => {
+    if (!faltaSelecionada) return;
 
-    setEnviandoReposicao(true);
     try {
       const res = await fetch('/api/aluno/solicitar-reposicao', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          avisoAusenciaId: faltaSelecionada._id,
-          novoHorarioFixoId: reposicaoNovoHorarioId,
-          novaData: reposicaoNovaData
+          faltaId: faltaSelecionada._id,
+          tipoFalta: faltaSelecionada.tipo,
+          novoHorarioFixoId: novoHorarioId,
+          novaData: novaData
         })
       });
 
@@ -862,14 +912,15 @@ export default function AlunoAreaPage() {
       if (res.ok) {
         toast.success(data.message);
         setShowReposicaoModal(false);
+        setFaltaSelecionada(null);
         fetchDados();
       } else {
         toast.error(data.error || 'Erro ao solicitar reposição');
+        throw new Error(data.error);
       }
-    } catch {
-      toast.error('Erro ao enviar solicitação');
-    } finally {
-      setEnviandoReposicao(false);
+    } catch (error) {
+      console.error('Erro ao solicitar reposição:', error);
+      throw error;
     }
   };
 
@@ -1021,13 +1072,33 @@ export default function AlunoAreaPage() {
     return resultado;
   }, [horarioParaAlterar, horariosDisponiveis]);
 
+  // Helper para verificar se um horário ainda pode ser usado hoje (pelo menos 15min de antecedência)
+  const horarioPodeSerUsadoHoje = useCallback((horarioInicio: string): boolean => {
+    const agora = new Date();
+    const [hora, minuto] = horarioInicio.split(':').map(Number);
+    const horaAula = new Date();
+    horaAula.setHours(hora, minuto, 0, 0);
+    
+    const diffMs = horaAula.getTime() - agora.getTime();
+    const diffMinutos = Math.floor(diffMs / (1000 * 60));
+    
+    return diffMinutos >= 15;
+  }, []);
+
   // Filtrar horários disponíveis pelo dia da semana da data selecionada E mesma modalidade da falta
   const horariosParaReposicao = useMemo(() => {
     if (!reposicaoNovaData) return [];
-    const diaSemana = new Date(reposicaoNovaData + 'T12:00:00').getDay();
+    const dataReposicao = new Date(reposicaoNovaData + 'T12:00:00');
+    const diaSemana = dataReposicao.getDay();
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    const isHoje = dataReposicao.toDateString() === hoje.toDateString();
     
     return horariosDisponiveis.filter(h => {
       if (h.diaSemana !== diaSemana || !h.temVaga) return false;
+      
+      // Se é hoje, verificar se o horário ainda não passou
+      if (isHoje && !horarioPodeSerUsadoHoje(h.horarioInicio)) return false;
       
       // Se tem falta selecionada, só mostrar horários da mesma modalidade
       if (faltaSelecionada?.modalidade?._id) {
@@ -1036,17 +1107,26 @@ export default function AlunoAreaPage() {
       
       return true;
     });
-  }, [reposicaoNovaData, horariosDisponiveis, faltaSelecionada]);
+  }, [reposicaoNovaData, horariosDisponiveis, faltaSelecionada, horarioPodeSerUsadoHoje]);
 
   // Filtrar horários disponíveis pelo dia da semana da data selecionada para uso de crédito
   const horariosParaCredito = useMemo(() => {
     if (!creditoNovaData) return [];
-    const diaSemana = new Date(creditoNovaData + 'T12:00:00').getDay();
+    const dataCredito = new Date(creditoNovaData + 'T12:00:00');
+    const diaSemana = dataCredito.getDay();
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    const isHoje = dataCredito.toDateString() === hoje.toDateString();
     
     return horariosDisponiveis.filter(h => {
-      return h.diaSemana === diaSemana && h.temVaga;
+      if (h.diaSemana !== diaSemana || !h.temVaga) return false;
+      
+      // Se é hoje, verificar se o horário ainda não passou
+      if (isHoje && !horarioPodeSerUsadoHoje(h.horarioInicio)) return false;
+      
+      return true;
     });
-  }, [creditoNovaData, horariosDisponiveis]);
+  }, [creditoNovaData, horariosDisponiveis, horarioPodeSerUsadoHoje]);
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -1075,12 +1155,16 @@ export default function AlunoAreaPage() {
   };
 
   const formatarData = (dataStr: string) => {
-    const data = new Date(dataStr);
+    // Extrair apenas a parte da data (YYYY-MM-DD) e adicionar T12:00:00 para evitar problemas de fuso horário
+    const apenasData = dataStr.split('T')[0];
+    const data = new Date(apenasData + 'T12:00:00');
     return data.toLocaleDateString('pt-BR');
   };
 
   const formatarDataCompleta = (dataStr: string) => {
-    const data = new Date(dataStr);
+    // Extrair apenas a parte da data (YYYY-MM-DD) e adicionar T12:00:00 para evitar problemas de fuso horário
+    const apenasData = dataStr.split('T')[0];
+    const data = new Date(apenasData + 'T12:00:00');
     return data.toLocaleDateString('pt-BR', { 
       weekday: 'long', 
       day: 'numeric', 
@@ -1097,7 +1181,7 @@ export default function AlunoAreaPage() {
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
     
-    // Mapear presenças por data
+    // Mapear presenças por data (aulas já realizadas)
     const presencasPorData: Record<string, { presente: boolean | null; count: number; reposicao: boolean }> = {};
     presencas.forEach(p => {
       const dataKey = p.data.split('T')[0];
@@ -1118,8 +1202,34 @@ export default function AlunoAreaPage() {
       feriadosPorData[f.data] = f.nome;
     });
 
-    // Verificar quais dias da semana o aluno tem aula
+    // Verificar quais dias da semana o aluno tem aula (horários fixos)
     const diasSemanaComAula = new Set(horarios.map(h => h.diaSemana));
+    
+    // Mapear dias com reagendamentos aprovados futuros
+    const diasComReagendamento = new Set<string>();
+    reagendamentos
+      .filter(r => r.status === 'aprovado' && r.novoHorarioFixoId)
+      .forEach(r => {
+        const novaDataStr = r.novaData.split('T')[0];
+        const novaData = new Date(novaDataStr + 'T12:00:00');
+        if (novaData >= hoje) {
+          diasComReagendamento.add(novaDataStr);
+        }
+      });
+    
+    // Mapear dias com uso de crédito agendado
+    const diasComCredito = new Set<string>();
+    creditos.forEach(credito => {
+      credito.usos?.forEach(uso => {
+        if (uso.agendamentoId) {
+          const dataUsoStr = uso.dataUso.split('T')[0];
+          const dataUso = new Date(dataUsoStr + 'T12:00:00');
+          if (dataUso >= hoje) {
+            diasComCredito.add(dataUsoStr);
+          }
+        }
+      });
+    });
     
     const dias: { 
       data: Date; 
@@ -1144,12 +1254,18 @@ export default function AlunoAreaPage() {
       const diaSemana = data.getDay();
       const isFuturo = data >= hoje;
       
+      // Verificar se tem aula neste dia (horário fixo OU reagendamento OU uso de crédito)
+      const temAulaFixa = diasSemanaComAula.has(diaSemana);
+      const temReagendamento = diasComReagendamento.has(dataKey);
+      const temCredito = diasComCredito.has(dataKey);
+      const temAulaFutura = isFuturo && (temAulaFixa || temReagendamento || temCredito);
+      
       dias.push({ 
         data, 
         diaDoMes: d, 
         mesAtual: true,
         presenca: presencasPorData[dataKey],
-        temAulaFutura: isFuturo && diasSemanaComAula.has(diaSemana),
+        temAulaFutura,
         feriado: feriadosPorData[dataKey]
       });
     }
@@ -1162,7 +1278,7 @@ export default function AlunoAreaPage() {
     }
     
     return dias;
-  }, [presencaCalAno, presencaCalMes, presencas, horarios, feriados]);
+  }, [presencaCalAno, presencaCalMes, presencas, horarios, feriados, reagendamentos, creditos]);
 
   // Estatísticas do mês do calendário de presença
   const estatisticasMes = useMemo(() => {
@@ -1211,6 +1327,20 @@ export default function AlunoAreaPage() {
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
     
+    // Reagendamentos aprovados ou pendentes para marcar aulas
+    const reagendamentosAtivos = reagendamentos.filter(r => 
+      r.status === 'aprovado' || r.status === 'pendente'
+    );
+    
+    // Criar mapa de datas originais reagendadas (horarioFixoId + dataOriginal)
+    const datasReagendadas = new Set<string>();
+    reagendamentosAtivos.forEach(r => {
+      if (r.horarioFixoId?._id) {
+        const dataOriginalStr = r.dataOriginal.split('T')[0];
+        datasReagendadas.add(`${r.horarioFixoId._id}-${dataOriginalStr}`);
+      }
+    });
+    
     for (let i = 0; i < 60; i++) {
       const data = new Date(hoje);
       data.setDate(hoje.getDate() + i);
@@ -1221,6 +1351,11 @@ export default function AlunoAreaPage() {
       
       horariosNoDia.forEach(h => {
         const dataStr = `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, '0')}-${String(data.getDate()).padStart(2, '0')}`;
+        const chaveReagendamento = `${h._id}-${dataStr}`;
+        
+        // Verificar se esta aula foi reagendada
+        const foiReagendada = datasReagendadas.has(chaveReagendamento);
+        
         aulas.push({
           _id: `${h._id}-${dataStr}`,
           data: new Date(data),
@@ -1231,13 +1366,72 @@ export default function AlunoAreaPage() {
           horarioFixoId: h._id,
           modalidade: h.modalidadeId,
           professor: h.professorId,
-          tipo: 'minha'
+          tipo: 'minha',
+          foiReagendada
         });
       });
     }
     
+    // Adicionar aulas de reagendamento aprovados (novas datas)
+    reagendamentosAtivos
+      .filter(r => r.status === 'aprovado' && r.novoHorarioFixoId)
+      .forEach(r => {
+        const novaDataStr = r.novaData.split('T')[0];
+        const novaData = new Date(novaDataStr + 'T12:00:00');
+        
+        aulas.push({
+          _id: `reag-${r._id}`,
+          data: novaData,
+          dataStr: novaDataStr,
+          diaSemana: novaData.getDay(),
+          horarioInicio: r.novoHorarioFixoId!.horarioInicio || r.novoHorarioInicio,
+          horarioFim: r.novoHorarioFixoId!.horarioFim || r.novoHorarioFim,
+          horarioFixoId: r.novoHorarioFixoId!._id,
+          modalidade: r.novoHorarioFixoId!.modalidadeId,
+          professor: r.novoHorarioFixoId!.professorId,
+          tipo: 'minha',
+          eReagendamento: true,
+          reagendamentoId: r._id
+        });
+      });
+    
+    // Adicionar aulas de uso de crédito (reposições agendadas)
+    creditos.forEach(credito => {
+      credito.usos?.forEach(uso => {
+        if (uso.agendamentoId) {
+          const dataUsoStr = uso.dataUso.split('T')[0];
+          const dataUso = new Date(dataUsoStr + 'T12:00:00');
+          
+          // Só adicionar se a data for futura ou hoje
+          if (dataUso >= hoje) {
+            aulas.push({
+              _id: `credito-${uso._id}`,
+              data: dataUso,
+              dataStr: dataUsoStr,
+              diaSemana: dataUso.getDay(),
+              horarioInicio: uso.agendamentoId.horarioInicio,
+              horarioFim: uso.agendamentoId.horarioFim || '',
+              horarioFixoId: uso.agendamentoId._id || '',
+              modalidade: uso.agendamentoId.modalidadeId ? {
+                _id: uso.agendamentoId.modalidadeId._id || '',
+                nome: uso.agendamentoId.modalidadeId.nome,
+                cor: uso.agendamentoId.modalidadeId.cor || '#6B7280'
+              } : undefined,
+              professor: uso.agendamentoId.professorId ? {
+                _id: uso.agendamentoId.professorId._id || '',
+                nome: uso.agendamentoId.professorId.nome
+              } : undefined,
+              tipo: 'minha',
+              eUsoCredito: true,
+              usoCreditoId: uso._id
+            });
+          }
+        }
+      });
+    });
+    
     return aulas;
-  }, [horarios]);
+  }, [horarios, reagendamentos, creditos]);
 
   // Verificar se um dia tem aula
   const getAulasNoDia = useCallback((data: Date) => {
@@ -1281,9 +1475,24 @@ export default function AlunoAreaPage() {
     
     if (data < hoje) return [];
     
+    const isHoje = data.toDateString() === hoje.toDateString();
+    
     // Filtrar por dia da semana, vaga disponível E mesma modalidade da aula selecionada
     return horariosDisponiveis.filter(h => {
       if (h.diaSemana !== diaSemana || !h.temVaga) return false;
+      
+      // Se é hoje, verificar se o horário ainda não passou (mínimo 15min de antecedência)
+      if (isHoje) {
+        const agora = new Date();
+        const [hora, minuto] = h.horarioInicio.split(':').map(Number);
+        const horaAula = new Date();
+        horaAula.setHours(hora, minuto, 0, 0);
+        
+        const diffMs = horaAula.getTime() - agora.getTime();
+        const diffMinutos = Math.floor(diffMs / (1000 * 60));
+        
+        if (diffMinutos < 15) return false;
+      }
       
       // Se tem aula selecionada, só mostrar horários da mesma modalidade
       if (aulaSelecionada?.modalidade?._id) {
@@ -1294,8 +1503,53 @@ export default function AlunoAreaPage() {
     });
   }, [horariosDisponiveis, aulaSelecionada]);
 
+  // Verificar se já existe aviso de ausência para esta aula nesta data
+  const temAvisoAusencia = useCallback((aula: AulaCalendario): boolean => {
+    return avisosAusencia.some(aviso => 
+      aviso.status === 'pendente' && 
+      aviso.horarioFixoId?._id === aula.horarioFixoId &&
+      aviso.dataAusencia.split('T')[0] === aula.dataStr
+    );
+  }, [avisosAusencia]);
+
   // Verificar se a aula pode ser reagendada (mínimo 15 minutos de antecedência)
-  const podeReagendarAula = useCallback((aula: AulaCalendario): { pode: boolean; motivo?: string } => {
+  const podeReagendarAula = useCallback((aula: AulaCalendario): { pode: boolean; motivo?: string; jaAvisou?: boolean; eReagendamento?: boolean; foiReagendada?: boolean; eUsoCredito?: boolean } => {
+    // Verificar se é um uso de crédito - não pode reagendar
+    if (aula.eUsoCredito) {
+      return { 
+        pode: false, 
+        motivo: 'Esta é uma aula de reposição (crédito). Não pode ser reagendada.',
+        eUsoCredito: true
+      };
+    }
+    
+    // Verificar se é um reagendamento (nova data) - não pode reagendar
+    if (aula.eReagendamento) {
+      return { 
+        pode: false, 
+        motivo: 'Esta é uma aula de reposição. Não pode ser reagendada.',
+        eReagendamento: true
+      };
+    }
+    
+    // Verificar se a aula original foi reagendada para outra data
+    if (aula.foiReagendada) {
+      return { 
+        pode: false, 
+        motivo: 'Esta aula já foi reagendada para outra data.',
+        foiReagendada: true
+      };
+    }
+    
+    // Verificar se já avisou ausência
+    if (temAvisoAusencia(aula)) {
+      return { 
+        pode: false, 
+        motivo: 'Você já avisou ausência para esta aula.',
+        jaAvisou: true
+      };
+    }
+    
     const agora = new Date();
     const [horaAula, minutoAula] = aula.horarioInicio.split(':').map(Number);
     const dataAula = new Date(aula.dataStr + 'T00:00:00');
@@ -1315,7 +1569,7 @@ export default function AlunoAreaPage() {
     }
     
     return { pode: true };
-  }, []);
+  }, [temAvisoAusencia]);
 
   // Abrir modal de troca de aula
   const iniciarTrocaAula = (aula: AulaCalendario) => {
@@ -1582,11 +1836,11 @@ export default function AlunoAreaPage() {
           )}
         </div>
 
-        {/* Card de Streak / Sequência de Treinos */}
-        {horarios.length > 0 && (
+        {/* Card de Streak / Sequência de Treinos - OCULTO POR ENQUANTO */}
+        {/* {horarios.length > 0 && (
           <div className="mb-4 bg-white rounded-xl px-4 py-3 border border-gray-200">
             {/* Header compacto */}
-            <div className="flex items-center justify-between mb-3">
+            {/* <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <i className={`fas fa-fire text-lg ${streakData.streak > 0 ? 'text-orange-500' : 'text-gray-300'}`}></i>
                 <span className="text-sm font-medium text-gray-700">Sua Sequência</span>
@@ -1597,7 +1851,7 @@ export default function AlunoAreaPage() {
             </div>
             
             {/* Dias de treino em linha */}
-            <div className="flex justify-between">
+            {/* <div className="flex justify-between">
               {streakData.proximosTreinos.map((item, idx) => (
                 <div key={idx} className="flex flex-col items-center" title={
                   item.status === 'justificado' ? 'Falta justificada' :
@@ -1625,7 +1879,7 @@ export default function AlunoAreaPage() {
               ))}
             </div>
           </div>
-        )}
+        )} */}
 
         {/* Banner WhatsApp do Grupo da Modalidade */}
         {aluno.modalidade?.linkWhatsapp && aluno.modalidade.linkWhatsapp.trim() !== '' && !jaEntrouGrupo && (
@@ -1797,54 +2051,140 @@ export default function AlunoAreaPage() {
         )}
 
         {loading ? (
-          /* Skeleton Loading */
+          /* Skeleton Loading - Específico por aba */
           <div className="animate-pulse space-y-4">
-            {/* Skeleton - Abas */}
-            <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
-              {[1, 2, 3, 4, 5].map(i => (
-                <div key={i} className="flex-1 py-4 px-2">
-                  <div className="w-6 h-6 bg-gray-300 rounded-full mx-auto mb-2"></div>
-                  <div className="h-3 bg-gray-300 rounded w-12 mx-auto"></div>
-                </div>
-              ))}
-            </div>
-
-            {/* Skeleton - Título da seção */}
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 bg-gray-200 rounded"></div>
-              <div className="h-4 bg-gray-200 rounded w-32"></div>
-            </div>
-
-            {/* Skeleton - Cards de aulas */}
-            <div className="space-y-2">
-              {[1, 2, 3].map(i => (
-                <div key={i} className="bg-white rounded-lg border border-gray-200 p-3 flex items-center gap-3">
-                  <div className="w-14 h-14 bg-gray-200 rounded-lg flex-shrink-0"></div>
-                  <div className="flex-1 space-y-2">
-                    <div className="h-4 bg-gray-200 rounded w-24"></div>
-                    <div className="h-3 bg-gray-100 rounded w-32"></div>
-                    <div className="h-3 bg-gray-100 rounded w-20"></div>
+            {/* Skeleton para Aba "Hoje" - Início */}
+            {abaAtiva === 'hoje' && (
+              <>
+                {/* Próximas Aulas */}
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-4 h-4 bg-gray-200 rounded"></div>
+                    <div className="h-4 bg-gray-200 rounded w-32"></div>
                   </div>
-                  <div className="w-8 h-8 bg-gray-200 rounded-lg"></div>
+                  <div className="space-y-2">
+                    {[1, 2].map(i => (
+                      <div key={i} className="bg-white rounded-lg border border-gray-200 p-3 flex items-center gap-3">
+                        <div className="w-14 h-14 bg-gray-200 rounded-lg flex-shrink-0"></div>
+                        <div className="flex-1 space-y-2">
+                          <div className="h-4 bg-gray-200 rounded w-24"></div>
+                          <div className="h-3 bg-gray-100 rounded w-32"></div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              ))}
-            </div>
-
-            {/* Skeleton - Segunda seção */}
-            <div className="flex items-center gap-2 mt-6">
-              <div className="w-4 h-4 bg-gray-200 rounded"></div>
-              <div className="h-4 bg-gray-200 rounded w-40"></div>
-            </div>
-
-            {/* Skeleton - Cards menores */}
-            <div className="grid grid-cols-2 gap-3">
-              {[1, 2].map(i => (
-                <div key={i} className="bg-white rounded-lg border border-gray-200 p-4">
-                  <div className="h-5 bg-gray-200 rounded w-16 mb-2"></div>
-                  <div className="h-3 bg-gray-100 rounded w-full"></div>
+                {/* Calendário de presenças */}
+                <div className="mt-6">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-4 h-4 bg-gray-200 rounded"></div>
+                    <div className="h-4 bg-gray-200 rounded w-40"></div>
+                  </div>
+                  <div className="bg-white rounded-lg border border-gray-200 p-4">
+                    <div className="grid grid-cols-7 gap-2">
+                      {[...Array(21)].map((_, i) => (
+                        <div key={i} className="aspect-square bg-gray-100 rounded"></div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
-              ))}
-            </div>
+              </>
+            )}
+
+            {/* Skeleton para Aba "Reagendar" */}
+            {abaAtiva === 'calendario' && (
+              <>
+                <div className="bg-white rounded-lg border border-gray-200 p-4">
+                  <div className="h-5 bg-gray-200 rounded w-48 mb-4"></div>
+                  <div className="space-y-3">
+                    {[1, 2, 3, 4].map(i => (
+                      <div key={i} className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg">
+                        <div className="w-12 h-12 bg-gray-200 rounded-lg"></div>
+                        <div className="flex-1 space-y-2">
+                          <div className="h-4 bg-gray-200 rounded w-28"></div>
+                          <div className="h-3 bg-gray-100 rounded w-20"></div>
+                        </div>
+                        <div className="w-20 h-8 bg-gray-200 rounded"></div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Skeleton para Aba "Meu Horário" */}
+            {abaAtiva === 'horarios' && (
+              <>
+                <div className="space-y-3">
+                  {[1, 2, 3].map(i => (
+                    <div key={i} className="bg-white rounded-lg border border-gray-200 p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="h-5 bg-gray-200 rounded w-24"></div>
+                        <div className="w-16 h-6 bg-gray-200 rounded-full"></div>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="h-3 bg-gray-100 rounded w-full"></div>
+                        <div className="h-3 bg-gray-100 rounded w-3/4"></div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {/* Skeleton para Aba "Reposições" */}
+            {abaAtiva === 'faltas' && (
+              <>
+                <div className="space-y-2">
+                  {[1, 2, 3].map(i => (
+                    <div key={i} className="bg-white rounded-lg border border-gray-200 p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <div className="w-10 h-10 bg-gray-200 rounded-lg"></div>
+                          <div className="space-y-1">
+                            <div className="h-4 bg-gray-200 rounded w-32"></div>
+                            <div className="h-3 bg-gray-100 rounded w-20"></div>
+                          </div>
+                        </div>
+                        <div className="w-20 h-8 bg-gray-200 rounded"></div>
+                      </div>
+                      <div className="mt-3 pt-3 border-t border-gray-100">
+                        <div className="h-3 bg-gray-100 rounded w-40"></div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {/* Skeleton para Aba "Créditos" */}
+            {abaAtiva === 'creditos' && (
+              <>
+                <div className="bg-white rounded-lg border border-gray-200 p-4 mb-4">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-2">
+                      <div className="h-3 bg-gray-100 rounded w-24"></div>
+                      <div className="h-6 bg-gray-200 rounded w-16"></div>
+                    </div>
+                    <div className="w-12 h-12 bg-gray-200 rounded-full"></div>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  {[1, 2].map(i => (
+                    <div key={i} className="bg-white rounded-lg border border-gray-200 p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1 space-y-2">
+                          <div className="h-4 bg-gray-200 rounded w-28"></div>
+                          <div className="h-3 bg-gray-100 rounded w-full"></div>
+                          <div className="h-3 bg-gray-100 rounded w-2/3"></div>
+                        </div>
+                        <div className="w-20 h-8 bg-gray-200 rounded ml-3"></div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         ) : (
           <>
@@ -1981,6 +2321,7 @@ export default function AlunoAreaPage() {
                         const isFalta = dia.mesAtual && dia.presenca?.presente === false;
                         const isPresente = dia.mesAtual && dia.presenca?.presente === true;
                         const isFeriado = dia.mesAtual && dia.feriado;
+                        const temAulaFutura = dia.mesAtual && !dia.presenca && dia.temAulaFutura && !isFeriado;
                         
                         return (
                           <div
@@ -1989,7 +2330,8 @@ export default function AlunoAreaPage() {
                               !dia.mesAtual ? 'bg-gray-100' :
                               isFeriado ? 'bg-gray-200' :
                               isPresente ? 'bg-green-100' :
-                              isFalta ? 'bg-red-100' : ''
+                              isFalta ? 'bg-red-100' :
+                              temAulaFutura ? 'bg-blue-50' : ''
                             }`}
                             title={dia.feriado || undefined}
                           >
@@ -2005,7 +2347,9 @@ export default function AlunoAreaPage() {
                                       ? 'text-green-700 font-medium'
                                       : isFalta 
                                         ? 'text-red-700 font-medium'
-                                        : 'text-gray-700'
+                                        : temAulaFutura
+                                          ? 'text-blue-600 font-medium'
+                                          : 'text-gray-700'
                             }`}>
                               {dia.diaDoMes}
                             </span>
@@ -2031,9 +2375,11 @@ export default function AlunoAreaPage() {
                               </span>
                             )}
                             
-                            {/* Pequeno dot no canto para aula futura */}
-                            {dia.mesAtual && !dia.presenca && dia.temAulaFutura && !isFeriado && (
-                              <span className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 bg-gray-400 rounded-full"></span>
+                            {/* Ícone de relógio para aula futura */}
+                            {temAulaFutura && (
+                              <span className="absolute bottom-1 left-1/2 -translate-x-1/2">
+                                <i className="fas fa-clock text-blue-500 text-[10px]"></i>
+                              </span>
                             )}
                             
                             {/* Indicador de reposição */}
@@ -2057,12 +2403,12 @@ export default function AlunoAreaPage() {
                           <span className="text-gray-600">Falta</span>
                         </div>
                         <div className="flex items-center gap-1">
-                          <i className="fas fa-ban text-gray-500 text-[10px]"></i>
-                          <span className="text-gray-600">Sem expediente</span>
+                          <i className="fas fa-clock text-blue-500 text-[10px]"></i>
+                          <span className="text-gray-600">Aula agendada</span>
                         </div>
                         <div className="flex items-center gap-1">
-                          <span className="w-1.5 h-1.5 rounded-full bg-gray-400"></span>
-                          <span className="text-gray-600">Próxima aula</span>
+                          <i className="fas fa-ban text-gray-500 text-[10px]"></i>
+                          <span className="text-gray-600">Sem expediente</span>
                         </div>
                         <div className="flex items-center gap-1">
                           <span className="w-2 h-2 rounded-full bg-purple-500"></span>
@@ -2128,7 +2474,7 @@ export default function AlunoAreaPage() {
                         className="flex-1 py-2.5 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors text-center"
                       >
                         <i className="fas fa-headset mr-1.5"></i>
-                        Suporte / Financeiro
+                        Suporte
                       </button>
                       {horarios.length > 0 && (
                         <button
@@ -2218,30 +2564,59 @@ export default function AlunoAreaPage() {
                         </div>
                         
                         {/* Aulas do dia */}
-                        {temAula && diaObj.mesAtual && !isPassado && (
+                        {temAula && diaObj.mesAtual && (
                           <div className="mt-1 space-y-0.5">
-                            {aulas.slice(0, 2).map((aula, aIdx) => (
-                              <button
-                                key={aIdx}
-                                onClick={() => iniciarTrocaAula(aula)}
-                                className="w-full text-left px-1 py-0.5 rounded text-[10px] font-medium text-white truncate hover:opacity-80 transition-opacity"
-                                style={{ backgroundColor: aula.modalidade?.cor || '#6B7280' }}
-                              >
-                                {aula.horarioInicio}
-                              </button>
-                            ))}
-                            {aulas.length > 2 && (
+                            {aulas
+                              .filter(aula => !aula.foiReagendada) // Não mostrar aulas que foram reagendadas
+                              .slice(0, 2)
+                              .map((aula, aIdx) => {
+                              // Verificar se a aula pode ser reagendada (15min antecedência)
+                              const { pode, jaAvisou, eReagendamento, foiReagendada, eUsoCredito } = podeReagendarAula(aula);
+                              const bloqueada = jaAvisou || eReagendamento || foiReagendada || eUsoCredito;
+                              
+                              // Verificar se é uma aula fixa do aluno
+                              const eAulaFixa = aula.tipo === 'minha' && !eReagendamento && !eUsoCredito;
+                              
+                              // Determinar estilo e ícone baseado no estado
+                              let bgColor = aula.modalidade?.cor || '#6B7280';
+                              let icone = '';
+                              let titulo = pode ? `${aula.horarioInicio} - Clique para reagendar` : 'Aula já passou ou muito próxima';
+                              let aplicarGrayscale = !eAulaFixa; // Aplicar grayscale se não for aula fixa
+                              
+                              if (eUsoCredito) {
+                                bgColor = '#8B5CF6'; // Roxo - uso de crédito
+                                icone = 'fas fa-ticket-alt';
+                                titulo = 'Reposição com crédito';
+                              } else if (eReagendamento) {
+                                bgColor = '#10B981'; // Verde - reposição
+                                icone = 'fas fa-sync-alt';
+                                titulo = 'Aula de reposição';
+                              } else if (jaAvisou) {
+                                bgColor = '#F59E0B'; // Amarelo - avisou ausência
+                                icone = 'fas fa-bell';
+                                titulo = 'Ausência já avisada';
+                              }
+                              
+                              return (
+                                <button
+                                  key={aIdx}
+                                  onClick={() => !bloqueada && eAulaFixa && iniciarTrocaAula(aula)}
+                                  disabled={bloqueada || !eAulaFixa}
+                                  className={`w-full text-left px-1 py-0.5 rounded text-[10px] font-medium truncate transition-opacity text-white ${
+                                    bloqueada || !eAulaFixa ? 'cursor-not-allowed' : pode ? 'hover:opacity-80' : 'opacity-50 cursor-not-allowed'
+                                  } ${aplicarGrayscale ? 'saturate-[0.7] opacity-60' : ''}`}
+                                  style={{ backgroundColor: bgColor }}
+                                  title={titulo}
+                                >
+                                  {icone ? <><i className={`${icone} mr-0.5`}></i>{aula.horarioInicio}</> : aula.horarioInicio}
+                                </button>
+                              );
+                            })}
+                            {aulas.filter(a => !a.foiReagendada).length > 2 && (
                               <div className="text-[9px] text-gray-500 text-center">
-                                +{aulas.length - 2}
+                                +{aulas.filter(a => !a.foiReagendada).length - 2}
                               </div>
                             )}
-                          </div>
-                        )}
-                        
-                        {/* Indicador de aula passada */}
-                        {temAula && isPassado && diaObj.mesAtual && (
-                          <div className="mt-1">
-                            <div className="w-2 h-2 rounded-full bg-gray-300 mx-auto"></div>
                           </div>
                         )}
                       </div>
@@ -2255,6 +2630,22 @@ export default function AlunoAreaPage() {
                     <i className="fas fa-info-circle mr-2"></i>
                     Clique em uma aula para <strong>avisar ausência</strong> ou <strong>trocar a data</strong>.
                   </p>
+                </div>
+
+                {/* Legenda */}
+                <div className="flex flex-wrap gap-3 mt-3 text-xs text-gray-600">
+                  <div className="flex items-center gap-1">
+                    <div className="w-3 h-3 rounded bg-green-500"></div>
+                    <span>Reposição</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <div className="w-3 h-3 rounded bg-purple-500"></div>
+                    <span>Crédito</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <div className="w-3 h-3 rounded bg-yellow-500"></div>
+                    <span>Ausência avisada</span>
+                  </div>
                 </div>
 
                 {/* Histórico de Reagendamentos */}
@@ -2483,6 +2874,10 @@ export default function AlunoAreaPage() {
                                 <p className="font-semibold text-gray-900">
                                   {formatarData(aviso.dataAusencia)} - {aviso.horarioFixoId?.horarioInicio}
                                 </p>
+                                <p className="text-sm text-gray-600">
+                                  <i className="fas fa-user-tie mr-1"></i>
+                                  Prof. {aviso.horarioFixoId?.professorId?.nome}
+                                </p>
                                 <p className="text-sm text-gray-500">{aviso.motivo}</p>
                                 {aviso.temDireitoReposicao && (
                                   <p className="text-xs text-green-600 mt-1">
@@ -2503,6 +2898,89 @@ export default function AlunoAreaPage() {
                         </div>
                       ))}
                     </div>
+                  </section>
+                )}
+
+                {/* Ausências confirmadas (já ocorreram) */}
+                {avisosAusencia.filter(a => a.status === 'confirmada').length > 0 && (
+                  <section>
+                    <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wide mb-3">
+                      Ausências Confirmadas
+                    </h3>
+                    <div className="space-y-2">
+                      {avisosAusencia.filter(a => a.status === 'confirmada').slice(0, 5).map(aviso => (
+                        <div key={aviso._id} className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3 flex-1">
+                              <div className="w-10 h-10 bg-gray-200 rounded-lg flex items-center justify-center">
+                                <i className="fas fa-check text-gray-600"></i>
+                              </div>
+                              <div className="flex-1">
+                                <p className="font-semibold text-gray-900">
+                                  {formatarData(aviso.dataAusencia)} - {aviso.horarioFixoId?.horarioInicio}
+                                </p>
+                                <p className="text-sm text-gray-600">
+                                  <i className="fas fa-user-tie mr-1"></i>
+                                  Prof. {aviso.horarioFixoId?.professorId?.nome}
+                                </p>
+                                <p className="text-sm text-gray-500">{aviso.motivo}</p>
+                                {aviso.temDireitoReposicao && (
+                                  <p className="text-xs text-green-600 mt-1">
+                                    <i className="fas fa-check-circle mr-1"></i>
+                                    Avisou com antecedência - Direito a reposição
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {aviso.temDireitoReposicao && aviso.horarioFixoId?.modalidadeId?.permiteReposicao !== false && (
+                                <button
+                                  onClick={() => {
+                                    // Converter AvisoAusencia para FaltaReposicao
+                                    const falta: FaltaReposicao = {
+                                      _id: aviso._id,
+                                      tipo: 'aviso_ausencia',
+                                      data: aviso.dataAusencia,
+                                      horarioFixoId: aviso.horarioFixoId?._id || '',
+                                      horarioInicio: aviso.horarioFixoId?.horarioInicio || '',
+                                      horarioFim: aviso.horarioFixoId?.horarioFim || '',
+                                      modalidade: aviso.horarioFixoId?.modalidadeId,
+                                      professorId: aviso.horarioFixoId?.professorId,
+                                      temDireitoReposicao: true,
+                                      motivo: aviso.motivo,
+                                      avisouComAntecedencia: true
+                                    };
+                                    abrirModalReposicao(falta);
+                                  }}
+                                  className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg text-sm transition-colors"
+                                >
+                                  <i className="fas fa-redo mr-1"></i>
+                                  Repor
+                                </button>
+                              )}
+                              {aviso.temDireitoReposicao && aviso.horarioFixoId?.modalidadeId?.permiteReposicao === false && (
+                                <span className="px-3 py-1.5 bg-gray-100 text-gray-500 font-medium rounded-lg text-sm">
+                                  <i className="fas fa-ban mr-1"></i>
+                                  Sem reposição
+                                </span>
+                              )}
+                              <button
+                                onClick={() => cancelarAvisoAusencia(aviso._id, true)}
+                                className="text-red-500 hover:text-red-700 text-sm px-2 py-1"
+                                title="Cancelar aviso (para testes)"
+                              >
+                                <i className="fas fa-trash"></i>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    {avisosAusencia.filter(a => a.status === 'confirmada').length > 5 && (
+                      <p className="text-xs text-gray-500 text-center mt-2">
+                        Mostrando últimas 5 ausências confirmadas
+                      </p>
+                    )}
                   </section>
                 )}
 
@@ -2531,14 +3009,31 @@ export default function AlunoAreaPage() {
                                 <p className="text-sm text-gray-500">
                                   {falta.horarioInicio} - {falta.modalidade?.nome}
                                 </p>
+                                {falta.professorId && (
+                                  <p className="text-xs text-gray-400">
+                                    <i className="fas fa-user-tie mr-1"></i>
+                                    Prof. {falta.professorId.nome}
+                                  </p>
+                                )}
+                                <span className="inline-block mt-1 px-2 py-0.5 text-xs font-medium rounded-full bg-green-100 text-green-700">
+                                  <i className="fas fa-check mr-1"></i>
+                                  Avisou com antecêdência
+                                </span>
                               </div>
                             </div>
-                            <button
-                              onClick={() => abrirModalReposicao(falta)}
-                              className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg text-sm transition-colors"
-                            >
-                              Repor
-                            </button>
+                            {falta.modalidade?.permiteReposicao !== false ? (
+                              <button
+                                onClick={() => abrirModalReposicao(falta)}
+                                className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg text-sm transition-colors"
+                              >
+                                Repor
+                              </button>
+                            ) : (
+                              <span className="px-3 py-1.5 bg-gray-100 text-gray-500 font-medium rounded-lg text-sm">
+                                <i className="fas fa-ban mr-1"></i>
+                                Sem reposição
+                              </span>
+                            )}
                           </div>
                         </div>
                       ))}
@@ -2546,36 +3041,64 @@ export default function AlunoAreaPage() {
                   </section>
                 )}
 
-                {/* Faltas sem direito a reposição */}
+                {/* Faltas sem direito a reposição (não avisou, mas prof enviou aula) */}
                 {faltasSemDireito.length > 0 && (
                   <section>
                     <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wide mb-3">
-                      <i className="fas fa-times-circle text-red-400 mr-2"></i>
-                      Faltas sem Reposição
+                      <i className="fas fa-clock text-orange-400 mr-2"></i>
+                      Faltas Registradas - Aguardando Reposição
                     </h2>
-                    <div className="bg-gray-50 rounded-xl border border-gray-200 p-4">
-                      <p className="text-sm text-gray-500 mb-3">
-                        Estas faltas não foram avisadas com antecedência e não geram direito a reposição.
-                      </p>
-                      <div className="space-y-2">
-                        {faltasSemDireito.slice(0, 5).map(falta => (
-                          <div key={falta._id} className="flex items-center gap-2 text-sm text-gray-600">
-                            <i className="fas fa-times text-red-400"></i>
-                            <span>{formatarData(falta.data)} - {falta.horarioInicio}</span>
+                    <div className="space-y-2">
+                      {faltasSemDireito.map(falta => (
+                        <div key={falta._id} className="bg-orange-50 border border-orange-200 rounded-xl p-4">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div 
+                                className="w-10 h-10 rounded-lg flex items-center justify-center text-white"
+                                style={{ backgroundColor: falta.modalidade?.cor || '#F97316' }}
+                              >
+                                <i className="fas fa-user-times"></i>
+                              </div>
+                              <div>
+                                <p className="font-semibold text-gray-900">
+                                  Falta em {formatarData(falta.data)}
+                                </p>
+                                <p className="text-sm text-gray-500">
+                                  {falta.horarioInicio} - {falta.modalidade?.nome}
+                                </p>
+                                {falta.professorId && (
+                                  <p className="text-xs text-gray-400">
+                                    <i className="fas fa-user-tie mr-1"></i>
+                                    Prof. {falta.professorId.nome}
+                                  </p>
+                                )}
+                                <span className="inline-block mt-1 px-2 py-0.5 text-xs font-medium rounded-full bg-orange-100 text-orange-700">
+                                  <i className="fas fa-exclamation-triangle mr-1"></i>
+                                  Não avisou com antecêdência
+                                </span>
+                              </div>
+                            </div>
+                            <button
+                              disabled
+                              className="px-3 py-1.5 bg-gray-300 text-gray-500 font-medium rounded-lg text-sm cursor-not-allowed"
+                              title="Sem direito a reposição - não avisou com antecedência"
+                            >
+                              <i className="fas fa-ban mr-1"></i>
+                              Sem direito
+                            </button>
                           </div>
-                        ))}
-                        {faltasSemDireito.length > 5 && (
-                          <p className="text-xs text-gray-400">
-                            E mais {faltasSemDireito.length - 5} falta(s)...
-                          </p>
-                        )}
-                      </div>
+                        </div>
+                      ))}
                     </div>
+                    <p className="text-xs text-gray-400 mt-2">
+                      <i className="fas fa-info-circle mr-1"></i>
+                      Não é possível solicitar reposição para faltas sem aviso prévio.
+                    </p>
                   </section>
                 )}
 
                 {/* Mensagem quando não há nada */}
-                {faltasComDireito.length === 0 && faltasSemDireito.length === 0 && avisosAusencia.length === 0 && (
+                {faltasComDireito.length === 0 && faltasSemDireito.length === 0 && (
                   <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
                     <i className="fas fa-check-circle text-green-400 text-4xl mb-3"></i>
                     <p className="text-gray-600 font-medium">Nenhuma falta registrada!</p>
@@ -2589,7 +3112,7 @@ export default function AlunoAreaPage() {
             {abaAtiva === 'creditos' && (
               <section>
                 <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wide mb-3">
-                  <i className="fas fa-star text-gray-400 mr-2"></i>
+                  <i className="fas fa-ticket text-gray-400 mr-2"></i>
                   Meus Créditos de Reposição
                 </h2>
                 
@@ -2604,20 +3127,20 @@ export default function AlunoAreaPage() {
                 ) : (
                   <div className="space-y-4">
                     {/* Resumo */}
-                    <div className="bg-teal-50 rounded-xl border border-teal-200 p-4">
+                    <div className="bg-purple-50 rounded-xl border border-purple-200 p-4">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                          <div className="w-12 h-12 rounded-full bg-teal-500 text-white flex items-center justify-center">
+                          <div className="w-12 h-12 rounded-full bg-purple-500 text-white flex items-center justify-center">
                             <i className="fas fa-ticket text-xl"></i>
                           </div>
                           <div>
-                            <p className="text-2xl font-bold text-teal-700">
+                            <p className="text-2xl font-bold text-purple-700">
                               {creditos.reduce((sum, c) => sum + (c.quantidade - c.quantidadeUsada), 0)}
                             </p>
-                            <p className="text-sm text-teal-600">créditos disponíveis</p>
+                            <p className="text-sm text-purple-600">créditos disponíveis</p>
                           </div>
                         </div>
-                        <div className="text-right text-sm text-teal-600">
+                        <div className="text-right text-sm text-purple-600">
                           <p>{creditos.reduce((sum, c) => sum + c.quantidadeUsada, 0)} usados</p>
                           <p>{creditos.reduce((sum, c) => sum + c.quantidade, 0)} total</p>
                         </div>
@@ -2627,13 +3150,19 @@ export default function AlunoAreaPage() {
                     {/* Lista de créditos */}
                     {creditos.map(credito => {
                       const disponivel = credito.quantidade - credito.quantidadeUsada;
-                      const expirado = new Date(credito.validade) < new Date();
+                      // Parsear data sem problema de timezone
+                      const parseValidade = (dataStr: string): Date => {
+                        const str = dataStr.split('T')[0];
+                        const [ano, mes, dia] = str.split('-').map(Number);
+                        return new Date(ano, mes - 1, dia, 23, 59, 59);
+                      };
+                      const expirado = parseValidade(credito.validade) < new Date();
                       
                       return (
                         <div
                           key={credito._id}
                           className={`bg-white rounded-xl border p-4 ${
-                            expirado ? 'border-gray-200 opacity-60' : disponivel > 0 ? 'border-teal-200' : 'border-gray-200'
+                            expirado ? 'border-gray-200 opacity-60' : disponivel > 0 ? 'border-purple-200' : 'border-gray-200'
                           }`}
                         >
                           <div className="flex items-center justify-between mb-3">
@@ -2642,7 +3171,7 @@ export default function AlunoAreaPage() {
                                 expirado 
                                   ? 'bg-gray-100 text-gray-500'
                                   : disponivel > 0 
-                                    ? 'bg-teal-100 text-teal-700' 
+                                    ? 'bg-purple-100 text-purple-700' 
                                     : 'bg-orange-100 text-orange-700'
                               }`}>
                                 {expirado ? 'EXPIRADO' : disponivel > 0 ? `${disponivel} DISPONÍVEL` : 'ESGOTADO'}
@@ -2652,7 +3181,7 @@ export default function AlunoAreaPage() {
                               {!expirado && disponivel > 0 && (
                                 <button
                                   onClick={() => abrirModalUsarCredito(credito)}
-                                  className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white font-medium rounded-lg text-sm transition-colors"
+                                  className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-lg text-sm transition-colors"
                                 >
                                   <i className="fas fa-plus mr-1"></i>
                                   Usar
@@ -2660,7 +3189,7 @@ export default function AlunoAreaPage() {
                               )}
                               <span className="text-xs text-gray-400">
                                 <i className="fas fa-calendar-alt mr-1"></i>
-                                Válido até {new Date(credito.validade).toLocaleDateString('pt-BR')}
+                                Válido até {formatarData(credito.validade)}
                               </span>
                             </div>
                           </div>
@@ -2677,7 +3206,7 @@ export default function AlunoAreaPage() {
                             </span>
                             <span>
                               <i className="fas fa-calendar-plus mr-1"></i>
-                              Concedido em {new Date(credito.criadoEm).toLocaleDateString('pt-BR')}
+                              Concedido em {formatarData(credito.criadoEm)}
                             </span>
                           </div>
                           
@@ -2690,7 +3219,7 @@ export default function AlunoAreaPage() {
                                   <div key={uso._id} className="text-xs text-gray-500 flex items-center gap-2">
                                     <i className="fas fa-check-circle text-green-500"></i>
                                     <span>
-                                      {new Date(uso.dataUso).toLocaleDateString('pt-BR')}
+                                      {formatarData(uso.dataUso)}
                                       {uso.agendamentoId && (
                                         <> - {uso.agendamentoId.horarioInicio} 
                                         {uso.agendamentoId.modalidadeId && ` (${uso.agendamentoId.modalidadeId.nome})`}
@@ -3058,7 +3587,7 @@ export default function AlunoAreaPage() {
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
               <p className="text-sm text-blue-700">
                 <i className="fas fa-info-circle mr-2"></i>
-                Avise com pelo menos <strong>24 horas</strong> de antecedência para ter direito a reposição.
+                Avise com pelo menos <strong>15 minutos</strong> de antecedência para ter direito a reposição.
               </p>
             </div>
             
@@ -3377,212 +3906,62 @@ export default function AlunoAreaPage() {
       )}
 
       {/* Modal de Solicitar Reposição */}
-      {/* Modal de Usar Crédito */}
-      {showUsarCreditoModal && creditoSelecionado && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl p-6 max-w-md w-full shadow-xl">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold text-gray-900">Usar Crédito</h3>
-              <button onClick={() => setShowUsarCreditoModal(false)} className="text-gray-400 hover:text-gray-600">
-                <i className="fas fa-times"></i>
-              </button>
-            </div>
-
-            <div className="bg-teal-50 rounded-lg p-3 mb-4">
-              <p className="text-sm text-teal-700 font-medium">
-                <i className="fas fa-ticket mr-2"></i>
-                {creditoSelecionado.quantidade - creditoSelecionado.quantidadeUsada} crédito(s) disponível(eis)
-              </p>
-              <p className="text-xs text-teal-600 mt-1">
-                {creditoSelecionado.motivo}
-              </p>
-              <p className="text-xs text-gray-500 mt-1">
-                Válido até {new Date(creditoSelecionado.validade).toLocaleDateString('pt-BR')}
-              </p>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Data da aula <span className="text-red-500">*</span>
-                </label>
-                {(() => {
-                  const hoje = new Date();
-                  hoje.setHours(0, 0, 0, 0);
-                  const validade = new Date(creditoSelecionado.validade);
-                  validade.setHours(23, 59, 59, 999);
-                  return (
-                    <input
-                      type="date"
-                      value={creditoNovaData}
-                      onChange={e => {
-                        setCreditoNovaData(e.target.value);
-                        setCreditoHorarioId('');
-                      }}
-                      min={hoje.toISOString().split('T')[0]}
-                      max={validade.toISOString().split('T')[0]}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
-                    />
-                  );
-                })()}
-              </div>
-
-              {creditoNovaData && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Horário disponível <span className="text-red-500">*</span>
-                  </label>
-                  {horariosParaCredito.length === 0 ? (
-                    <p className="text-sm text-yellow-600 bg-yellow-50 p-3 rounded-lg">
-                      <i className="fas fa-exclamation-triangle mr-2"></i>
-                      Nenhum horário disponível neste dia. Tente outra data.
-                    </p>
-                  ) : (
-                    <select
-                      value={creditoHorarioId}
-                      onChange={e => setCreditoHorarioId(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
-                    >
-                      <option value="">Selecione o horário...</option>
-                      {horariosParaCredito.map(h => (
-                        <option key={h._id} value={h._id}>
-                          {h.horarioInicio} - {h.horarioFim} • {h.modalidade?.nome} ({h.professor?.nome})
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                </div>
-              )}
-            </div>
-
-            <div className="bg-green-50 border border-green-200 rounded-lg p-3 mt-4">
-              <p className="text-sm text-green-700">
-                <i className="fas fa-check-circle mr-2"></i>
-                Créditos já são pré-aprovados. Sua aula será agendada automaticamente.
-              </p>
-            </div>
-
-            <div className="flex gap-3 mt-6">
-              <button 
-                onClick={() => setShowUsarCreditoModal(false)} 
-                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50"
-              >
-                Cancelar
-              </button>
-              <button 
-                onClick={enviarUsarCredito} 
-                disabled={enviandoCredito || !creditoHorarioId}
-                className="flex-1 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white font-medium rounded-lg disabled:opacity-50"
-              >
-                {enviandoCredito ? <><i className="fas fa-spinner fa-spin mr-2"></i>Agendando...</> : 'Usar Crédito'}
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* Modal de Usar Crédito - Componente dedicado */}
+      {creditoSelecionado && (
+        <UsarCreditoModal
+          open={showUsarCreditoModal}
+          onClose={() => {
+            setShowUsarCreditoModal(false);
+            setCreditoSelecionado(null);
+          }}
+          credito={creditoSelecionado ? {
+            _id: creditoSelecionado._id,
+            alunoId: { _id: aluno?._id || '', nome: aluno?.nome || '' },
+            quantidade: creditoSelecionado.quantidade,
+            quantidadeUsada: creditoSelecionado.quantidadeUsada,
+            validade: creditoSelecionado.validade
+          } : null}
+          onSuccess={() => {
+            setShowUsarCreditoModal(false);
+            setCreditoSelecionado(null);
+            fetchDados();
+          }}
+        />
       )}
 
-      {/* Modal de Solicitar Reposição */}
-      {showReposicaoModal && faltaSelecionada && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl p-6 max-w-md w-full shadow-xl">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold text-gray-900">Solicitar Reposição</h3>
-              <button onClick={() => setShowReposicaoModal(false)} className="text-gray-400 hover:text-gray-600">
-                <i className="fas fa-times"></i>
-              </button>
-            </div>
-
-            <div className="bg-gray-50 rounded-lg p-3 mb-4">
-              <p className="text-sm text-gray-600">
-                <strong>Falta em:</strong> {formatarData(faltaSelecionada.data)}
-              </p>
-              <p className="text-sm text-gray-500">
-                {faltaSelecionada.horarioInicio} - {faltaSelecionada.modalidade?.nome}
-              </p>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Data da reposição <span className="text-red-500">*</span>
-                  <span className="text-xs text-gray-400 font-normal ml-1">(até 7 dias após a falta)</span>
-                </label>
-                {(() => {
-                  const hoje = new Date();
-                  hoje.setHours(0, 0, 0, 0);
-                  const dataFalta = new Date(faltaSelecionada.data + 'T12:00:00');
-                  dataFalta.setHours(0, 0, 0, 0);
-                  const limiteMax = new Date(dataFalta);
-                  limiteMax.setDate(limiteMax.getDate() + 7);
-                  const minDate = hoje > dataFalta ? hoje : dataFalta;
-                  return (
-                    <input
-                      type="date"
-                      value={reposicaoNovaData}
-                      onChange={e => {
-                        setReposicaoNovaData(e.target.value);
-                        setReposicaoNovoHorarioId('');
-                      }}
-                      min={minDate.toISOString().split('T')[0]}
-                      max={limiteMax.toISOString().split('T')[0]}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
-                    />
-                  );
-                })()}
-              </div>
-
-              {reposicaoNovaData && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Horário disponível <span className="text-red-500">*</span>
-                  </label>
-                  {horariosParaReposicao.length === 0 ? (
-                    <p className="text-sm text-yellow-600 bg-yellow-50 p-3 rounded-lg">
-                      <i className="fas fa-exclamation-triangle mr-2"></i>
-                      Nenhum horário disponível neste dia. Tente outra data.
-                    </p>
-                  ) : (
-                    <select
-                      value={reposicaoNovoHorarioId}
-                      onChange={e => setReposicaoNovoHorarioId(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
-                    >
-                      <option value="">Selecione o horário...</option>
-                      {horariosParaReposicao.map(h => (
-                        <option key={h._id} value={h._id}>
-                          {h.horarioInicio} - {h.horarioFim} • {h.modalidade?.nome} ({h.professor?.nome})
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                </div>
-              )}
-            </div>
-
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mt-4">
-              <p className="text-sm text-yellow-700">
-                <i className="fas fa-info-circle mr-2"></i>
-                A reposição precisa ser aprovada pela administração.
-              </p>
-            </div>
-
-            <div className="flex gap-3 mt-6">
-              <button 
-                onClick={() => setShowReposicaoModal(false)} 
-                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50"
-              >
-                Cancelar
-              </button>
-              <button 
-                onClick={enviarSolicitacaoReposicao} 
-                disabled={enviandoReposicao || !reposicaoNovoHorarioId}
-                className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg disabled:opacity-50"
-              >
-                {enviandoReposicao ? <><i className="fas fa-spinner fa-spin mr-2"></i>Enviando...</> : 'Solicitar'}
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* Modal de Solicitar Reposição - Usando ReporFaltaModal */}
+      {faltaSelecionada && (
+        <ReporFaltaModal
+          open={showReposicaoModal}
+          onClose={() => {
+            setShowReposicaoModal(false);
+            setFaltaSelecionada(null);
+          }}
+          alunoId={aluno?._id || ''}
+          alunoNome={aluno?.nome || ''}
+          falta={{
+            aulaRealizadaId: faltaSelecionada._id,
+            data: faltaSelecionada.data,
+            horarioInicio: faltaSelecionada.horarioInicio,
+            horarioFim: faltaSelecionada.horarioFim || '',
+            horarioFixoId: faltaSelecionada.horarioFixoId,
+            modalidade: faltaSelecionada.modalidade?.nome || '',
+            diasRestantes: 7,
+            prazoFinal: (() => {
+              // Parsear data local sem problema de timezone
+              const str = faltaSelecionada.data.split('T')[0];
+              const [ano, mes, dia] = str.split('-').map(Number);
+              const dataFalta = new Date(ano, mes - 1, dia, 12, 0, 0);
+              dataFalta.setDate(dataFalta.getDate() + 7);
+              return dataFalta.toLocaleDateString('pt-BR');
+            })()
+          }}
+          onSuccess={() => {
+            setShowReposicaoModal(false);
+            setFaltaSelecionada(null);
+            fetchDados();
+          }}
+        />
       )}
 
       {/* Modal de Alteração de Horário Fixo */}
@@ -3722,10 +4101,21 @@ export default function AlunoAreaPage() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl p-6 max-w-sm w-full shadow-xl">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold text-gray-900">Contato</h3>
+              <h3 className="text-lg font-bold text-gray-900">Suporte</h3>
               <button onClick={() => setShowSuporteModal(false)} className="text-gray-400 hover:text-gray-600">
                 <i className="fas fa-times"></i>
               </button>
+            </div>
+            
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+              <p className="text-xs text-blue-700">
+                <i className="fas fa-info-circle mr-2"></i>
+                <strong>Suporte:</strong> Dúvidas sobre horários, aulas e funcionalidades.
+              </p>
+              <p className="text-xs text-blue-700 mt-2">
+                <i className="fas fa-info-circle mr-2"></i>
+                <strong>Financeiro:</strong> Informações sobre pagamentos, boletos e planos.
+              </p>
             </div>
             
             <p className="text-sm text-gray-600 mb-4">Escolha o setor que deseja contatar:</p>
@@ -3935,7 +4325,7 @@ export default function AlunoAreaPage() {
                 abaAtiva === 'creditos' ? 'text-primary-600' : 'text-gray-400'
               }`}
             >
-              <i className="fas fa-star text-xl"></i>
+              <i className="fas fa-ticket text-xl"></i>
               <span className="text-[10px] font-medium">Créditos</span>
               {creditos.reduce((sum, c) => sum + (c.quantidade - c.quantidadeUsada), 0) > 0 && (
                 <span className="absolute top-1 right-1/4 w-4 h-4 bg-teal-500 text-white text-[10px] rounded-full flex items-center justify-center">

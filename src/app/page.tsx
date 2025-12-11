@@ -11,9 +11,24 @@ export default function AlunoLoginPage() {
   const [dataNascimento, setDataNascimento] = useState('');
   const [erro, setErro] = useState('');
   const [carregando, setCarregando] = useState(false);
+  const [remember, setRemember] = useState(false);
   const [adminContact, setAdminContact] = useState<{ whatsapp: string; nome: string } | null>(null);
   const [showModalAjuda, setShowModalAjuda] = useState(false);
   const router = useRouter();
+
+  // Carregar CPF salvo se existir (lembrar-me)
+  useEffect(() => {
+    try {
+      const savedCpf = localStorage.getItem('rememberedAlunoCpf');
+      const savedRemember = localStorage.getItem('rememberAlunoLogin') === 'true';
+      if (savedCpf && savedRemember) {
+        setCpf(savedCpf);
+        setRemember(true);
+      }
+    } catch (e) {
+      // Ignorar erros de localStorage
+    }
+  }, []);
 
   // Buscar contato do admin ao montar
   useEffect(() => {
@@ -67,7 +82,8 @@ export default function AlunoLoginPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           cpf: cpfLimpo, 
-          dataNascimento 
+          dataNascimento,
+          remember
         }),
       });
       
@@ -77,7 +93,16 @@ export default function AlunoLoginPage() {
         // Salvar dados do aluno no localStorage
         try { 
           localStorage.setItem('aluno', JSON.stringify(data.aluno)); 
-          localStorage.setItem('alunoToken', data.token); 
+          localStorage.setItem('alunoToken', data.token);
+          
+          // Salvar CPF se lembrar-me estiver ativado
+          if (remember) {
+            localStorage.setItem('rememberedAlunoCpf', cpf);
+            localStorage.setItem('rememberAlunoLogin', 'true');
+          } else {
+            localStorage.removeItem('rememberedAlunoCpf');
+            localStorage.removeItem('rememberAlunoLogin');
+          }
         } catch (e) { /* ignore storage errors */ }
         
         // Redirecionar para área do aluno
@@ -229,6 +254,21 @@ export default function AlunoLoginPage() {
                     style={{ minWidth: 0 }}
                   />
                 </div>
+              </div>
+
+              {/* Checkbox Lembrar-me */}
+              <div className="flex items-center">
+                <label className="flex items-center cursor-pointer group">
+                  <input 
+                    type="checkbox" 
+                    checked={remember} 
+                    onChange={e => setRemember(e.target.checked)} 
+                    className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500 cursor-pointer" 
+                  />
+                  <span className="ml-2 text-sm text-gray-600 group-hover:text-gray-800 transition-colors">
+                    Lembrar meu CPF neste dispositivo
+                  </span>
+                </label>
               </div>
 
               <button 

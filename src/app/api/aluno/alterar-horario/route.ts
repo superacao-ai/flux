@@ -46,14 +46,14 @@ export async function GET() {
         path: 'horarioAtualId',
         populate: [
           { path: 'modalidadeId', select: 'nome cor' },
-          { path: 'professorId', select: 'nome' }
+          { path: 'professorId', model: 'User', select: 'nome' }
         ]
       })
       .populate({
         path: 'novoHorarioId',
         populate: [
           { path: 'modalidadeId', select: 'nome cor' },
-          { path: 'professorId', select: 'nome' }
+          { path: 'professorId', model: 'User', select: 'nome' }
         ]
       })
       .sort({ criadoEm: -1 })

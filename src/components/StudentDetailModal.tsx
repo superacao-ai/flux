@@ -136,8 +136,16 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
     }
   };
 
+  // Helper para parsear data sem problema de timezone UTC
+  const parseDataLocal = (dataStr: string): Date => {
+    if (!dataStr) return new Date();
+    const str = dataStr.split('T')[0];
+    const [ano, mes, dia] = str.split('-').map(Number);
+    return new Date(ano, mes - 1, dia, 12, 0, 0);
+  };
+
   const formatarData = (dataStr: string) => {
-    const data = new Date(dataStr);
+    const data = parseDataLocal(dataStr);
     return data.toLocaleDateString('pt-BR', { 
       day: '2-digit', 
       month: '2-digit', 
@@ -146,7 +154,7 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
   };
 
   const isExpirado = (validadeStr: string) => {
-    return new Date(validadeStr) <= new Date();
+    return parseDataLocal(validadeStr) <= new Date();
   };
 
   // getMid is already declared below; keep a single definition further down

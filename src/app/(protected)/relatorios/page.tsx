@@ -1789,53 +1789,62 @@ export default function RelatoriosPage() {
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                        {aulasEnviadas.map((aula, index) => (
-                          <tr key={aula._id} className={`hover:bg-gray-50 fade-in-${Math.min((index % 8) + 1, 8)}`}>
-                            <td className="px-4 py-3 text-sm text-gray-900">
-                              {new Date(aula.data).toLocaleDateString('pt-BR')}
-                            </td>
-                            <td className="px-4 py-3 text-sm text-gray-900">
-                              {aula.modalidade || 'Não informada'}
-                            </td>
-                            <td className="px-4 py-3 text-sm text-gray-900">
-                              {typeof (aula.professorId as any)?.nome === 'string' 
-                                ? (aula.professorId as any).nome 
-                                : aula.professorNome || 'Não informado'}
-                            </td>
-                            <td className="px-4 py-3 text-sm text-center">
-                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-green-50 text-green-700 font-medium">
-                                <i className="fas fa-check text-xs"></i>
-                                {aula.total_presentes || 0}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3 text-sm text-center">
-                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-red-50 text-red-700 font-medium">
-                                <i className="fas fa-times text-xs"></i>
-                                {aula.total_faltas || 0}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3 text-sm text-center">
-                              <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                                aula.status === 'enviada' ? 'bg-green-50 text-green-700' :
-                                aula.status === 'corrigida' ? 'bg-blue-50 text-blue-700' :
-                                'bg-gray-50 text-gray-700'
-                              }`}>
-                                {aula.status || 'enviada'}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3 text-sm text-center">
-                              <button
-                                onClick={() => devolverAula(String(aula._id))}
-                                disabled={deletingAulas.includes(String(aula._id))}
-                                className={`inline-flex items-center gap-2 px-3 py-1 rounded-lg text-xs font-medium transition-colors border ${deletingAulas.includes(String(aula._id)) ? 'opacity-50 cursor-not-allowed bg-gray-100 border-gray-200 text-gray-500' : 'bg-white hover:bg-red-50 border-red-200 text-red-700'}`}
-                                title="Devolver aula ao professor"
-                              >
-                                <i className="fas fa-undo-alt text-sm"></i>
-                                <span>Devolver</span>
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
+                        {aulasEnviadas.map((aula, index) => {
+                          // Helper para parsear data sem problema de timezone UTC
+                          const parseDataLocal = (dataStr: string): Date => {
+                            if (!dataStr) return new Date();
+                            const str = dataStr.split('T')[0];
+                            const [ano, mes, dia] = str.split('-').map(Number);
+                            return new Date(ano, mes - 1, dia, 12, 0, 0);
+                          };
+                          return (
+                            <tr key={aula._id} className={`hover:bg-gray-50 fade-in-${Math.min((index % 8) + 1, 8)}`}>
+                              <td className="px-4 py-3 text-sm text-gray-900">
+                                {parseDataLocal(aula.data).toLocaleDateString('pt-BR')}
+                              </td>
+                              <td className="px-4 py-3 text-sm text-gray-900">
+                                {aula.modalidade || 'Não informada'}
+                              </td>
+                              <td className="px-4 py-3 text-sm text-gray-900">
+                                {typeof (aula.professorId as any)?.nome === 'string' 
+                                  ? (aula.professorId as any).nome 
+                                  : aula.professorNome || 'Não informado'}
+                              </td>
+                              <td className="px-4 py-3 text-sm text-center">
+                                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-green-50 text-green-700 font-medium">
+                                  <i className="fas fa-check text-xs"></i>
+                                  {aula.total_presentes || 0}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-sm text-center">
+                                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-red-50 text-red-700 font-medium">
+                                  <i className="fas fa-times text-xs"></i>
+                                  {aula.total_faltas || 0}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-sm text-center">
+                                <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                                  aula.status === 'enviada' ? 'bg-green-50 text-green-700' :
+                                  aula.status === 'corrigida' ? 'bg-blue-50 text-blue-700' :
+                                  'bg-gray-50 text-gray-700'
+                                }`}>
+                                  {aula.status || 'enviada'}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-sm text-center">
+                                <button
+                                  onClick={() => devolverAula(String(aula._id))}
+                                  disabled={deletingAulas.includes(String(aula._id))}
+                                  className={`inline-flex items-center gap-2 px-3 py-1 rounded-lg text-xs font-medium transition-colors border ${deletingAulas.includes(String(aula._id)) ? 'opacity-50 cursor-not-allowed bg-gray-100 border-gray-200 text-gray-500' : 'bg-white hover:bg-red-50 border-red-200 text-red-700'}`}
+                                  title="Devolver aula ao professor"
+                                >
+                                  <i className="fas fa-undo-alt text-sm"></i>
+                                  <span>Devolver</span>
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
                     </tbody>
                   </table>
                 </div>
@@ -1880,22 +1889,31 @@ export default function RelatoriosPage() {
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                      {aulasPendentes.map((aula, index) => (
-                        <tr key={index} className={`hover:bg-gray-50 fade-in-${Math.min((index % 8) + 1, 8)}`}>
-                          <td className="px-4 py-3 text-sm text-gray-900">
-                            {new Date(aula.data).toLocaleDateString('pt-BR')}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-gray-900">
-                            {aula.horario}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-gray-900">
-                            {aula.modalidade}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-gray-900">
-                            {aula.professor}
-                          </td>
-                        </tr>
-                      ))}
+                      {aulasPendentes.map((aula, index) => {
+                        // Helper para parsear data sem problema de timezone UTC
+                        const parseDataLocal = (dataStr: string): Date => {
+                          if (!dataStr) return new Date();
+                          const str = dataStr.split('T')[0];
+                          const [ano, mes, dia] = str.split('-').map(Number);
+                          return new Date(ano, mes - 1, dia, 12, 0, 0);
+                        };
+                        return (
+                          <tr key={index} className={`hover:bg-gray-50 fade-in-${Math.min((index % 8) + 1, 8)}`}>
+                            <td className="px-4 py-3 text-sm text-gray-900">
+                              {parseDataLocal(aula.data).toLocaleDateString('pt-BR')}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-900">
+                              {aula.horario}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-900">
+                              {aula.modalidade}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-900">
+                              {aula.professor}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

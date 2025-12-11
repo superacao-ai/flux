@@ -220,12 +220,19 @@ const AlunoRowModal: React.FC<Props> = ({ isOpen, onClose, alunoId, onRefresh })
   // Função para abrir modal de edição
   const abrirEdicao = () => {
     if (!aluno) return;
+    // Helper para parsear data sem problema de timezone UTC
+    const parseDataLocal = (dataStr: string): Date => {
+      if (!dataStr) return new Date();
+      const str = dataStr.split('T')[0];
+      const [ano, mes, dia] = str.split('-').map(Number);
+      return new Date(ano, mes - 1, dia, 12, 0, 0);
+    };
     // Formatar data de nascimento para input date (YYYY-MM-DD)
     let dataNascimentoFormatted = '';
     if (aluno.dataNascimento) {
       try {
-        const d = new Date(aluno.dataNascimento);
-        dataNascimentoFormatted = d.toISOString().split('T')[0];
+        const d = parseDataLocal(aluno.dataNascimento);
+        dataNascimentoFormatted = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       } catch { /* ignore */ }
     }
     // Formatar CPF com máscara (XXX.XXX.XXX-XX)
@@ -401,12 +408,20 @@ const AlunoRowModal: React.FC<Props> = ({ isOpen, onClose, alunoId, onRefresh })
                         {aluno.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}
                       </div>
                     )}
-                    {aluno.dataNascimento && (
+                    {aluno.dataNascimento && (() => {
+                      const parseDataLocal = (dataStr: string): Date => {
+                        if (!dataStr) return new Date();
+                        const str = dataStr.split('T')[0];
+                        const [ano, mes, dia] = str.split('-').map(Number);
+                        return new Date(ano, mes - 1, dia, 12, 0, 0);
+                      };
+                      return (
                       <div className="text-sm text-gray-600">
                         <i className="fas fa-birthday-cake mr-2 text-gray-400" />
-                        {new Date(aluno.dataNascimento).toLocaleDateString('pt-BR')}
+                        {parseDataLocal(aluno.dataNascimento).toLocaleDateString('pt-BR')}
                       </div>
-                    )}
+                      );
+                    })()}
                   </div>
                 )}
 

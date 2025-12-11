@@ -47,39 +47,62 @@ export default function AppShell({ children }: AppShellProps) {
   const fetchPendingCounts = useCallback(async () => {
     try {
       // Buscar aulas experimentais pendentes (status = 'agendada')
-      const expRes = await fetch('/api/aulas-experimentais');
-      const expData = await expRes.json();
-      const experimentaisPendentes = expData.success 
-        ? expData.data.filter((a: any) => a.status === 'agendada' && a.ativo !== false).length 
-        : 0;
+      let experimentaisPendentes = 0;
+      try {
+        const expRes = await fetch('/api/aulas-experimentais');
+        if (expRes.ok) {
+          const expData = await expRes.json();
+          experimentaisPendentes = expData.success 
+            ? expData.data.filter((a: any) => a.status === 'agendada' && a.ativo !== false).length 
+            : 0;
+        }
+      } catch (e) {
+        console.error('Erro ao buscar aulas experimentais:', e);
+      }
 
       // Buscar reagendamentos pendentes
-      const reagRes = await fetch('/api/reagendamentos');
-      const reagData = await reagRes.json();
-      const reagendamentosPendentes = reagData.success 
-        ? reagData.data.filter((r: any) => r.status === 'pendente').length 
-        : 0;
+      let reagendamentosPendentes = 0;
+      try {
+        const reagRes = await fetch('/api/reagendamentos');
+        if (reagRes.ok) {
+          const reagData = await reagRes.json();
+          reagendamentosPendentes = reagData.success 
+            ? reagData.data.filter((r: any) => r.status === 'pendente').length 
+            : 0;
+        }
+      } catch (e) {
+        console.error('Erro ao buscar reagendamentos:', e);
+      }
 
       // Buscar alterações de horário pendentes
-      const altRes = await fetch('/api/alteracoes-horario?status=pendente');
-      const altData = await altRes.json();
-      const alteracoesHorarioPendentes = altData.success 
-        ? altData.pendentes || 0
-        : 0;
+      let alteracoesHorarioPendentes = 0;
+      try {
+        const altRes = await fetch('/api/alteracoes-horario?status=pendente');
+        if (altRes.ok) {
+          const altData = await altRes.json();
+          alteracoesHorarioPendentes = altData.success 
+            ? altData.pendentes || 0
+            : 0;
+        }
+      } catch (e) {
+        console.error('Erro ao buscar alterações de horário:', e);
+      }
 
       // Buscar total de alunos com créditos disponíveis
       let creditosAtivos = 0;
       try {
         const credRes = await fetch('/api/creditos-reposicao?disponiveis=true');
-        const credData = await credRes.json();
-        if (Array.isArray(credData)) {
-          // Contar quantos alunos únicos têm créditos (filtrando créditos com alunoId válido)
-          const alunosComCreditos = new Set(
-            credData
-              .filter((c: any) => c.alunoId && c.alunoId._id && c.alunoId.nome)
-              .map((c: any) => c.alunoId._id)
-          );
-          creditosAtivos = alunosComCreditos.size;
+        if (credRes.ok) {
+          const credData = await credRes.json();
+          if (Array.isArray(credData)) {
+            // Contar quantos alunos únicos têm créditos (filtrando créditos com alunoId válido)
+            const alunosComCreditos = new Set(
+              credData
+                .filter((c: any) => c.alunoId && c.alunoId._id && c.alunoId.nome)
+                .map((c: any) => c.alunoId._id)
+            );
+            creditosAtivos = alunosComCreditos.size;
+          }
         }
       } catch (e) {
         console.error('Erro ao buscar créditos:', e);
@@ -89,9 +112,11 @@ export default function AppShell({ children }: AppShellProps) {
       let totalAlunos = 0;
       try {
         const alunosRes = await fetch('/api/alunos');
-        const alunosData = await alunosRes.json();
-        const alunosArray = Array.isArray(alunosData) ? alunosData : (alunosData.data || []);
-        totalAlunos = alunosArray.filter((a: any) => a.ativo !== false).length;
+        if (alunosRes.ok) {
+          const alunosData = await alunosRes.json();
+          const alunosArray = Array.isArray(alunosData) ? alunosData : (alunosData.data || []);
+          totalAlunos = alunosArray.filter((a: any) => a.ativo !== false).length;
+        }
       } catch (e) {
         console.error('Erro ao buscar alunos:', e);
       }
@@ -100,9 +125,11 @@ export default function AppShell({ children }: AppShellProps) {
       let totalUsuarios = 0;
       try {
         const usuariosRes = await fetch('/api/usuarios');
-        const usuariosData = await usuariosRes.json();
-        const usuariosArray = Array.isArray(usuariosData) ? usuariosData : (usuariosData.data || []);
-        totalUsuarios = usuariosArray.filter((u: any) => u.ativo !== false).length;
+        if (usuariosRes.ok) {
+          const usuariosData = await usuariosRes.json();
+          const usuariosArray = Array.isArray(usuariosData) ? usuariosData : (usuariosData.data || []);
+          totalUsuarios = usuariosArray.filter((u: any) => u.ativo !== false).length;
+        }
       } catch (e) {
         console.error('Erro ao buscar usuários:', e);
       }
@@ -112,78 +139,81 @@ export default function AppShell({ children }: AppShellProps) {
       let totalHorarios = 0;
       try {
         const horariosRes = await fetch('/api/horarios');
-        const horariosData = await horariosRes.json();
         const aulasRes = await fetch('/api/aulas-realizadas?listarTodas=true');
-        const aulasData = await aulasRes.json();
         
-        // aulasData é um array direto quando usa listarTodas=true
-        const aulasArray = Array.isArray(aulasData) ? aulasData : (aulasData.data || []);
-        
-        // Obter data de início da plataforma do localStorage (igual à página de aulas-realizadas)
-        const dataInicioPlataforma = typeof window !== 'undefined' 
-          ? localStorage.getItem('dataInicioPlataforma') || ''
-          : '';
-        
-        if (horariosData.success && aulasArray) {
-          // Contar total de horários ativos
-          totalHorarios = horariosData.data.filter((h: any) => h.ativo !== false).length;
+        if (horariosRes.ok && aulasRes.ok) {
+          const horariosData = await horariosRes.json();
+          const aulasData = await aulasRes.json();
           
-          const hoje = new Date();
-          hoje.setHours(0, 0, 0, 0);
+          // aulasData é um array direto quando usa listarTodas=true
+          const aulasArray = Array.isArray(aulasData) ? aulasData : (aulasData.data || []);
           
-          // Buscar feriados dos últimos 30 dias
-          const dataInicio = new Date(hoje);
-          dataInicio.setDate(dataInicio.getDate() - 30);
-          const inicioStr = dataInicio.toISOString().split('T')[0];
-          const fimStr = hoje.toISOString().split('T')[0];
+          // Obter data de início da plataforma do localStorage (igual à página de aulas-realizadas)
+          const dataInicioPlataforma = typeof window !== 'undefined' 
+            ? localStorage.getItem('dataInicioPlataforma') || ''
+            : '';
           
-          const feriadosNacionais = getFeriadosPeriodo(inicioStr, fimStr);
-          const feriadosPersonalizados = await fetchFeriadosPersonalizados(inicioStr, fimStr);
-          const todosFeriados = new Set([
-            ...feriadosNacionais.map(f => f.data),
-            ...feriadosPersonalizados.map(f => f.data)
-          ]);
-          
-          // Criar set de aulas já registradas (horarioFixoId + data) - apenas enviadas ou corrigidas
-          const aulasRegistradas = new Set(
-            aulasArray
-              .filter((a: any) => a.status === 'enviada' || a.status === 'corrigida')
-              .map((a: any) => {
-                const horarioId = typeof a.horarioFixoId === 'string' ? a.horarioFixoId : a.horarioFixoId?._id;
-                const dataStr = a.data?.split('T')[0];
-                return `${horarioId}_${dataStr}`;
-              })
-          );
-          
-          // Verificar últimos 30 dias (igual à página de aulas-realizadas)
-          for (let i = 1; i <= 30; i++) {
-            const data = new Date(hoje);
-            data.setDate(data.getDate() - i);
-            const diaSemana = data.getDay();
-            const dataStr = data.toISOString().split('T')[0];
+          if (horariosData.success && aulasArray) {
+            // Contar total de horários ativos
+            totalHorarios = horariosData.data.filter((h: any) => h.ativo !== false).length;
             
-            // Verificar se a data é anterior à data de início da plataforma
-            if (dataInicioPlataforma && dataStr < dataInicioPlataforma) {
-              continue; // Ignorar datas anteriores ao início da plataforma
-            }
+            const hoje = new Date();
+            hoje.setHours(0, 0, 0, 0);
             
-            // Ignorar feriados
-            if (todosFeriados.has(dataStr)) {
-              continue;
-            }
+            // Buscar feriados dos últimos 30 dias
+            const dataInicio = new Date(hoje);
+            dataInicio.setDate(dataInicio.getDate() - 30);
+            const inicioStr = dataInicio.toISOString().split('T')[0];
+            const fimStr = hoje.toISOString().split('T')[0];
             
-            // Filtrar horários deste dia da semana
-            const horariosNoDia = horariosData.data.filter((h: any) => 
-              h.diaSemana === diaSemana && h.ativo !== false
+            const feriadosNacionais = getFeriadosPeriodo(inicioStr, fimStr);
+            const feriadosPersonalizados = await fetchFeriadosPersonalizados(inicioStr, fimStr);
+            const todosFeriados = new Set([
+              ...feriadosNacionais.map(f => f.data),
+              ...feriadosPersonalizados.map(f => f.data)
+            ]);
+            
+            // Criar set de aulas já registradas (horarioFixoId + data) - apenas enviadas ou corrigidas
+            const aulasRegistradas = new Set(
+              aulasArray
+                .filter((a: any) => a.status === 'enviada' || a.status === 'corrigida')
+                .map((a: any) => {
+                  const horarioId = typeof a.horarioFixoId === 'string' ? a.horarioFixoId : a.horarioFixoId?._id;
+                  const dataStr = a.data?.split('T')[0];
+                  return `${horarioId}_${dataStr}`;
+                })
             );
             
-            // Contar horários sem registro
-            horariosNoDia.forEach((h: any) => {
-              const chave = `${h._id}_${dataStr}`;
-              if (!aulasRegistradas.has(chave)) {
-                aulasPendentes++;
+            // Verificar últimos 30 dias (igual à página de aulas-realizadas)
+            for (let i = 1; i <= 30; i++) {
+              const data = new Date(hoje);
+              data.setDate(data.getDate() - i);
+              const diaSemana = data.getDay();
+              const dataStr = data.toISOString().split('T')[0];
+              
+              // Verificar se a data é anterior à data de início da plataforma
+              if (dataInicioPlataforma && dataStr < dataInicioPlataforma) {
+                continue; // Ignorar datas anteriores ao início da plataforma
               }
-            });
+              
+              // Ignorar feriados
+              if (todosFeriados.has(dataStr)) {
+                continue;
+              }
+              
+              // Filtrar horários deste dia da semana
+              const horariosNoDia = horariosData.data.filter((h: any) => 
+                h.diaSemana === diaSemana && h.ativo !== false
+              );
+              
+              // Contar horários sem registro
+              horariosNoDia.forEach((h: any) => {
+                const chave = `${h._id}_${dataStr}`;
+                if (!aulasRegistradas.has(chave)) {
+                  aulasPendentes++;
+                }
+              });
+            }
           }
         }
       } catch (e) {

@@ -54,6 +54,11 @@ const modalidadeSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Modalidade'
   }],
+  // Se a modalidade permite reposição de faltas
+  permiteReposicao: {
+    type: Boolean,
+    default: true // Por padrão permite reposição
+  },
   ativo: {
     type: Boolean,
     default: true

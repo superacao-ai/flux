@@ -60,11 +60,14 @@ export async function GET() {
             if (uso.agendamentoId) {
               const horario = await HorarioFixo.findById(uso.agendamentoId)
                 .populate('modalidadeId', 'nome cor')
-                .populate('professorId', 'nome')
+                .populate({ path: 'professorId', model: 'User', select: 'nome' })
                 .lean();
               if (horario) {
                 horarioInfo = {
+                  _id: (horario as any)._id,
                   horarioInicio: (horario as any).horarioInicio,
+                  horarioFim: (horario as any).horarioFim,
+                  diaSemana: (horario as any).diaSemana,
                   modalidadeId: (horario as any).modalidadeId,
                   professorId: (horario as any).professorId
                 };

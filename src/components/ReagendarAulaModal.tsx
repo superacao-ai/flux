@@ -255,7 +255,11 @@ export default function ReagendarAulaModal({ open, onClose, aluno, horarioOrigin
               <div className="font-semibold">Resumo do reagendamento</div>
               <div className="text-xs text-gray-600 mt-1">
                 <div><span className="font-bold">Aluno:</span> {aluno?.nome || '-'}</div>
-                <div><span className="font-bold">Data original:</span> {dataOriginal ? new Date(dataOriginal).toLocaleDateString('pt-BR') : '-'}</div>
+                <div><span className="font-bold">Data original:</span> {dataOriginal ? (() => {
+                  const str = dataOriginal.split('T')[0];
+                  const [ano, mes, dia] = str.split('-').map(Number);
+                  return new Date(ano, mes - 1, dia, 12, 0, 0).toLocaleDateString('pt-BR');
+                })() : '-'}</div>
                 <div><span className="font-bold">Horário original:</span> {horarioOriginal?.horarioInicio || '-'} - {horarioOriginal?.horarioFim || '-'}</div>
               </div>
             </div>

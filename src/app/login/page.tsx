@@ -16,6 +16,20 @@ export default function LoginPage() {
   const [adminContact, setAdminContact] = useState<{ whatsapp: string; nome: string } | null>(null);
   const router = useRouter();
 
+  // Carregar email salvo se existir (lembrar-me)
+  useEffect(() => {
+    try {
+      const savedEmail = localStorage.getItem('rememberedEmail');
+      const savedRemember = localStorage.getItem('rememberLogin') === 'true';
+      if (savedEmail && savedRemember) {
+        setEmail(savedEmail);
+        setRemember(true);
+      }
+    } catch (e) {
+      // Ignorar erros de localStorage
+    }
+  }, []);
+
   // Buscar contato do admin ao montar
   useEffect(() => {
     fetch('/api/public/admin-contact')
@@ -39,13 +53,22 @@ export default function LoginPage() {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, senha }),
+        body: JSON.stringify({ email, senha, remember }),
       });
       const data = await response.json();
       if (response.ok) {
         try { 
           localStorage.setItem('user', JSON.stringify(data.user)); 
-          localStorage.setItem('token', data.token); 
+          localStorage.setItem('token', data.token);
+          
+          // Salvar email se lembrar-me estiver ativado
+          if (remember) {
+            localStorage.setItem('rememberedEmail', email);
+            localStorage.setItem('rememberLogin', 'true');
+          } else {
+            localStorage.removeItem('rememberedEmail');
+            localStorage.removeItem('rememberLogin');
+          }
         } catch (e) { /* ignore storage errors */ }
         // Força reload completo para garantir que o UserContext seja reiniciado com os novos dados
         window.location.href = '/dashboard';

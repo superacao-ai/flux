@@ -7,6 +7,8 @@ import Feriado from '@/models/Feriado';
 import { getFeriadosNacionais } from '@/lib/feriados';
 import mongoose from 'mongoose';
 import { JWT_SECRET } from '@/lib/auth';
+// Importar User para garantir que o modelo está registrado para populates
+import '@/models/User';
 
 async function getAlunoFromToken() {
   try {
@@ -72,8 +74,8 @@ export async function GET(req: NextRequest) {
       .populate({
         path: 'horarioFixoId',
         populate: [
-          { path: 'modalidadeId', select: 'nome cor' },
-          { path: 'professorId', select: 'nome' }
+          { path: 'modalidadeId', select: 'nome cor permiteReposicao' },
+          { path: 'professorId', model: 'User', select: 'nome' }
         ]
       })
       .sort({ dataAusencia: -1 })
@@ -117,6 +119,15 @@ export async function GET(req: NextRequest) {
       },
       { $unwind: { path: '$modalidade', preserveNullAndEmptyArrays: true } },
       {
+        $lookup: {
+          from: 'users',
+          localField: 'horario.professorId',
+          foreignField: '_id',
+          as: 'professor'
+        }
+      },
+      { $unwind: { path: '$professor', preserveNullAndEmptyArrays: true } },
+      {
         $project: {
           _id: 1,
           data: 1,
@@ -126,7 +137,12 @@ export async function GET(req: NextRequest) {
           modalidade: {
             _id: '$modalidade._id',
             nome: '$modalidade.nome',
-            cor: '$modalidade.cor'
+            cor: '$modalidade.cor',
+            permiteReposicao: '$modalidade.permiteReposicao'
+          },
+          professor: {
+            _id: '$professor._id',
+            nome: '$professor.nome'
           },
           aluno: '$alunos'
         }
@@ -146,12 +162,14 @@ export async function GET(req: NextRequest) {
         horarioInicio: f.horarioFixoId?.horarioInicio,
         horarioFim: f.horarioFixoId?.horarioFim,
         modalidade: f.horarioFixoId?.modalidadeId,
+        professorId: f.horarioFixoId?.professorId, // Renomeado para professorId
         motivo: f.motivo,
-        temDireitoReposicao: true
+        temDireitoReposicao: true,
+        avisouComAntecedencia: true
       }));
     
     // Faltas registradas pelo professor que não tem aviso prévio
-    // (não tem direito automático, mas pode solicitar)
+    // NÃO TEM DIREITO a reposição (não avisou com antecedência)
     // Também exclui feriados
     const faltasSemAviso = faltasRegistradas
       .filter((f: any) => {
@@ -173,13 +191,15 @@ export async function GET(req: NextRequest) {
         horarioInicio: f.horarioInicio,
         horarioFim: f.horarioFim,
         modalidade: f.modalidade,
-        temDireitoReposicao: false // Não avisou com antecedência
+        professorId: f.professor, // Renomeado para professorId
+        temDireitoReposicao: false, // NÃO tem direito - não avisou com antecedência
+        avisouComAntecedencia: false
       }));
     
     return NextResponse.json({
       success: true,
-      faltasComDireito: faltasComAviso, // Pode repor
-      faltasSemDireito: faltasSemAviso, // Não pode repor (não avisou)
+      faltasComDireito: faltasComAviso, // TEM direito a reposição (avisou)
+      faltasSemDireito: faltasSemAviso, // NÃO tem direito a reposição (não avisou)
       totalReposicoesDisponiveis: faltasComAviso.length
     });
     

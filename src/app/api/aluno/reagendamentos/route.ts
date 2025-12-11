@@ -57,14 +57,14 @@ export async function GET(req: NextRequest) {
         path: 'horarioFixoId',
         populate: [
           { path: 'modalidadeId', select: 'nome cor' },
-          { path: 'professorId', select: 'nome' }
+          { path: 'professorId', model: 'User', select: 'nome' }
         ]
       })
       .populate({
         path: 'novoHorarioFixoId',
         populate: [
           { path: 'modalidadeId', select: 'nome cor' },
-          { path: 'professorId', select: 'nome' }
+          { path: 'professorId', model: 'User', select: 'nome' }
         ]
       })
       .sort({ criadoEm: -1 });

@@ -324,9 +324,6 @@ export default function AulasRealizadasPage() {
         : '';
 
       horariosList.forEach(horario => {
-        // Se filtros desativados, pular cálculo de pendentes (muito pesado)
-        if (filtrosDesativados) return;
-        
         // Ignore malformed horario entries: require an _id and a valid diaSemana and at least one time field.
         if (!horario || !horario._id) return;
         if (typeof horario.diaSemana !== 'number') return;

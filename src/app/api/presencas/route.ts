@@ -135,16 +135,17 @@ export async function POST(request: NextRequest) {
     }
 
     // Validar data (não pode ser futura)
+    // COMENTADO PARA TESTES - Permite marcar presença em datas futuras
     const dataPresenca = new Date(data);
-    const hoje = new Date();
-    hoje.setHours(23, 59, 59, 999);
+    // const hoje = new Date();
+    // hoje.setHours(23, 59, 59, 999);
 
-    if (dataPresenca > hoje) {
-      return NextResponse.json(
-        { error: 'Não é possível marcar presença para datas futuras' },
-        { status: 400 }
-      );
-    }
+    // if (dataPresenca > hoje) {
+    //   return NextResponse.json(
+    //     { error: 'Não é possível marcar presença para datas futuras' },
+    //     { status: 400 }
+    //   );
+    // }
 
     // Normalizar data para início do dia
     dataPresenca.setHours(0, 0, 0, 0);

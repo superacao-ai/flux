@@ -29,6 +29,14 @@ export default function UsarCreditoModal({ open, onClose, credito, onSuccess }: 
 
   const diasSemana = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
 
+  // Helper para parsear data sem problema de timezone UTC
+  const parseDataLocal = (dataStr: string): Date => {
+    if (!dataStr) return new Date();
+    const str = dataStr.split('T')[0];
+    const [ano, mes, dia] = str.split('-').map(Number);
+    return new Date(ano, mes - 1, dia, 12, 0, 0);
+  };
+
   // Fetch horários quando abrir o modal
   useEffect(() => {
     const fetchHorarios = async () => {
@@ -284,7 +292,7 @@ export default function UsarCreditoModal({ open, onClose, credito, onSuccess }: 
                       </div>
                     )}
                     <div className="text-gray-600 text-[10px] mt-0.5">
-                      Válido até {new Date(credito.validade).toLocaleDateString('pt-BR')}
+                      Válido até {parseDataLocal(credito.validade).toLocaleDateString('pt-BR')}
                     </div>
                   </div>
                 </div>
@@ -506,7 +514,7 @@ export default function UsarCreditoModal({ open, onClose, credito, onSuccess }: 
                 Nenhum horário disponível até a validade do crédito.
               </p>
               <p className="text-gray-400 text-xs mt-1">
-                O crédito é válido até {new Date(credito.validade).toLocaleDateString('pt-BR')}.
+                O crédito é válido até {parseDataLocal(credito.validade).toLocaleDateString('pt-BR')}.
               </p>
             </div>
           )}

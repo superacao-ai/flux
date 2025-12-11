@@ -11,6 +11,7 @@ export interface IAlunoAula {
   };
   era_reagendamento: boolean;
   observacoes?: string;
+  avisouComAntecedencia?: boolean;
 }
 
 export interface ICorrecao {
@@ -80,6 +81,10 @@ const IAlunoAulaSchema = new Schema<IAlunoAula>(
       default: false,
     },
     observacoes: String,
+    avisouComAntecedencia: {
+      type: Boolean,
+      default: false,
+    },
   },
   { _id: false }
 );

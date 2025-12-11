@@ -32,7 +32,7 @@ export async function PUT(
       path: 'horarioFixoId',
       populate: [
         { path: 'alunoId', select: 'nome email' },
-        { path: 'professorId', select: 'nome especialidade' }
+        { path: 'professorId', model: 'User', select: 'nome especialidade' }
       ]
     });
 

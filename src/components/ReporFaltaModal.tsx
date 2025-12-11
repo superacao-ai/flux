@@ -40,11 +40,18 @@ export default function ReporFaltaModal({
 
   const diasSemana = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
 
+  // Helper para parsear data sem problema de timezone UTC
+  const parseDataLocal = (dataStr: string): Date => {
+    if (!dataStr) return new Date();
+    // Se vier no formato ISO (YYYY-MM-DD ou YYYY-MM-DDTHH:mm:ss)
+    const str = dataStr.split('T')[0];
+    const [ano, mes, dia] = str.split('-').map(Number);
+    return new Date(ano, mes - 1, dia, 12, 0, 0);
+  };
+
   // Calcular as datas disponíveis (apenas os 7 dias após a falta)
   const dataFalta = useMemo(() => {
-    const d = new Date(falta.data);
-    d.setHours(0, 0, 0, 0);
-    return d;
+    return parseDataLocal(falta.data);
   }, [falta.data]);
 
   const prazoFinal = useMemo(() => {
@@ -213,7 +220,7 @@ export default function ReporFaltaModal({
       isReposicao: true,
       aulaRealizadaId: falta.aulaRealizadaId,
       alunoId: alunoId,
-      motivo: `Reposição de falta do dia ${new Date(falta.data).toLocaleDateString('pt-BR')} (${falta.horarioInicio}-${falta.horarioFim})`
+      motivo: `Reposição de falta do dia ${parseDataLocal(falta.data).toLocaleDateString('pt-BR')} (${falta.horarioInicio}-${falta.horarioFim})`
     };
 
     try {
@@ -263,7 +270,7 @@ export default function ReporFaltaModal({
                   <div className="text-xs">
                     <div className="font-semibold text-orange-700 flex items-center gap-1">
                       <i className="far fa-calendar text-orange-400"></i>
-                      {diasSemana[new Date(falta.data).getDay()]} {new Date(falta.data).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
+                      {diasSemana[parseDataLocal(falta.data).getDay()]} {parseDataLocal(falta.data).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
                     </div>
                     <div className="text-gray-700 font-medium flex items-center gap-1">
                       <i className="far fa-clock text-gray-400"></i>
