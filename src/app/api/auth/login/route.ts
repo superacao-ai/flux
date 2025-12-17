@@ -144,18 +144,26 @@ export async function POST(request: NextRequest) {
       message: 'Login realizado com sucesso',
       user: userData,
       token: token
+    }, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, private',
+        'Pragma': 'no-cache'
+      }
     });
     
     // Também salvar no cookie HttpOnly para APIs que preferem cookies
     // Se remember=true, cookie dura 30 dias; senão dura 24 horas
     const cookieMaxAge = remember ? 60 * 60 * 24 * 30 : 60 * 60 * 24;
     
+    // Configurações otimizadas para PWA
     res.cookies.set('token', token, { 
       httpOnly: true, 
       path: '/', 
       maxAge: cookieMaxAge, 
       sameSite: 'lax', 
-      secure: process.env.NODE_ENV === 'production' 
+      secure: process.env.NODE_ENV === 'production',
+      // Permitir que o cookie seja acessível em standalone mode (PWA)
+      partitioned: false
     });
     
     return res;

@@ -6,6 +6,7 @@ import { Reagendamento } from '@/models/Reagendamento';
 import { HorarioFixo } from '@/models/HorarioFixo';
 import { Matricula } from '@/models/Matricula';
 import { Modalidade } from '@/models/Modalidade';
+import { Configuracao } from '@/models/Configuracao';
 import { JWT_SECRET } from '@/lib/auth';
 
 async function getAlunoFromToken(req: NextRequest) {
@@ -273,7 +274,13 @@ export async function POST(req: NextRequest) {
       );
     }
     
-    // Criar reagendamento com status PENDENTE
+    // Verificar se aprovação automática está habilitada
+    const configAprovacaoAutomatica = await Configuracao.findOne({ chave: 'aprovacaoAutomaticaReagendamento' });
+    const aprovacaoAutomatica = configAprovacaoAutomatica?.valor === true;
+    
+    // Criar reagendamento com status baseado na configuração
+    const statusInicial = aprovacaoAutomatica ? 'aprovado' : 'pendente';
+    
     const reagendamento = new Reagendamento({
       horarioFixoId,
       dataOriginal: new Date(dataOriginal),
@@ -285,16 +292,20 @@ export async function POST(req: NextRequest) {
       alunoId: aluno.id,
       professorOrigemId: horarioOriginal.professorId?._id || null,
       motivo: `[Solicitado pelo aluno] ${motivo}`,
-      status: 'pendente',
+      status: statusInicial,
       isReposicao: false,
       solicitadoPor: 'aluno'
     });
     
     await reagendamento.save();
     
+    const mensagem = aprovacaoAutomatica 
+      ? 'Reagendamento aprovado automaticamente!' 
+      : 'Solicitação de reagendamento enviada! Aguarde a aprovação da administração.';
+    
     return NextResponse.json({
       success: true,
-      message: 'Solicitação de reagendamento enviada! Aguarde a aprovação da administração.',
+      message: mensagem,
       reagendamento
     });
     

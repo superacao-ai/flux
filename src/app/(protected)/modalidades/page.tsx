@@ -551,7 +551,7 @@ export default function ModalidadesPage() {
             <button
               type="button"
               onClick={() => setShowModal(true)}
-              className="h-10 transition-colors duration-200 inline-flex items-center gap-2 rounded-full bg-primary-600 text-white px-4 text-sm font-medium hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="h-10 transition-colors duration-200 inline-flex items-center gap-2 rounded-full bg-primary-600 text-white px-4 text-sm font-medium hover:bg-primary-700"
             >
               <i className="fas fa-plus w-4 text-white" aria-hidden="true" />
               Nova Modalidade
@@ -610,7 +610,7 @@ export default function ModalidadesPage() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Pesquisar modalidade..."
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-0 focus:border-gray-300 outline-none text-sm"
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg outline-none text-sm"
             />
           </div>
         </div>
@@ -985,7 +985,7 @@ export default function ModalidadesPage() {
                   type="button"
                   aria-label="Fechar"
                   onClick={() => { setShowModal(false); setEditingModalidade(null); }}
-                  className="ml-4 text-gray-400 hover:text-gray-600 focus:outline-none"
+                  className="ml-4 text-gray-400 hover:text-gray-600"
                 >
                   <i className="fas fa-times w-4" aria-hidden="true" />
                 </button>
@@ -1001,7 +1001,7 @@ export default function ModalidadesPage() {
                       type="text"
                       value={formData.nome}
                       onChange={(e) => setFormData({...formData, nome: e.target.value})}
-                      className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm font-medium focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                      className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm font-medium"
                       placeholder="Ex: Natação, Treino, Hidroginástica..."
                       required
                     />
@@ -1013,7 +1013,7 @@ export default function ModalidadesPage() {
                       type="number"
                       value={formData.duracao}
                       onChange={(e) => setFormData({...formData, duracao: parseInt(e.target.value) || 60})}
-                      className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm font-medium focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                      className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm font-medium"
                       min="15"
                       max="180"
                     />
@@ -1025,7 +1025,7 @@ export default function ModalidadesPage() {
                       type="number"
                       value={formData.limiteAlunos}
                       onChange={(e) => setFormData({...formData, limiteAlunos: parseInt(e.target.value) || 5})}
-                      className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm font-medium focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                      className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm font-medium"
                       min="1"
                       max="20"
                     />
@@ -1040,7 +1040,7 @@ export default function ModalidadesPage() {
                         key={cor}
                         type="button"
                         onClick={() => setFormData({...formData, cor})}
-                        className={`relative h-5 w-5 rounded-full border-2 flex items-center justify-center transition-all duration-150 hover:scale-110 hover:border-primary-400 focus:outline-none ${formData.cor === cor ? 'border-primary-600 ring-2 ring-primary-400' : 'border-gray-300'}`}
+                        className={`relative h-5 w-5 rounded-full border-2 flex items-center justify-center transition-all duration-150 hover:scale-110 hover:border-primary-400 ${formData.cor === cor ? 'border-primary-600 ring-2 ring-primary-400' : 'border-gray-300'}`}
                         style={{ backgroundColor: cor }}
                         title={cor}
                       >
@@ -1057,7 +1057,7 @@ export default function ModalidadesPage() {
                   <textarea
                     value={formData.descricao}
                     onChange={(e) => setFormData({...formData, descricao: e.target.value})}
-                    className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm font-medium focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                    className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm font-medium"
                     rows={2}
                     placeholder="Descrição da modalidade..."
                   />
@@ -1072,7 +1072,7 @@ export default function ModalidadesPage() {
                     type="url"
                     value={formData.linkWhatsapp}
                     onChange={(e) => setFormData({...formData, linkWhatsapp: e.target.value})}
-                    className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm font-medium focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                    className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm font-medium"
                     placeholder="https://chat.whatsapp.com/..."
                   />
                   <p className="mt-1 text-xs text-gray-500">
@@ -1203,7 +1203,7 @@ export default function ModalidadesPage() {
                               },
                             })
                           }
-                          className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                          className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm"
                         />
                       </div>
                       <div>
@@ -1223,7 +1223,7 @@ export default function ModalidadesPage() {
                               },
                             })
                           }
-                          className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                          className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm"
                         />
                       </div>
                     </div>
@@ -1268,7 +1268,7 @@ export default function ModalidadesPage() {
                           type="time"
                           value={(formData as any).horarioFuncionamento?.tarde?.inicio || ''}
                           onChange={(e) => setFormData({...formData, horarioFuncionamento: { ...(formData as any).horarioFuncionamento, tarde: { ...(formData as any).horarioFuncionamento?.tarde, inicio: e.target.value } } })}
-                          className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                          className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm"
                         />
                       </div>
                       <div>
@@ -1277,7 +1277,7 @@ export default function ModalidadesPage() {
                           type="time"
                           value={(formData as any).horarioFuncionamento?.tarde?.fim || ''}
                           onChange={(e) => setFormData({...formData, horarioFuncionamento: { ...(formData as any).horarioFuncionamento, tarde: { ...(formData as any).horarioFuncionamento?.tarde, fim: e.target.value } } })}
-                          className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                          className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm"
                         />
                       </div>
                     </div>
@@ -1307,7 +1307,7 @@ export default function ModalidadesPage() {
                         permiteReposicao: true
                       });
                     }}
-                    className="px-3 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none"
+                    className="px-3 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
                   >
                     <i className="fas fa-times mr-2" />
                     Cancelar
@@ -1315,7 +1315,7 @@ export default function ModalidadesPage() {
                   <button
                     type="submit"
                     disabled={loading}
-                    className="px-3 py-2 rounded-md text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none disabled:opacity-50"
+                    className="px-3 py-2 rounded-md text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50"
                   >
                     <i className={`fas ${editingModalidade ? 'fa-save' : 'fa-plus'} mr-2`} />
                     {loading ? (editingModalidade ? 'Atualizando...' : 'Criando...') : (editingModalidade ? 'Atualizar' : 'Criar')}

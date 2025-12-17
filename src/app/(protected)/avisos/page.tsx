@@ -318,7 +318,7 @@ export default function AvisosPage() {
         </div>
         <button
           onClick={abrirNovoAviso}
-          className="inline-flex transition-colors duration-200 items-center justify-center rounded-full border border-green-600 bg-green-600 px-5 py-2 text-sm font-medium text-white shadow-sm hover:bg-green-700 focus:outline-none focus:ring-offset-2 sm:w-auto"
+          className="inline-flex transition-colors duration-200 items-center justify-center rounded-full border border-green-600 bg-green-600 px-5 py-2 text-sm font-medium text-white shadow-sm hover:bg-green-700 sm:w-auto"
         >
           <i className="fas fa-plus mr-2"></i>
           Novo Aviso
@@ -557,7 +557,7 @@ export default function AvisosPage() {
                   onChange={e => setForm({ ...form, titulo: e.target.value })}
                   placeholder="Ex: Aulas canceladas por chuva"
                   maxLength={100}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                 />
               </div>
 
@@ -572,7 +572,7 @@ export default function AvisosPage() {
                   placeholder="Descreva o aviso em detalhes..."
                   rows={3}
                   maxLength={500}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-none"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg resize-none"
                 />
               </div>
 
@@ -586,7 +586,7 @@ export default function AvisosPage() {
                     type="date"
                     value={form.dataInicio}
                     onChange={e => setForm({ ...form, dataInicio: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                   />
                 </div>
                 <div>
@@ -598,7 +598,7 @@ export default function AvisosPage() {
                     value={form.dataFim}
                     onChange={e => setForm({ ...form, dataFim: e.target.value })}
                     min={form.dataInicio}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                   />
                 </div>
               </div>

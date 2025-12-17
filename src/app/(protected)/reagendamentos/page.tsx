@@ -450,7 +450,7 @@ export default function ReagendamentosPage() {
             <button
               type="button"
               onClick={() => setShowClearModal(true)}
-              className="inline-flex transition-colors duration-200 items-center justify-center rounded-full border border-red-300 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 shadow-sm hover:bg-red-100 focus:outline-none focus:ring-offset-2 sm:w-auto"
+              className="inline-flex transition-colors duration-200 items-center justify-center rounded-full border border-red-300 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 shadow-sm hover:bg-red-100 sm:w-auto"
               title="Limpar todo o histórico de reagendamentos"
             >
               <i className="fas fa-trash-alt mr-2"></i>
@@ -914,7 +914,7 @@ export default function ReagendamentosPage() {
                   <select
                     value={formData.horarioFixoId}
                     onChange={(e) => setFormData({...formData, horarioFixoId: e.target.value})}
-                    className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                    className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
                     required
                   >
                     <option value="">Selecione um horário</option>
@@ -932,7 +932,7 @@ export default function ReagendamentosPage() {
                     type="date"
                     value={formData.dataOriginal}
                     onChange={(e) => setFormData({...formData, dataOriginal: e.target.value})}
-                    className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                    className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
                     required
                   />
                 </div>
@@ -943,7 +943,7 @@ export default function ReagendamentosPage() {
                     type="date"
                     value={formData.novaData}
                     onChange={(e) => setFormData({...formData, novaData: e.target.value})}
-                    className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                    className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
                     required
                   />
                 </div>
@@ -952,14 +952,14 @@ export default function ReagendamentosPage() {
                   <button
                     type="button"
                     onClick={() => setShowModal(false)}
-                    className="px-4 py-2 border border-gray-300 rounded-full text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+                    className="px-4 py-2 border border-gray-300 rounded-full text-sm font-medium text-gray-700 hover:bg-gray-50"
                   >
                     Cancelar
                   </button>
                   <button
                     type="submit"
                     disabled={loading}
-                    className="px-4 py-2 border border-transparent rounded-full shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50"
+                    className="px-4 py-2 border border-transparent rounded-full shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50"
                   >
                     {loading ? 'Salvando...' : 'Solicitar'}
                   </button>
@@ -995,7 +995,7 @@ export default function ReagendamentosPage() {
                   type="button"
                   onClick={() => setShowClearModal(false)}
                   disabled={clearing}
-                  className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50"
+                  className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                 >
                   Cancelar
                 </button>
@@ -1003,7 +1003,7 @@ export default function ReagendamentosPage() {
                   type="button"
                   onClick={limparHistorico}
                   disabled={clearing}
-                  className="px-4 py-2 transition-colors duration-200 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50 flex items-center gap-2"
+                  className="px-4 py-2 transition-colors duration-200 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 flex items-center gap-2"
                 >
                   {clearing ? (
                     <>

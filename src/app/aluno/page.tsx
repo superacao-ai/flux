@@ -2547,29 +2547,27 @@ export default function AlunoAreaPage() {
                     const isPassado = diaObj.data < hoje;
                     const aulas = diaObj.mesAtual ? getAulasNoDia(diaObj.data) : [];
                     const temAula = aulas.length > 0;
+                    const aulasVisiveis = aulas.filter(aula => !aula.foiReagendada);
                     
                     return (
                       <div
                         key={idx}
                         className={`
-                          relative min-h-[60px] p-1 rounded-lg border transition-all
+                          relative min-h-[100px] max-h-[140px] p-1 rounded-lg border transition-all
                           ${!diaObj.mesAtual ? 'bg-gray-50 opacity-40' : 'bg-white'}
                           ${isHoje ? 'ring-2 ring-primary-500 border-primary-500' : 'border-gray-200'}
                           ${isPassado && diaObj.mesAtual ? 'opacity-60' : ''}
                         `}
                       >
                         {/* Número do dia */}
-                        <div className={`text-xs font-semibold ${isHoje ? 'text-primary-600' : 'text-gray-700'}`}>
+                        <div className={`text-xs font-semibold mb-1 ${isHoje ? 'text-primary-600' : 'text-gray-700'}`}>
                           {diaObj.diaDoMes}
                         </div>
                         
-                        {/* Aulas do dia */}
+                        {/* Aulas do dia - com scroll se houver muitas */}
                         {temAula && diaObj.mesAtual && (
-                          <div className="mt-1 space-y-0.5">
-                            {aulas
-                              .filter(aula => !aula.foiReagendada) // Não mostrar aulas que foram reagendadas
-                              .slice(0, 2)
-                              .map((aula, aIdx) => {
+                          <div className="overflow-y-auto max-h-[110px] space-y-0.5 pr-0.5 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent">
+                            {aulasVisiveis.map((aula, aIdx) => {
                               // Verificar se a aula pode ser reagendada (15min antecedência)
                               const { pode, jaAvisou, eReagendamento, foiReagendada, eUsoCredito } = podeReagendarAula(aula);
                               const bloqueada = jaAvisou || eReagendamento || foiReagendada || eUsoCredito;
@@ -2612,11 +2610,6 @@ export default function AlunoAreaPage() {
                                 </button>
                               );
                             })}
-                            {aulas.filter(a => !a.foiReagendada).length > 2 && (
-                              <div className="text-[9px] text-gray-500 text-center">
-                                +{aulas.filter(a => !a.foiReagendada).length - 2}
-                              </div>
-                            )}
                           </div>
                         )}
                       </div>
@@ -3431,7 +3424,7 @@ export default function AlunoAreaPage() {
                       <div
                         key={idx}
                         className={`
-                          min-h-[40px] p-1 rounded-lg border transition-all text-center
+                          min-h-[80px] max-h-[120px] p-1 rounded-lg border transition-all text-center
                           ${!diaObj.mesAtual ? 'bg-gray-50 opacity-40' : 'bg-white'}
                           ${(isPassado || isAntesDoLimite || isForaDoLimite) && diaObj.mesAtual ? 'opacity-40' : ''}
                           ${isMesmoDia ? 'bg-red-50 border-red-300 opacity-60' : ''}
@@ -3445,8 +3438,8 @@ export default function AlunoAreaPage() {
                         
                         {/* Horários disponíveis */}
                         {temHorario && (
-                          <div className="mt-0.5 space-y-0.5">
-                            {horariosDisp.slice(0, 2).map((h, hIdx) => (
+                          <div className="mt-0.5 space-y-0.5 overflow-y-auto max-h-[44px] scrollbar-thin">
+                            {horariosDisp.map((h, hIdx) => (
                               <button
                                 key={hIdx}
                                 onClick={() => selecionarDestino(diaObj.data, h)}
@@ -3455,9 +3448,6 @@ export default function AlunoAreaPage() {
                                 {h.horarioInicio}
                               </button>
                             ))}
-                            {horariosDisp.length > 2 && (
-                              <div className="text-[8px] text-green-600">+{horariosDisp.length - 2}</div>
-                            )}
                           </div>
                         )}
                       </div>
@@ -3538,7 +3528,7 @@ export default function AlunoAreaPage() {
                     onChange={e => setMotivoTroca(e.target.value)}
                     placeholder="Ex: Compromisso de trabalho..."
                     rows={2}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 resize-none text-sm"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg resize-none text-sm"
                   />
                 </div>
                 
@@ -3612,7 +3602,7 @@ export default function AlunoAreaPage() {
                 placeholder="Ex: Consulta médica, viagem..."
                 rows={2}
                 maxLength={200}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 resize-none"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg resize-none"
               />
             </div>
 
@@ -3668,7 +3658,7 @@ export default function AlunoAreaPage() {
                   value={dataOriginal}
                   onChange={e => setDataOriginal(e.target.value)}
                   min={new Date().toISOString().split('T')[0]}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                 />
               </div>
 
@@ -3701,7 +3691,7 @@ export default function AlunoAreaPage() {
                       onChange={e => { setNovaData(e.target.value); setNovoHorarioId(''); }}
                       min={minDate.toISOString().split('T')[0]}
                       max={maxDate.toISOString().split('T')[0]}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                     />
                   );
                 })()}
@@ -3752,7 +3742,7 @@ export default function AlunoAreaPage() {
                   onChange={e => setMotivo(e.target.value)}
                   rows={2}
                   placeholder="Explique o motivo..."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-none"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg resize-none"
                 />
               </div>
             </div>
@@ -3804,7 +3794,7 @@ export default function AlunoAreaPage() {
                   value={perfilForm.email}
                   onChange={e => setPerfilForm({ ...perfilForm, email: e.target.value })}
                   placeholder="seu@email.com"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                 />
               </div>
               
@@ -3815,7 +3805,7 @@ export default function AlunoAreaPage() {
                   value={perfilForm.telefone}
                   onChange={e => setPerfilForm({ ...perfilForm, telefone: e.target.value })}
                   placeholder="(11) 99999-9999"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                 />
               </div>
               
@@ -3826,7 +3816,7 @@ export default function AlunoAreaPage() {
                   value={perfilForm.endereco}
                   onChange={e => setPerfilForm({ ...perfilForm, endereco: e.target.value })}
                   placeholder="Rua, número, bairro"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                 />
               </div>
             </div>
@@ -4066,7 +4056,7 @@ export default function AlunoAreaPage() {
                 placeholder="Ex: Mudança de horário no trabalho..."
                 rows={2}
                 maxLength={300}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 resize-none"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg resize-none"
               />
             </div>
 

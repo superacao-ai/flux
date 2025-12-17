@@ -1014,7 +1014,7 @@ export default function AulasRealizadasPage() {
                   }
                 }}
                 max="9999-12-31"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
               />
             </div>
 
@@ -1036,7 +1036,7 @@ export default function AulasRealizadasPage() {
                     setFiltros({ ...filtros, dataFim: value });
                   }
                 }}
-                className={`w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-green-500 ${filtrosDesativados ? 'bg-gray-100 text-gray-400' : ''}`}
+                className={`w-full px-3 py-2 border border-gray-300 rounded-md text-sm ${filtrosDesativados ? 'bg-gray-100 text-gray-400' : ''}`}
               />
             </div>
 
@@ -1046,7 +1046,7 @@ export default function AulasRealizadasPage() {
                 value={filtros.professor}
                 disabled={filtrosDesativados}
                 onChange={(e) => setFiltros({ ...filtros, professor: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
               >
                 <option value="">Todos</option>
                 {professores.map((prof) => (
@@ -1061,7 +1061,7 @@ export default function AulasRealizadasPage() {
                 value={filtros.modalidade}
                 disabled={filtrosDesativados}
                 onChange={(e) => setFiltros({ ...filtros, modalidade: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
               >
                 <option value="">Todas</option>
                 {modalidades.map((mod) => (
@@ -1893,7 +1893,7 @@ export default function AulasRealizadasPage() {
                     value={motivoCancelamento}
                     onChange={(e) => setMotivoCancelamento(e.target.value)}
                     placeholder="Ex.: Professor não compareceu, Feriado não previsto, Problema nas instalações..."
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
                     rows={2}
                   />
                 </div>

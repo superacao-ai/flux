@@ -30,16 +30,107 @@ export async function POST(req: NextRequest) {
 
     const db = await getDb();
 
-    // Criar documento de aula experimental diretamente (sem validar horário)
-    // O horário já foi validado no frontend
+    // Buscar horário fixo para validar limite de alunos
+    let horarioFixo;
+    try {
+      horarioFixo = await db.collection('horarios_fixos').findOne({
+        $or: [
+          { _id: new ObjectId(horarioFixoId) },
+          { _id: horarioFixoId }
+        ]
+      });
+    } catch {
+      // Se não conseguir fazer parse como ObjectId, buscar como string
+      horarioFixo = await db.collection('horarios_fixos').findOne({
+        _id: horarioFixoId
+      });
+    }
+
+    if (!horarioFixo) {
+      return NextResponse.json(
+        { success: false, error: 'Horário fixo não encontrado' },
+        { status: 404 }
+      );
+    }
+
+    // Buscar modalidade para pegar o limite de alunos
+    let modalidade;
+    if (horarioFixo.modalidadeId) {
+      try {
+        modalidade = await db.collection('modalidades').findOne({
+          $or: [
+            { _id: new ObjectId(horarioFixo.modalidadeId) },
+            { _id: horarioFixo.modalidadeId }
+          ]
+        });
+      } catch {
+        modalidade = await db.collection('modalidades').findOne({
+          _id: horarioFixo.modalidadeId
+        });
+      }
+    }
+
+    const limiteAlunos = modalidade?.limiteAlunos || 5;
+
+    // Contar alunos para a data especificada
+    const dataAula = new Date(data);
+    dataAula.setHours(0, 0, 0, 0);
+    const dataFim = new Date(data);
+    dataFim.setHours(23, 59, 59, 999);
+
+    // Contar alunos ativos na matricula
+    const alunosAtivos = (horarioFixo.matriculas || []).filter((m: any) => {
+      const isEmEspera = m.emEspera || (typeof m.alunoId === 'object' && m.alunoId?.emEspera);
+      const isCongelado = typeof m.alunoId === 'object' && m.alunoId?.congelado;
+      const isAusente = typeof m.alunoId === 'object' && m.alunoId?.ausente;
+      return !isEmEspera && !isCongelado && !isAusente;
+    }).length;
+
+    // Contar aulas experimentais pendentes para este horário e data
+    const experimentaisNaData = await db.collection('aulas_experimentais').countDocuments({
+      horarioFixoId: String(horarioFixoId),
+      data: { $gte: dataAula, $lte: dataFim },
+      status: { $in: ['agendada', 'pendente'] },
+      ativo: true
+    });
+
+    // Contar reagendamentos aprovados que vão sair da turma
+    const reagendamentosSaem = await db.collection('reagendamentos').countDocuments({
+      horarioFixoId: String(horarioFixoId),
+      dataOriginal: { $gte: dataAula, $lte: dataFim },
+      status: 'aprovado'
+    });
+
+    // Contar reagendamentos aprovados que vão chegar na turma
+    const reagendamentosVem = await db.collection('reagendamentos').countDocuments({
+      novoHorarioFixoId: String(horarioFixoId),
+      novaData: { $gte: dataAula, $lte: dataFim },
+      status: 'aprovado'
+    });
+
+    const totalPresentes = alunosAtivos - reagendamentosSaem + reagendamentosVem + experimentaisNaData;
+
+    if (totalPresentes >= limiteAlunos) {
+      return NextResponse.json(
+        { success: false, error: `Turma lotada! Limite: ${limiteAlunos}, Presentes: ${totalPresentes}` },
+        { status: 400 }
+      );
+    }
+
+    // Verificar se aprovação automática está habilitada
+    const configAprovacao = await db.collection('configuracoes').findOne({ chave: 'aprovacaoAutomaticaAulaExperimental' });
+    const aprovacaoAutomatica = configAprovacao?.valor === true;
+    const statusInicial = aprovacaoAutomatica ? 'aprovada' : 'agendada';
+
+    // Criar documento de aula experimental
     const aulaExperimental = {
-      horarioFixoId: horarioFixoId, // Manter como string para compatibilidade
+      horarioFixoId: String(horarioFixoId), // Manter como string para compatibilidade
       data: new Date(data),
       nomeExperimental,
       telefoneExperimental,
       emailExperimental: emailExperimental || null,
       observacoesExperimental: observacoesExperimental || null,
-      status: 'agendada', // agendada, aprovada, realizada, cancelada
+      status: statusInicial, // agendada, aprovada, realizada, cancelada
       compareceu: null, // null = pendente, true = veio, false = faltou (registrado pelo professor na chamada)
       dataCadastro: new Date(),
       ativo: true

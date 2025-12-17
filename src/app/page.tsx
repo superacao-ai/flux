@@ -229,7 +229,7 @@ export default function AlunoLoginPage() {
                     required
                     value={cpf}
                     onChange={handleCPFChange}
-                    className="block w-full pl-9 pr-3 py-3 text-base border border-gray-200 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all"
+                    className="block w-full pl-9 pr-3 py-3 text-base border border-gray-200 rounded-lg text-gray-900 placeholder-gray-400 transition-all"
                     placeholder="000.000.000-00"
                   />
                 </div>
@@ -250,7 +250,7 @@ export default function AlunoLoginPage() {
                     required
                     value={dataNascimento}
                     onChange={e => setDataNascimento(e.target.value)}
-                    className="block w-full max-w-full pl-9 pr-3 py-3 text-base border border-gray-200 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all appearance-none [&::-webkit-calendar-picker-indicator]:opacity-100 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
+                    className="block w-full max-w-full pl-9 pr-3 py-3 text-base border border-gray-200 rounded-lg text-gray-900 placeholder-gray-400 transition-all appearance-none [&::-webkit-calendar-picker-indicator]:opacity-100 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
                     style={{ minWidth: 0 }}
                   />
                 </div>
@@ -263,7 +263,7 @@ export default function AlunoLoginPage() {
                     type="checkbox" 
                     checked={remember} 
                     onChange={e => setRemember(e.target.checked)} 
-                    className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500 cursor-pointer" 
+                    className="w-4 h-4 text-primary-600 border-gray-300 rounded cursor-pointer" 
                   />
                   <span className="ml-2 text-sm text-gray-600 group-hover:text-gray-800 transition-colors">
                     Lembrar meu CPF neste dispositivo

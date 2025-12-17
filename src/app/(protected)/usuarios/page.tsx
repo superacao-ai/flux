@@ -796,7 +796,7 @@ export default function UsuariosPage() {
                 <button 
                   type="button" 
                   onClick={() => setShowMenuPadroes(!showMenuPadroes)}
-                  className="transition-colors duration-200 h-10 inline-flex items-center gap-2 rounded-full border border-gray-300 bg-white text-gray-700 px-4 text-sm font-medium hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  className="transition-colors duration-200 h-10 inline-flex items-center gap-2 rounded-full border border-gray-300 bg-white text-gray-700 px-4 text-sm font-medium hover:bg-gray-50"
                   title="Configurar padrões por tipo de usuário"
                 >
                   <i className="fas fa-sliders-h w-4" aria-hidden="true" />
@@ -804,7 +804,7 @@ export default function UsuariosPage() {
                 </button>
               </div>
               <div>
-                <button type="button" onClick={abrirModalNovo} className="transition-colors duration-200 h-10 inline-flex items-center gap-2  rounded-full bg-primary-600 text-white px-4 text-sm font-medium hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500">
+                <button type="button" onClick={abrirModalNovo} className="transition-colors duration-200 h-10 inline-flex items-center gap-2  rounded-full bg-primary-600 text-white px-4 text-sm font-medium hover:bg-primary-700">
                   <i className="fas fa-user-plus w-4 text-white " aria-hidden="true" />
                   Novo Usuário
                 </button>
@@ -861,7 +861,7 @@ export default function UsuariosPage() {
                 value={query} 
                 onChange={(e) => setQuery(e.target.value)} 
                 placeholder="Pesquisar usuário..." 
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-0 focus:border-gray-300 outline-none text-sm" 
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg outline-none text-sm" 
               />
             </div>
           </div>
@@ -880,7 +880,7 @@ export default function UsuariosPage() {
               </div>
               <h3 className="text-lg font-medium text-gray-900 mb-2">Nenhum usuário encontrado</h3>
               <p className="text-gray-500 mb-6">Não há usuários que correspondam à sua busca.</p>
-              <button onClick={abrirModalNovo} className="h-10 inline-flex items-center gap-2 rounded-md bg-primary-600 text-white px-4 text-sm font-medium hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500">
+              <button onClick={abrirModalNovo} className="h-10 inline-flex items-center gap-2 rounded-md bg-primary-600 text-white px-4 text-sm font-medium hover:bg-primary-700">
                 <i className="fas fa-user-plus" aria-hidden="true" /> Cadastrar Usuário
               </button>
             </div>
@@ -1118,7 +1118,7 @@ export default function UsuariosPage() {
                       )}
                       <h3 className="text-base font-semibold text-gray-900">{editingId ? 'Editar Usuário' : 'Novo Usuário'}</h3>
                     </div>
-                    <button type="button" onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-600 focus:outline-none" title="Fechar"><i className="fas fa-times text-lg" aria-hidden="true" /></button>
+                    <button type="button" onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-600" title="Fechar"><i className="fas fa-times text-lg" aria-hidden="true" /></button>
                   </div>
                   <div className="flex items-center gap-2 mt-2">
                     <i className="fas fa-info-circle text-green-600 text-sm" aria-hidden="true" />
@@ -1132,17 +1132,17 @@ export default function UsuariosPage() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Nome *</label>
-                      <input type="text" value={formData.nome} onChange={handleNomeChange} className="block w-full h-10 border border-gray-300 rounded-md px-3 py-2 text-sm font-medium focus:outline-none focus:ring-primary-500 focus:border-primary-500" placeholder="Nome completo" required />
+                      <input type="text" value={formData.nome} onChange={handleNomeChange} className="block w-full h-10 border border-gray-300 rounded-md px-3 py-2 text-sm font-medium" placeholder="Nome completo" required />
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
-                      <input type="email" value={formData.email} onChange={handleEmailChange} className="block w-full h-10 border border-gray-300 rounded-md px-3 py-2 text-sm font-medium focus:outline-none focus:ring-primary-500 focus:border-primary-500" placeholder="email@exemplo.com" />
+                      <input type="email" value={formData.email} onChange={handleEmailChange} className="block w-full h-10 border border-gray-300 rounded-md px-3 py-2 text-sm font-medium" placeholder="email@exemplo.com" />
                     </div>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de usuário *</label>
-                      <select value={formData.tipo || ''} onChange={handleTipoChange} className="block w-full h-10 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500">
+                      <select value={formData.tipo || ''} onChange={handleTipoChange} className="block w-full h-10 border border-gray-300 rounded-md px-3 py-2 text-sm">
                         <option value="">— selecione —</option>
                         <option value="admin">Administrador</option>
                         <option value="professor">Professor</option>
@@ -1152,7 +1152,7 @@ export default function UsuariosPage() {
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Telefone <span className="text-gray-400 text-sm font-medium">(opcional)</span></label>
-                      <input type="tel" value={formData.telefone} onChange={handleTelefoneChange} className="block w-full h-10 border border-gray-300 rounded-md px-3 py-2 text-sm font-medium focus:outline-none focus:ring-primary-500 focus:border-primary-500" placeholder="(11) 99999-9999" />
+                      <input type="tel" value={formData.telefone} onChange={handleTelefoneChange} className="block w-full h-10 border border-gray-300 rounded-md px-3 py-2 text-sm font-medium" placeholder="(11) 99999-9999" />
                     </div>
                   </div>
                   {formData.tipo === 'professor' && (
@@ -1216,7 +1216,7 @@ export default function UsuariosPage() {
                   )}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">{editingId ? 'Senha' : 'Senha *'}</label>
-                    <input type="password" value={formData.senha || ''} onChange={(e) => setFormData(prev => ({ ...prev, senha: e.target.value }))} className="block w-full h-10 border border-gray-300 rounded-md px-3 py-2 text-sm font-medium focus:outline-none focus:ring-primary-500 focus:border-primary-500" placeholder={editingId ? 'Deixe em branco para manter a atual' : 'Senha (mín 6 caracteres)'} />
+                    <input type="password" value={formData.senha || ''} onChange={(e) => setFormData(prev => ({ ...prev, senha: e.target.value }))} className="block w-full h-10 border border-gray-300 rounded-md px-3 py-2 text-sm font-medium" placeholder={editingId ? 'Deixe em branco para manter a atual' : 'Senha (mín 6 caracteres)'} />
                   </div>
 
                   <div>
@@ -1224,7 +1224,7 @@ export default function UsuariosPage() {
                       <label className="block text-sm font-medium text-gray-700">Cor</label>
                       <div className="flex flex-wrap gap-0.5 p-1 bg-gray-50 border border-gray-200 rounded-md">
                         {coresSugeridas.map((cor) => (
-                          <button key={cor} type="button" onClick={() => setFormData(prev => ({ ...prev, cor: cor }))} className={`relative h-5 w-5 rounded-full border flex items-center justify-center transition-all duration-150 hover:scale-105 hover:border-primary-400 focus:outline-none ${formData.cor === cor ? 'border-primary-600 ring-2 ring-primary-400' : 'border-gray-300'}`} style={{ backgroundColor: cor }} title={cor}>
+                          <button key={cor} type="button" onClick={() => setFormData(prev => ({ ...prev, cor: cor }))} className={`relative h-5 w-5 rounded-full border flex items-center justify-center transition-all duration-150 hover:scale-105 hover:border-primary-400 ${formData.cor === cor ? 'border-primary-600 ring-2 ring-primary-400' : 'border-gray-300'}`} style={{ backgroundColor: cor }} title={cor}>
                             {formData.cor === cor && (<span className="absolute inset-0 flex items-center justify-center"><i className="fas fa-check text-white text-[8px] drop-shadow" /></span>)}
                           </button>
                         ))}
@@ -1325,7 +1325,7 @@ export default function UsuariosPage() {
                                       }
                                     }));
                                   }}
-                                  className="w-3.5 h-3.5 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                                  className="w-3.5 h-3.5 rounded border-gray-300 text-primary-600"
                                 />
                                 <span className={checked ? 'text-gray-700' : 'text-gray-400'}>{perm.label}</span>
                               </label>
@@ -1367,7 +1367,7 @@ export default function UsuariosPage() {
                                       }
                                     }));
                                   }}
-                                  className="w-3.5 h-3.5 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                                  className="w-3.5 h-3.5 rounded border-gray-300 text-primary-600"
                                 />
                                 <span className={checked ? 'text-gray-700' : 'text-gray-400'}>{perm.label}</span>
                               </label>
@@ -1407,7 +1407,7 @@ export default function UsuariosPage() {
                                       }
                                     }));
                                   }}
-                                  className="w-3.5 h-3.5 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                                  className="w-3.5 h-3.5 rounded border-gray-300 text-primary-600"
                                 />
                                 <span className={checked ? 'text-gray-700' : 'text-gray-400'}>{perm.label}</span>
                               </label>
@@ -1431,7 +1431,7 @@ export default function UsuariosPage() {
                   {editingId && (
                     <div className="flex items-center gap-3">
                       <span className="text-sm font-medium text-gray-700">Usuário ativo</span>
-                      <button type="button" aria-pressed={formData.ativo} onClick={() => setFormData(prev => ({ ...prev, ativo: !prev.ativo }))} className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none border ${formData.ativo ? 'bg-green-500 border-green-500' : 'bg-gray-300 border-gray-300'}`}>
+                      <button type="button" aria-pressed={formData.ativo} onClick={() => setFormData(prev => ({ ...prev, ativo: !prev.ativo }))} className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors border ${formData.ativo ? 'bg-green-500 border-green-500' : 'bg-gray-300 border-gray-300'}`}>
                         <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform duration-200 ${formData.ativo ? 'translate-x-4' : 'translate-x-0.5'}`} />
                       </button>
                     </div>
@@ -1463,7 +1463,7 @@ export default function UsuariosPage() {
                         Padrões para {tipoConfigurando.charAt(0).toUpperCase() + tipoConfigurando.slice(1)}
                       </h3>
                     </div>
-                    <button type="button" onClick={() => setShowConfigModal(false)} className="text-gray-400 hover:text-gray-600 focus:outline-none" title="Fechar">
+                    <button type="button" onClick={() => setShowConfigModal(false)} className="text-gray-400 hover:text-gray-600" title="Fechar">
                       <i className="fas fa-times text-lg" aria-hidden="true" />
                     </button>
                   </div>
@@ -1536,7 +1536,7 @@ export default function UsuariosPage() {
                                   }
                                 }));
                               }}
-                              className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                              className="rounded border-gray-300 text-primary-600"
                             />
                             <span className="text-gray-700">{perm.label}</span>
                           </label>
@@ -1578,7 +1578,7 @@ export default function UsuariosPage() {
                                   }
                                 }));
                               }}
-                              className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                              className="rounded border-gray-300 text-primary-600"
                             />
                             <span className="text-gray-700">{perm.label}</span>
                           </label>
@@ -1618,7 +1618,7 @@ export default function UsuariosPage() {
                                   }
                                 }));
                               }}
-                              className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                              className="rounded border-gray-300 text-primary-600"
                             />
                             <span className="text-gray-700">{perm.label}</span>
                           </label>

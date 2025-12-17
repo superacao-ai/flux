@@ -423,32 +423,11 @@ export default function CalendarioPage() {
     
     const fetchReagendamentos = async () => {
       try {
-        console.log('[Calendario] Buscando reagendamentos...');
         const res = await fetch('/api/reagendamentos');
         const data = await res.json();
         
-        console.log('[Calendario] Resposta reagendamentos:', data);
-        
         if (data.success) {
           const reagendamentosData = data.data || [];
-          console.log('[Calendario] Reagendamentos recebidos:', reagendamentosData.length);
-          console.log('[Calendario] Reagendamentos completos:', reagendamentosData);
-          
-          // Log detalhado de cada reagendamento
-          reagendamentosData.forEach((r: Reagendamento, idx: number) => {
-            console.log(`[Calendario] Reagendamento ${idx}:`, {
-              id: r._id,
-              horarioFixoId: typeof r.horarioFixoId === 'string' ? r.horarioFixoId : r.horarioFixoId?._id,
-              matriculaId: typeof r.matriculaId === 'string' ? r.matriculaId : r.matriculaId?._id,
-              alunoNome: typeof r.matriculaId === 'object' && r.matriculaId?.alunoId 
-                ? (typeof r.matriculaId.alunoId === 'string' ? 'ID apenas' : r.matriculaId.alunoId?.nome)
-                : 'N/A',
-              dataOriginal: r.dataOriginal,
-              novaData: r.novaData,
-              status: r.status
-            });
-          });
-          
           setReagendamentos(reagendamentosData);
         }
       } catch (e) {
@@ -459,18 +438,13 @@ export default function CalendarioPage() {
     // Buscar aulas realizadas para verificar faltas
     const fetchAulasRealizadas = async () => {
       try {
-        console.log('[Calendario] Buscando aulas realizadas...');
         const res = await fetch('/api/aulas-realizadas?listarTodas=true');
         const data = await res.json();
-        console.log('[Calendario] Resposta aulas-realizadas:', { isArray: Array.isArray(data), length: Array.isArray(data) ? data.length : 'N/A', data });
         // A API retorna diretamente o array quando listarTodas=true
         if (Array.isArray(data)) {
           setAulasRealizadas(data);
-          console.log('[Calendario] Aulas realizadas carregadas:', data.length);
         } else if (data.success) {
           setAulasRealizadas(data.data || []);
-        } else {
-          console.log('[Calendario] Resposta não é array:', data);
         }
       } catch (e) {
         console.error('[Calendario] Erro ao buscar aulas realizadas:', e);
@@ -480,7 +454,6 @@ export default function CalendarioPage() {
     // Buscar aulas experimentais
     const fetchAulasExperimentais = async () => {
       try {
-        console.log('[Calendario] Buscando aulas experimentais...');
         const res = await fetch('/api/aulas-experimentais');
         const data = await res.json();
         
@@ -488,7 +461,6 @@ export default function CalendarioPage() {
           // Filtrar apenas aulas ativas (não canceladas)
           const aulasAtivas = (data.data || []).filter((a: any) => a.status !== 'cancelada' && a.ativo !== false);
           setAulasExperimentais(aulasAtivas);
-          console.log('[Calendario] Aulas experimentais carregadas:', aulasAtivas.length);
         }
       } catch (e) {
         console.error('[Calendario] Erro ao buscar aulas experimentais:', e);
@@ -498,14 +470,12 @@ export default function CalendarioPage() {
     // Buscar usos de crédito (aulas extras)
     const fetchUsosCredito = async () => {
       try {
-        console.log('[Calendario] Buscando usos de crédito...');
         const res = await fetch('/api/usos-credito');
         const data = await res.json();
         
         if (data.success || Array.isArray(data)) {
           const usos = data.success ? data.data : data;
           setUsosCredito(usos || []);
-          console.log('[Calendario] Usos de crédito carregados:', usos?.length || 0);
         }
       } catch (e) {
         console.error('[Calendario] Erro ao buscar usos de crédito:', e);
@@ -577,13 +547,9 @@ export default function CalendarioPage() {
         : aula.horarioFixoId?._id;
       const aulaDataStr = aula.data?.split('T')[0];
       const match = aulaHorarioId === horarioFixoId && aulaDataStr === dataStr;
-      if (match) {
-        console.log('[Calendario] Aula encontrada para:', { horarioFixoId, dataStr, aulaHorarioId, aulaDataStr });
-      }
       return match;
     });
     
-    console.log('[Calendario] verificarAulaRegistrada:', { horarioFixoId, dataStr, found, totalAulas: aulasRealizadas.length });
     return found;
   };
 
@@ -967,8 +933,11 @@ export default function CalendarioPage() {
         toast.success('Aula experimental agendada com sucesso!');
         setShowAulaExperimentalModal(false);
         setDadosExperimental({ nome: '', telefone: '', email: '', observacoes: '' });
-        // Recarregar a página para atualizar os dados
-        window.location.reload();
+        
+        // Adicionar a nova aula ao estado em vez de recarregar a página
+        if (data.data) {
+          setAulasExperimentais(prev => [...prev, data.data]);
+        }
       } else {
         toast.error(`Erro: ${data.error || 'Não foi possível agendar a aula experimental'}`);
       }
@@ -1806,18 +1775,6 @@ export default function CalendarioPage() {
                       const isReposicao = reag.isReposicao === true;
                       const isPendente = reag.status === 'pendente';
                       
-                      // Debug: verificar dados
-                      if (typeof window !== 'undefined') {
-                        console.log('[Calendario] Reagendamento destino:', { 
-                          id: reag._id, 
-                          alunoNome, 
-                          isReposicao: reag.isReposicao,
-                          status: reag.status,
-                          alunoIdDireto: reag.alunoId,
-                          matriculaId: reag.matriculaId
-                        });
-                      }
-                      
                       const novoHorarioFixoId = reag.novoHorarioFixoId;
                       const professorNome = novoHorarioFixoId && typeof novoHorarioFixoId === 'object' && novoHorarioFixoId.professorId
                         ? (typeof novoHorarioFixoId.professorId === 'string' ? (/^[0-9a-f]{24}$/i.test(novoHorarioFixoId.professorId) ? 'Sem professor' : '') : (novoHorarioFixoId.professorId?.nome || ''))
@@ -2294,13 +2251,19 @@ export default function CalendarioPage() {
                   // Contar aulas experimentais já agendadas para este horário/data
                   const experimentaisNaData = aulasExperimentais.filter(ae => {
                     const aeData = ae.data?.split('T')[0];
-                    return ae.horarioFixoId === horarioSelecionado._id && 
-                      aeData === dataAulaStr &&
-                      ae.status === 'pendente';
+                    const aeHorarioId = String(ae.horarioFixoId);
+                    const horarioId = String(horarioSelecionado._id);
+                    const match = aeHorarioId === horarioId && aeData === dataAulaStr && ae.status !== 'cancelada';
+                    return match;
                   }).length;
                   
                   const totalPresentes = alunosAtivos - alunosFaltarao + alunosVirao + experimentaisNaData;
                   const turmaLotada = totalPresentes >= limiteAlunos;
+                  
+                  // Log simplificado apenas quando clicar no botão
+                  if (turmaLotada) {
+                    console.warn(`🚫 TURMA LOTADA: ${totalPresentes}/${limiteAlunos}`);
+                  }
                   
                   if (aulaFutura && !aulaJaEnviada) {
                     return permissoesCalendario.aulaExperimental() ? (
@@ -2321,7 +2284,10 @@ export default function CalendarioPage() {
                           }`}
                         >
                           <i className="fas fa-user-plus text-xs"></i>
-                          {turmaLotada ? `Turma Lotada (${totalPresentes}/${limiteAlunos})` : 'Agendar Aula Experimental'}
+                          {turmaLotada 
+                            ? `Turma Lotada (${totalPresentes}/${limiteAlunos})` 
+                            : `Agendar Experimental (${totalPresentes}/${limiteAlunos})`
+                          }
                         </button>
                       </div>
                     ) : null;
@@ -3245,8 +3211,8 @@ export default function CalendarioPage() {
                   const aulaPassouOuEnviada = dataAulaDate < hoje || verificarAulaRegistrada(horarioSelecionado._id || '', dataAula);
                   
                   return (
-                    <div className="border border-green-300 rounded-lg p-4 relative pt-6 mt-6">
-                      <h3 className="font-semibold text-green-700 text-sm md:text-base absolute -top-3 left-4 bg-white px-2">
+                    <div className="border border-orange-300 rounded-lg p-4 relative pt-6 mt-6">
+                      <h3 className="font-semibold text-orange-700 text-sm md:text-base absolute -top-3 left-4 bg-white px-2">
                         Créditos Usados ({creditosNaAula.length})
                       </h3>
                       <div className="space-y-2">
@@ -3259,14 +3225,14 @@ export default function CalendarioPage() {
                               className={`flex items-center justify-between p-3 rounded-md border ${
                                 aulaPassouOuEnviada
                                   ? 'bg-gray-100 border-gray-300'
-                                  : 'bg-green-50 border-green-200'
+                                  : 'bg-orange-50 border-orange-200'
                               }`}
                             >
                               <div className="flex items-center gap-3 flex-1">
                                 <div className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold text-white ${
                                   aulaPassouOuEnviada 
                                     ? 'bg-gray-400' 
-                                    : 'bg-green-500'
+                                    : 'bg-orange-500'
                                 }`}>
                                   {nomeAluno.charAt(0).toUpperCase()}
                                 </div>
@@ -3278,7 +3244,7 @@ export default function CalendarioPage() {
                                     <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-medium ${
                                       aulaPassouOuEnviada
                                         ? 'bg-gray-200 text-gray-500' 
-                                        : 'bg-green-100 text-green-700'
+                                        : 'bg-orange-100 text-orange-700'
                                     }`}>
                                       <i className="fas fa-ticket-alt text-[8px]"></i>
                                       Crédito
@@ -3384,7 +3350,7 @@ export default function CalendarioPage() {
                     type="text"
                     value={dadosExperimental.nome}
                     onChange={(e) => setDadosExperimental({ ...dadosExperimental, nome: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
                     placeholder="Ex: João Silva"
                   />
                 </div>
@@ -3397,7 +3363,7 @@ export default function CalendarioPage() {
                     type="tel"
                     value={dadosExperimental.telefone}
                     onChange={(e) => setDadosExperimental({ ...dadosExperimental, telefone: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
                     placeholder="Ex: (11) 98765-4321"
                   />
                 </div>
@@ -3410,7 +3376,7 @@ export default function CalendarioPage() {
                     type="email"
                     value={dadosExperimental.email}
                     onChange={(e) => setDadosExperimental({ ...dadosExperimental, email: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
                     placeholder="Ex: joao@email.com"
                   />
                 </div>
@@ -3422,7 +3388,7 @@ export default function CalendarioPage() {
                   <textarea
                     value={dadosExperimental.observacoes}
                     onChange={(e) => setDadosExperimental({ ...dadosExperimental, observacoes: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
                     placeholder="Informações adicionais..."
                     rows={3}
                   />
@@ -3746,7 +3712,7 @@ export default function CalendarioPage() {
                                             setHorarioNovoSelecionado(String(horario._id));
                                           }
                                         }}
-                                        className="h-4 w-4 text-blue-500 focus:ring-blue-500"
+                                        className="h-4 w-4 text-blue-500"
                                         disabled={!temVaga || isSameOriginal}
                                       />
                                       <div>
@@ -3809,7 +3775,7 @@ export default function CalendarioPage() {
                 <button
                   onClick={confirmarReagendamento}
                   disabled={!dataSelecionadaReagendamento || !horarioNovoSelecionado}
-                  className="px-4 py-2 rounded-md text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  className="px-4 py-2 rounded-md text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
                   <i className="fas fa-save"></i>
                   <span>Confirmar</span>

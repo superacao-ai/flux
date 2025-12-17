@@ -5,6 +5,7 @@ import { toast } from 'react-toastify';
 import Swal from 'sweetalert2';
 import ProtectedPage from '@/components/ProtectedPage';
 import { refreshPendingCounts } from '@/lib/events';
+import ToggleAprovacaoAutomatica from '@/components/ToggleAprovacaoAutomatica';
 
 interface AulaExperimental {
   _id: string;
@@ -344,75 +345,12 @@ export default function AulasExperimentaisPage() {
           <h1 className="text-lg font-semibold text-gray-900">Experimentais</h1>
         </div>
 
-        {/* Stats Cards Mobile */}
-        <div className="md:hidden grid grid-cols-4 gap-1.5 mb-4 fade-in-2">
-          <div className="bg-yellow-50 rounded-lg px-2 py-1.5 border border-yellow-100 text-center">
-            <div className="text-sm font-bold text-yellow-700">{stats.agendadas}</div>
-            <div className="text-[9px] text-yellow-600">Pendente</div>
-          </div>
-          <div className="bg-blue-50 rounded-lg px-2 py-1.5 border border-blue-100 text-center">
-            <div className="text-sm font-bold text-blue-700">{stats.aprovadas}</div>
-            <div className="text-[9px] text-blue-600">Aprovada</div>
-          </div>
-          <div className="bg-green-50 rounded-lg px-2 py-1.5 border border-green-100 text-center">
-            <div className="text-sm font-bold text-green-700">{stats.compareceram}</div>
-            <div className="text-[9px] text-green-600">Veio</div>
-          </div>
-          <div className="bg-red-50 rounded-lg px-2 py-1.5 border border-red-100 text-center">
-            <div className="text-sm font-bold text-red-700">{stats.naoCompareceram}</div>
-            <div className="text-[9px] text-red-600">Faltou</div>
-          </div>
-        </div>
-
-        {/* Stats Cards Desktop */}
-        <div className="hidden md:grid grid-cols-4 gap-4 mb-6 fade-in-2">
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-yellow-100 flex items-center justify-center">
-                <i className="fas fa-clock text-yellow-600"></i>
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-gray-900">{stats.agendadas}</p>
-                <p className="text-xs text-gray-500">Pendentes</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
-                <i className="fas fa-thumbs-up text-blue-600"></i>
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-gray-900">{stats.aprovadas}</p>
-                <p className="text-xs text-gray-500">Aprovadas</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
-                <i className="fas fa-check text-green-600"></i>
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-gray-900">{stats.compareceram}</p>
-                <p className="text-xs text-gray-500">Compareceram</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
-                <i className="fas fa-times text-red-600"></i>
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-gray-900">{stats.naoCompareceram}</p>
-                <p className="text-xs text-gray-500">Não Compareceram</p>
-              </div>
-            </div>
-          </div>
+        {/* Toggle Aprovação Automática */}
+        <div className="mb-4 fade-in-2">
+          <ToggleAprovacaoAutomatica 
+            chave="aprovacaoAutomaticaAulaExperimental" 
+            label="Aprovação Automática de Aulas Experimentais" 
+          />
         </div>
 
         {/* Filtros Mobile */}
@@ -424,7 +362,7 @@ export default function AulasExperimentaisPage() {
               placeholder="Buscar..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm"
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm"
             />
           </div>
           <div className="flex gap-2">
@@ -467,7 +405,7 @@ export default function AulasExperimentaisPage() {
                   placeholder="Buscar por nome ou telefone..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm"
+                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm"
                 />
               </div>
             </div>
@@ -476,7 +414,7 @@ export default function AulasExperimentaisPage() {
             <select
               value={filtroStatus}
               onChange={(e) => setFiltroStatus(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm"
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
             >
               <option value="todas">Todos os status</option>
               <option value="agendada">Pendentes</option>
@@ -489,7 +427,7 @@ export default function AulasExperimentaisPage() {
             <select
               value={filtroPresenca}
               onChange={(e) => setFiltroPresenca(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm"
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
             >
               <option value="todas">Todas as presenças</option>
               <option value="compareceu">Compareceram</option>
@@ -571,7 +509,7 @@ export default function AulasExperimentaisPage() {
                             <i className="fas fa-times mr-0.5"></i>Faltou
                           </span>
                         ) : aula.status === 'aprovada' ? (
-                          <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-bold rounded-full uppercase">
+                          <span className="px-2 py-0.5 bg-green-100 text-green-700 text-[10px] font-bold rounded-full uppercase">
                             Aprovada
                           </span>
                         ) : (
@@ -625,7 +563,7 @@ export default function AulasExperimentaisPage() {
                         <button
                           onClick={() => abrirWhatsApp(aula.telefoneExperimental, aula.nomeExperimental)}
                           className={`w-8 h-8 inline-flex items-center justify-center rounded-lg transition-colors ${
-                            situacaoResolvida ? 'text-gray-400 hover:bg-gray-200' : 'text-green-600 hover:bg-green-50'
+                            situacaoResolvida ? 'text-gray-400' : 'text-green-600'
                           }`}
                           title="WhatsApp"
                         >
@@ -637,7 +575,7 @@ export default function AulasExperimentaisPage() {
                           <button
                             onClick={() => aprovarAula(aula)}
                             disabled={saving}
-                            className="w-8 h-8 inline-flex items-center justify-center text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                            className="w-8 h-8 inline-flex items-center justify-center text-green-600 rounded-lg transition-colors"
                             title="Aprovar"
                           >
                             <i className="fas fa-thumbs-up"></i>
@@ -649,7 +587,7 @@ export default function AulasExperimentaisPage() {
                           <button
                             onClick={() => desaprovarAula(aula)}
                             disabled={saving}
-                            className="w-8 h-8 inline-flex items-center justify-center text-yellow-600 hover:bg-yellow-50 rounded-lg transition-colors"
+                            className="w-8 h-8 inline-flex items-center justify-center text-yellow-600 rounded-lg transition-colors"
                             title="Desaprovar"
                           >
                             <i className="fas fa-thumbs-down"></i>
@@ -660,7 +598,7 @@ export default function AulasExperimentaisPage() {
                         {aula.compareceu === true && (
                           <button
                             onClick={() => converterEmAluno(aula)}
-                            className="w-8 h-8 inline-flex items-center justify-center text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                            className="w-8 h-8 inline-flex items-center justify-center text-purple-600 rounded-lg transition-colors"
                             title="Converter em Aluno"
                           >
                             <i className="fas fa-user-plus"></i>
@@ -672,7 +610,7 @@ export default function AulasExperimentaisPage() {
                           <button
                             onClick={() => cancelarAula(aula)}
                             disabled={saving}
-                            className="w-8 h-8 inline-flex items-center justify-center text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            className="w-8 h-8 inline-flex items-center justify-center text-gray-400 rounded-lg transition-colors"
                             title="Cancelar"
                           >
                             <i className="fas fa-ban"></i>
@@ -707,7 +645,7 @@ export default function AulasExperimentaisPage() {
                 return (
                   <div
                     key={aula._id}
-                    className={`rounded-lg border p-4 transition-all hover:shadow-md ${
+                    className={`rounded-lg border p-4 transition-all ${
                       situacaoResolvida ? 'bg-gray-100 border-gray-300' :
                       aula.status === 'cancelada' ? 'bg-white opacity-60 border-gray-200' : 
                       'bg-white border-gray-200'
@@ -719,7 +657,7 @@ export default function AulasExperimentaisPage() {
                         <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-white flex-shrink-0 ${
                           situacaoResolvida ? 'bg-gray-400' :
                           aula.status === 'cancelada' ? 'bg-gray-400' :
-                          aula.status === 'aprovada' ? 'bg-blue-500' :
+                          aula.status === 'aprovada' ? 'bg-green-500' :
                           'bg-yellow-500'
                         }`}>
                           {aula.nomeExperimental.charAt(0).toUpperCase()}
@@ -748,7 +686,7 @@ export default function AulasExperimentaisPage() {
                               </span>
                             )}
                             {aula.status === 'aprovada' && aula.compareceu === null && (
-                              <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-medium rounded-full">
+                              <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-medium rounded-full">
                                 <i className="fas fa-thumbs-up mr-1"></i>APROVADA
                               </span>
                             )}
@@ -821,7 +759,7 @@ export default function AulasExperimentaisPage() {
                         <button
                           onClick={() => abrirWhatsApp(aula.telefoneExperimental, aula.nomeExperimental)}
                           className={`p-2 rounded-lg transition-colors ${
-                            situacaoResolvida ? 'text-gray-400 hover:bg-gray-200' : 'text-green-600 hover:bg-green-50'
+                            situacaoResolvida ? 'text-gray-400' : 'text-green-600'
                           }`}
                           title="Abrir WhatsApp"
                         >
@@ -833,7 +771,7 @@ export default function AulasExperimentaisPage() {
                           <button
                             onClick={() => aprovarAula(aula)}
                             disabled={saving}
-                            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                            className="p-2 text-green-600 rounded-lg transition-colors"
                             title="Aprovar aula experimental"
                           >
                             <i className="fas fa-thumbs-up"></i>
@@ -845,7 +783,7 @@ export default function AulasExperimentaisPage() {
                           <button
                             onClick={() => desaprovarAula(aula)}
                             disabled={saving}
-                            className="p-2 text-yellow-600 hover:bg-yellow-50 rounded-lg transition-colors"
+                            className="p-2 text-yellow-600 rounded-lg transition-colors"
                             title="Desaprovar aula (voltar para pendente)"
                           >
                             <i className="fas fa-thumbs-down"></i>
@@ -856,7 +794,7 @@ export default function AulasExperimentaisPage() {
                         {aula.compareceu === true && (
                           <button
                             onClick={() => converterEmAluno(aula)}
-                            className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                            className="p-2 text-purple-600 rounded-lg transition-colors"
                             title="Converter em aluno"
                           >
                             <i className="fas fa-user-plus"></i>
@@ -868,7 +806,7 @@ export default function AulasExperimentaisPage() {
                           <button
                             onClick={() => cancelarAula(aula)}
                             disabled={saving}
-                            className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            className="p-2 text-gray-400 rounded-lg transition-colors"
                             title="Cancelar aula"
                           >
                             <i className="fas fa-ban"></i>
@@ -880,7 +818,7 @@ export default function AulasExperimentaisPage() {
                           onClick={() => excluirAula(aula)}
                           disabled={saving}
                           className={`p-2 rounded-lg transition-colors ${
-                            situacaoResolvida ? 'text-gray-400 hover:text-gray-600 hover:bg-gray-200' : 'text-gray-400 hover:text-red-600 hover:bg-red-50'
+                            situacaoResolvida ? 'text-gray-400' : 'text-gray-400'
                           }`}
                           title="Excluir aula"
                         >

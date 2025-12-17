@@ -191,7 +191,7 @@ export default function FeriadosCalendario({ anoAtual = new Date().getFullYear()
                   type="text"
                   value={novoFeriado.nome}
                   onChange={(e) => setNovoFeriado({ ...novoFeriado, nome: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-md"
                   placeholder="Ex: Aniversário do Studio"
                 />
               </div>
@@ -204,7 +204,7 @@ export default function FeriadosCalendario({ anoAtual = new Date().getFullYear()
                   type="date"
                   value={novoFeriado.data}
                   onChange={(e) => setNovoFeriado({ ...novoFeriado, data: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-md"
                 />
               </div>
 
@@ -214,7 +214,7 @@ export default function FeriadosCalendario({ anoAtual = new Date().getFullYear()
                   id="recorrente"
                   checked={novoFeriado.recorrente}
                   onChange={(e) => setNovoFeriado({ ...novoFeriado, recorrente: e.target.checked })}
-                  className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
+                  className="w-4 h-4 text-primary-600 border-gray-300 rounded"
                 />
                 <label htmlFor="recorrente" className="text-sm text-gray-700">
                   Repetir todo ano

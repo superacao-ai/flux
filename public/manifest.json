@@ -3,6 +3,7 @@
   "short_name": "Superação",
   "description": "Sistema de gestão de agenda para Studio Superação",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#16a34a",

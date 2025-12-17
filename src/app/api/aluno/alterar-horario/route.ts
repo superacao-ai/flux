@@ -6,6 +6,7 @@ import { Matricula } from '@/models/Matricula';
 import { HorarioFixo } from '@/models/HorarioFixo';
 import { AlteracaoHorario } from '@/models/AlteracaoHorario';
 import { Modalidade } from '@/models/Modalidade';
+import { Configuracao } from '@/models/Configuracao';
 import { JWT_SECRET } from '@/lib/auth';
 
 async function getAlunoFromToken() {
@@ -217,21 +218,39 @@ export async function POST(req: NextRequest) {
       );
     }
     
-    // Criar solicitação de alteração
+    // Verificar se aprovação automática está habilitada
+    const configAprovacaoAutomatica = await Configuracao.findOne({ chave: 'aprovacaoAutomaticaAlteracaoHorario' });
+    const aprovacaoAutomatica = configAprovacaoAutomatica?.valor === true;
+    
+    // Criar solicitação de alteração com status baseado na configuração
+    const statusInicial = aprovacaoAutomatica ? 'aprovado' : 'pendente';
+    
     const solicitacao = new AlteracaoHorario({
       alunoId: aluno.id,
       matriculaId: matriculaAtual._id,
       horarioAtualId,
       novoHorarioId,
       motivo: motivo || 'Solicitação de alteração de horário pelo aluno',
-      status: 'pendente'
+      status: statusInicial
     });
     
     await solicitacao.save();
     
+    // Se aprovou automaticamente, também atualizar a matrícula
+    if (aprovacaoAutomatica) {
+      await Matricula.findByIdAndUpdate(matriculaAtual._id, {
+        horarioFixoId: novoHorarioId,
+        atualizadoEm: new Date()
+      });
+    }
+    
+    const mensagem = aprovacaoAutomatica 
+      ? 'Alteração de horário aprovada automaticamente!' 
+      : 'Solicitação de alteração de horário enviada! Aguarde a aprovação da administração.';
+    
     return NextResponse.json({
       success: true,
-      message: 'Solicitação de alteração de horário enviada! Aguarde a aprovação da administração.',
+      message: mensagem,
       solicitacao
     });
     

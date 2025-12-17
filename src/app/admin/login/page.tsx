@@ -106,7 +106,7 @@ export default function AdminLoginPage() {
                   required
                   value={email}
                   onChange={e => setEmail(e.target.value)}
-                  className="block w-full pl-9 pr-3 py-2.5 text-sm border border-gray-200 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all"
+                  className="block w-full pl-9 pr-3 py-2.5 text-sm border border-gray-200 rounded-lg text-gray-900 placeholder-gray-400 transition-all"
                   placeholder="seu@email.com"
                 />
               </div>
@@ -128,7 +128,7 @@ export default function AdminLoginPage() {
                   required
                   value={senha}
                   onChange={e => setSenha(e.target.value)}
-                  className="block w-full pl-9 pr-10 py-2.5 text-sm border border-gray-200 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all"
+                  className="block w-full pl-9 pr-10 py-2.5 text-sm border border-gray-200 rounded-lg text-gray-900 placeholder-gray-400 transition-all"
                   placeholder="••••••••"
                 />
                 <button
@@ -147,7 +147,7 @@ export default function AdminLoginPage() {
                   type="checkbox" 
                   checked={remember} 
                   onChange={e => setRemember(e.target.checked)} 
-                  className="w-3.5 h-3.5 text-green-600 border-gray-300 rounded focus:ring-green-500 cursor-pointer" 
+                  className="w-3.5 h-3.5 text-green-600 border-gray-300 rounded cursor-pointer" 
                 />
                 <span className="ml-2 text-xs text-gray-600 group-hover:text-gray-800 transition-colors">Lembrar-me</span>
               </label>

@@ -2090,13 +2090,18 @@ export default function HorariosPage() {
     <>
       {showModalLote.open && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="relative w-full max-w-sm mx-auto p-5 bg-white shadow-lg rounded-2xl max-h-[90vh] overflow-y-auto fade-in-4">
-            <div className="mt-3">
-          <h3 className="text-base font-semibold text-gray-900 mb-2">Adicionar Alunos em Lotee</h3>
-          <p className="text-sm text-gray-700 mb-3">Modalidade aplicada: <span className="font-semibold">{(modalidades.find(m => getMid(m) === modalidadeSelecionada)?.nome) || '— nenhuma selecionada —'}</span>. Os alunos selecionados serão adicionados a esta modalidade — verifique se está correta antes de confirmar.</p>
+          <div className="relative w-full max-w-sm mx-auto bg-white shadow-lg rounded-2xl max-h-[90vh] flex flex-col fade-in-4">
+            {/* Header Fixo */}
+            <div className="flex-shrink-0 border-b border-gray-200 p-5">
+              <h3 className="text-base font-semibold text-gray-900 mb-2">Adicionar Alunos em Lote</h3>
+              <p className="text-sm text-gray-700">Modalidade aplicada: <span className="font-semibold">{(modalidades.find(m => getMid(m) === modalidadeSelecionada)?.nome) || '— nenhuma selecionada —'}</span>. Os alunos selecionados serão adicionados a esta modalidade — verifique se está correta antes de confirmar.</p>
+            </div>
+            
+            {/* Conteúdo Scrollável */}
+            <div className="flex-1 overflow-y-auto p-5">
               <div className="mb-4">
                 <label className="block text-sm font-medium text-gray-700 mb-2">Selecione os alunos:</label>
-                <div className="max-h-40 overflow-y-auto border rounded-md p-2">
+                <div className="border rounded-md p-2">
                   {alunosFiltrados.map(aluno => (
                     <div key={aluno._id} className="flex items-center mb-1">
                       <input
@@ -2116,22 +2121,24 @@ export default function HorariosPage() {
                   ))}
                 </div>
               </div>
-              <div className="flex justify-end space-x-3 pt-4">
-                <button
-                  type="button"
-                  onClick={() => setShowModalLote({open: false})}
-                  className="px-3 py-1.5 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="button"
-                  disabled={alunosSelecionadosLote.length === 0}
-                  className="px-3 py-1.5 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50"
-                >
-                  Adicionar selecionados
-                </button>
-              </div>
+            </div>
+            
+            {/* Footer Fixo */}
+            <div className="flex-shrink-0 border-t border-gray-200 p-5 flex justify-end space-x-3">
+              <button
+                type="button"
+                onClick={() => setShowModalLote({open: false})}
+                className="px-3 py-1.5 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={alunosSelecionadosLote.length === 0}
+                className="px-3 py-1.5 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50"
+              >
+                Adicionar selecionados
+              </button>
             </div>
           </div>
         </div>
@@ -2139,9 +2146,9 @@ export default function HorariosPage() {
       {/* Modal para adicionar alunos a uma turma (bulk via textarea) */}
       {showAddAlunoModal && addAlunoTurma && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-600 bg-opacity-50 p-4">
-          <div className="relative w-full max-w-lg mx-auto bg-white rounded-2xl shadow-lg border border-gray-200 p-4 sm:p-6 max-h-[90vh] overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="bulkAddTitle" aria-describedby="bulkAddDesc" tabIndex={-1}>
-            {/* Header + Info */}
-            <div className="mb-4 border-b pb-4">
+          <div className="relative w-full max-w-lg mx-auto bg-white rounded-2xl shadow-lg border border-gray-200 max-h-[90vh] flex flex-col" role="dialog" aria-modal="true" aria-labelledby="bulkAddTitle" aria-describedby="bulkAddDesc" tabIndex={-1}>
+            {/* Header + Info - FIXO */}
+            <div className="flex-shrink-0 p-4 sm:p-6 border-b">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <i className="fas fa-users text-primary-600 text-lg" aria-hidden="true"></i>
@@ -2150,7 +2157,7 @@ export default function HorariosPage() {
                 <button
                   type="button"
                   onClick={() => { setShowAddAlunoModal(false); setBulkAlunoTextAdd(''); setAddAlunoTurma(null); }}
-                  className="text-gray-400 hover:text-gray-600 focus:outline-none"
+                  className="text-gray-400 hover:text-gray-600"
                   aria-label="Fechar modal adicionar alunos"
                   title="Fechar"
                 >
@@ -2163,7 +2170,9 @@ export default function HorariosPage() {
               </div>
             </div>
 
-            <div className="space-y-4">
+            {/* Conteúdo - SCROLLÁVEL */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+              <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Cole os nomes dos alunos (um por linha)</label>
                 <textarea
@@ -2172,7 +2181,7 @@ export default function HorariosPage() {
                     // Keep raw text for editing
                     setBulkAlunoTextAdd(String(e.target.value || ''));
                   }}
-                  className="block w-full h-32 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 transition-all"
+                  className="block w-full h-32 border border-gray-300 rounded-md px-3 py-2 text-sm transition-all"
                   rows={5}
                   placeholder={`Ex:\nJOÃO SILVA\nMARIA SOUZA\nPEDRO SANTOS`}
                 />
@@ -2188,7 +2197,7 @@ export default function HorariosPage() {
                   </span>
                 </label>
               </div>
-              <div className="max-h-48 overflow-y-auto border rounded-md p-3 bg-gray-50">
+              <div className="max-h-48 overflow-y-auto overflow-x-hidden border rounded-md p-3 bg-gray-50">
                 {bulkImportEntries.length === 0 && <div className="text-sm text-gray-400 py-4 text-center">Nenhuma linha detectada</div>}
                 {bulkImportEntries.map(entry => {
                   // Ordenar alunos por similaridade com o nome digitado
@@ -2220,9 +2229,9 @@ export default function HorariosPage() {
                   return (
                     <div key={entry.id} className="py-2 border-b border-gray-100 last:border-b-0">
                       {/* Linha principal: checkbox, nome, select, badge */}
-                      <div className="flex items-center gap-2">
-                        <input type="checkbox" checked={entry.selected} onChange={e => setBulkImportEntries(prev => prev.map(p => p.id === entry.id ? {...p, selected: e.target.checked} : p))} className="w-4 h-4 rounded border-gray-300" />
-                        <input value={entry.name} onChange={e => setBulkImportEntries(prev => prev.map(p => p.id === entry.id ? {...p, name: e.target.value} : p))} className="flex-1 h-8 border border-gray-200 rounded px-2 py-1 text-sm" />
+                      <div className="flex items-center gap-2 min-w-0">
+                        <input type="checkbox" checked={entry.selected} onChange={e => setBulkImportEntries(prev => prev.map(p => p.id === entry.id ? {...p, selected: e.target.checked} : p))} className="w-4 h-4 flex-shrink-0 rounded border-gray-300" />
+                        <input value={entry.name} onChange={e => setBulkImportEntries(prev => prev.map(p => p.id === entry.id ? {...p, name: e.target.value} : p))} className="flex-1 min-w-0 h-8 border border-gray-200 rounded px-2 py-1 text-sm" />
                         <select 
                           value={entry.alunoId || ''} 
                           onChange={e => {
@@ -2238,7 +2247,7 @@ export default function HorariosPage() {
                               emEspera: selectedAluno ? (selectedAluno as any).emEspera || false : false
                             } : p));
                           }} 
-                          className="h-8 text-sm border border-gray-200 rounded px-2 py-1 max-w-[150px]"
+                          className="h-8 text-sm border border-gray-200 rounded px-2 py-1 flex-shrink-0 w-32"
                         >
                           <option value="">Novo</option>
                           {sortedAlunos.map(a => (
@@ -2246,9 +2255,9 @@ export default function HorariosPage() {
                           ))}
                         </select>
                         {entry.alunoId ? (
-                          <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded whitespace-nowrap">Existente</span>
+                          <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded whitespace-nowrap flex-shrink-0">Existente</span>
                         ) : (
-                          <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded whitespace-nowrap">Novo</span>
+                          <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded whitespace-nowrap flex-shrink-0">Novo</span>
                         )}
                       </div>
                       {/* Linha secundária: observações e características (só aparece quando selecionado) */}
@@ -2293,11 +2302,16 @@ export default function HorariosPage() {
                   );
                 })}
               </div>
-              <div className="flex justify-end gap-3 pt-4 border-t mt-4">
+            </div>
+          </div>
+
+            {/* Footer - FIXO */}
+            <div className="flex-shrink-0 p-4 sm:p-6 border-t">
+              <div className="flex justify-end gap-3">
                 <button
                   type="button"
                   onClick={() => { setShowAddAlunoModal(false); setBulkAlunoTextAdd(''); setAddAlunoTurma(null); }}
-                  className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 flex items-center gap-2"
+                  className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 flex items-center gap-2"
                 >
                   <i className="fas fa-times text-gray-500" aria-hidden="true" />
                   Cancelar
@@ -2442,7 +2456,7 @@ export default function HorariosPage() {
                         toast.error(`Falha ao adicionar: ${failures.map(f => `${f.name}`).join(', ')}`);
                       }
                     }}
-                  className={`px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium flex items-center gap-2 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 ${bulkImportEntries.filter(e=>e.selected).length===0 || (bulkImportEntries.filter(e=>e.selected && !e.alunoId).length>0 && !bulkAllowCreateNew) ? 'bg-gray-400 text-gray-200 cursor-not-allowed' : 'text-white bg-primary-600 hover:bg-primary-700'}`}
+                  className={`px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium flex items-center gap-2 ${bulkImportEntries.filter(e=>e.selected).length===0 || (bulkImportEntries.filter(e=>e.selected && !e.alunoId).length>0 && !bulkAllowCreateNew) ? 'bg-gray-400 text-gray-200 cursor-not-allowed' : 'text-white bg-primary-600 hover:bg-primary-700'}`}
                   disabled={bulkImportEntries.filter(e=>e.selected).length===0 || (bulkImportEntries.filter(e=>e.selected && !e.alunoId).length>0 && !bulkAllowCreateNew)}
                 >
                   <i className="fas fa-check" aria-hidden="true" /> Adicionar selecionados
@@ -2470,7 +2484,7 @@ export default function HorariosPage() {
               <button
                 type="button"
                 onClick={() => { setShowGradeProfessorModal(true); setGradeProfessorId(''); setGradeSlotsSelected(new Set()); }}
-                className="inline-flex items-center gap-2 px-4 py-2 border border-primary-600 rounded-md text-sm font-medium text-primary-600 bg-white hover:bg-primary-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-all"
+                className="inline-flex items-center gap-2 px-4 py-2 border border-primary-600 rounded-md text-sm font-medium text-primary-600 bg-white hover:bg-primary-50 transition-all"
               >
                 <i className="fas fa-th text-primary-600" aria-hidden="true" />
                 Montar Grade Professor
@@ -3659,7 +3673,7 @@ export default function HorariosPage() {
                       limiteAlunos: ''
                     });
                   }}
-                  className="text-gray-400 hover:text-gray-600 focus:outline-none"
+                  className="text-gray-400 hover:text-gray-600"
                   aria-label="Fechar modal"
                   title="Fechar"
                 >
@@ -3779,7 +3793,7 @@ export default function HorariosPage() {
                       } catch (err) { }
                       setFormData({...formData, horarioInicio: newInicio, horarioFim: defaultFim});
                     }}
-                    className="block w-full h-8 border border-gray-300 rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-primary-500 focus:border-primary-500 transition-all"
+                    className="block w-full h-8 border border-gray-300 rounded-md px-2 py-1 text-xs transition-all"
                     required
                   >
                     <option value="">Selecione</option>
@@ -3797,7 +3811,7 @@ export default function HorariosPage() {
                   <textarea
                     value={formData.observacoes}
                     onChange={(e) => setFormData({...formData, observacoes: e.target.value})}
-                    className="mt-1 block w-full h-10 border border-gray-300 rounded-md px-3 py-2 text-sm font-medium focus:outline-none focus:ring-primary-500 focus:border-primary-500 transition-all"
+                    className="mt-1 block w-full h-10 border border-gray-300 rounded-md px-3 py-2 text-sm font-medium transition-all"
                     placeholder="Ex.: Problema no joelho, restrição de movimento..."
                   />
                 </div>
@@ -3809,7 +3823,7 @@ export default function HorariosPage() {
                   <textarea
                     value={formData.observacaoTurma}
                     onChange={(e) => setFormData({...formData, observacaoTurma: e.target.value})}
-                    className="mt-1 block w-full h-10 border border-gray-300 rounded-md px-3 py-2 text-sm font-medium focus:outline-none focus:ring-primary-500 focus:border-primary-500 transition-all"
+                    className="mt-1 block w-full h-10 border border-gray-300 rounded-md px-3 py-2 text-sm font-medium transition-all"
                     placeholder="Ex.: Turma iniciante, foco em cardio, aquecimento de 10min..."
                   />
                 </div>
@@ -3826,7 +3840,7 @@ export default function HorariosPage() {
                     min="1"
                     value={formData.limiteAlunos}
                     onChange={(e) => setFormData({...formData, limiteAlunos: e.target.value})}
-                    className="mt-1 block w-full h-10 border border-gray-300 rounded-md px-3 py-2 text-sm font-medium focus:outline-none focus:ring-primary-500 focus:border-primary-500 transition-all"
+                    className="mt-1 block w-full h-10 border border-gray-300 rounded-md px-3 py-2 text-sm font-medium transition-all"
                     placeholder="Ex.: 10 (turma com pais) ou 5 (turma normal)"
                   />
                   {modalidadeSelecionada && (() => {
@@ -3848,14 +3862,14 @@ export default function HorariosPage() {
                     setEditingMemberIds(null); 
                     setSelectedHorarioId(null); 
                   }}
-                  className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 flex items-center gap-2"
+                  className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 flex items-center gap-2"
                 >
                   <i className="fas fa-times text-gray-600" aria-hidden="true" /> Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={loading}
-                  className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
                   {loading ? (
                     <>
@@ -3894,7 +3908,7 @@ export default function HorariosPage() {
                 <button
                   type="button"
                   onClick={() => { setShowImportModal(false); setImportText(''); setImportResults(null); }}
-                  className="text-gray-400 hover:text-gray-600 focus:outline-none"
+                  className="text-gray-400 hover:text-gray-600"
                   title="Fechar"
                 >
                   <i className="fas fa-times text-lg" aria-hidden="true" />
@@ -3914,7 +3928,7 @@ export default function HorariosPage() {
                   <textarea
                     value={importText}
                     onChange={e => setImportText(e.target.value)}
-                    className="block w-full h-20 border border-gray-300 rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-primary-500 focus:border-primary-500 transition-all"
+                    className="block w-full h-20 border border-gray-300 rounded-md px-2 py-1 text-xs transition-all"
                     placeholder={`João Silva\nMaria Souza\n...`}
                   />
                   <div className="mt-1 flex items-center justify-between">
@@ -3948,7 +3962,7 @@ export default function HorariosPage() {
                     <select
                       value={importProfessorId}
                       onChange={e => handleImportProfessorChange(e.target.value)}
-                      className="block w-full h-8 border border-gray-300 rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-primary-500 focus:border-primary-500 transition-all"
+                      className="block w-full h-8 border border-gray-300 rounded-md px-2 py-1 text-xs transition-all"
                     >
                       <option value="">Selecione</option>
                       {professores.map(p => (
@@ -3962,7 +3976,7 @@ export default function HorariosPage() {
                     <select
                       value={importModalidadeId}
                       onChange={e => setImportModalidadeId(e.target.value)}
-                      className="block w-full h-8 border border-gray-300 rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-primary-500 focus:border-primary-500 transition-all"
+                      className="block w-full h-8 border border-gray-300 rounded-md px-2 py-1 text-xs transition-all"
                     >
                       <option value="">Nenhuma</option>
                       {modalidades.map(m => (
@@ -3976,7 +3990,7 @@ export default function HorariosPage() {
                     <select
                       value={importDiaSemana}
                       onChange={e => setImportDiaSemana(parseInt(e.target.value))}
-                      className="block w-full h-8 border border-gray-300 rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-primary-500 focus:border-primary-500 transition-all"
+                      className="block w-full h-8 border border-gray-300 rounded-md px-2 py-1 text-xs transition-all"
                     >
                       {diasSemana.map((d, i) => (
                         <option key={i} value={i}>{d}</option>
@@ -3990,7 +4004,7 @@ export default function HorariosPage() {
                       <select
                         value={importHorarioInicio}
                         onChange={e => setImportHorarioInicio(e.target.value)}
-                        className="block w-full h-8 border border-gray-300 rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-primary-500 focus:border-primary-500 transition-all"
+                        className="block w-full h-8 border border-gray-300 rounded-md px-2 py-1 text-xs transition-all"
                       >
                         <option value="">--:--</option>
                         {horariosDisponiveis.map(h => (
@@ -4003,7 +4017,7 @@ export default function HorariosPage() {
                       <select
                         value={importHorarioFim}
                         onChange={e => setImportHorarioFim(e.target.value)}
-                        className="block w-full h-8 border border-gray-300 rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-primary-500 focus:border-primary-500 transition-all"
+                        className="block w-full h-8 border border-gray-300 rounded-md px-2 py-1 text-xs transition-all"
                       >
                         <option value="">--:--</option>
                         {horariosDisponiveis.map(h => (
@@ -4030,7 +4044,7 @@ export default function HorariosPage() {
                 <button
                   type="button"
                   onClick={() => { setShowImportModal(false); setImportText(''); setImportResults(null); }}
-                  className="px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 flex items-center gap-1.5"
+                  className="px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 hover:bg-gray-50 flex items-center gap-1.5"
                 >
                   <i className="fas fa-times text-gray-600" aria-hidden="true" /> Cancelar
                 </button>
@@ -4038,7 +4052,7 @@ export default function HorariosPage() {
                   type="button"
                   disabled={importing || !importProfessorId || !importHorarioInicio || !importHorarioFim || importEntries.filter(e=>e.selected).length===0}
                   onClick={handleImportClick}
-                  className="px-3 py-1.5 border border-transparent rounded-md shadow-sm text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+                  className="px-3 py-1.5 border border-transparent rounded-md shadow-sm text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
                 >
                   {importing ? (
                     <>
@@ -4072,7 +4086,7 @@ export default function HorariosPage() {
                 <button
                   type="button"
                   onClick={() => { setShowAddSingleAlunoModal(false); setSingleAlunoSearch(''); setSingleAlunoSelectedId(null); setSingleAlunoName(''); setSingleAlunoObservacoes(''); }}
-                  className="text-gray-400 hover:text-gray-600 focus:outline-none"
+                  className="text-gray-400 hover:text-gray-600"
                   title="Fechar"
                 >
                   <i className="fas fa-times text-lg" aria-hidden="true" />
@@ -4092,7 +4106,7 @@ export default function HorariosPage() {
                   value={singleAlunoSearch}
                   onChange={(e) => { setSingleAlunoSearch(String(e.target.value || '')); setSingleAlunoSelectedId(null); }}
                   placeholder="Digite o nome do aluno..."
-                  className="block w-full h-10 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 transition-all"
+                  className="block w-full h-10 border border-gray-300 rounded-lg px-3 py-2 text-sm transition-all"
                 />
                 {singleAlunoSearch && (
                   <div className="mt-2 max-h-40 overflow-y-auto border rounded-lg bg-white">
@@ -4130,7 +4144,7 @@ export default function HorariosPage() {
                   value={singleAlunoObservacoes} 
                   onChange={(e) => setSingleAlunoObservacoes(String(e.target.value || ''))} 
                   rows={2}
-                  className="block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 transition-all" 
+                  className="block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm transition-all" 
                 />
               </div>
 

@@ -156,19 +156,22 @@ export async function POST(req: NextRequest) {
       { expiresIn: tokenExpiry }
     );
     
-    // Setar cookie httpOnly
+    // Setar cookie httpOnly com configurações otimizadas para PWA
     const cookieStore = await cookies();
     cookieStore.set('alunoToken', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       maxAge: cookieMaxAge,
-      path: '/'
+      path: '/',
+      // Permitir que o cookie seja acessível em standalone mode (PWA)
+      partitioned: false
     });
     
-    // Retornar dados do aluno (sem dados sensíveis e sem token no body)
-    return NextResponse.json({
+    // Retornar token no body para salvar no localStorage (essencial para PWAs)
+    const response = NextResponse.json({
       success: true,
+      token: token, // Adicionar token no body para localStorage
       aluno: {
         _id: aluno._id,
         nome: aluno.nome,
@@ -184,7 +187,14 @@ export async function POST(req: NextRequest) {
         ausente: aluno.ausente,
         emEspera: aluno.emEspera
       }
+    }, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, private',
+        'Pragma': 'no-cache'
+      }
     });
+    
+    return response;
     
   } catch (error) {
     console.error('[API Aluno Auth] Erro:', error);

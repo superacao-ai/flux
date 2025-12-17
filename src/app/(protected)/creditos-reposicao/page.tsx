@@ -460,7 +460,7 @@ export default function CreditosReposicaoPage() {
             <button
               type="button"
               onClick={abrirModalNovo}
-              className="inline-flex transition-colors duration-200 items-center justify-center rounded-full bg-green-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-green-700 focus:outline-none focus:ring-offset-2 sm:w-auto"
+              className="inline-flex transition-colors duration-200 items-center justify-center rounded-full bg-green-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-green-700 sm:w-auto"
             >
               <i className="fas fa-plus mr-2"></i>
               Conceder Crédito
@@ -491,7 +491,7 @@ export default function CreditosReposicaoPage() {
               value={busca}
               onChange={(e) => setBusca(e.target.value)}
               placeholder="Buscar por nome do aluno, motivo ou modalidade..."
-              className="block w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg text-sm focus:ring-0 focus:border-gray-300 outline-none"
+              className="block w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg text-sm outline-none"
             />
             {busca && (
               <button
@@ -515,7 +515,7 @@ export default function CreditosReposicaoPage() {
               value={busca}
               onChange={(e) => setBusca(e.target.value)}
               placeholder="Buscar aluno..."
-              className="block w-full pl-9 pr-9 py-2 border border-gray-200 rounded-lg text-sm focus:ring-0 focus:border-gray-200 outline-none"
+              className="block w-full pl-9 pr-9 py-2 border border-gray-200 rounded-lg text-sm outline-none"
             />
             {busca && (
               <button
@@ -946,7 +946,7 @@ export default function CreditosReposicaoPage() {
                       placeholder="Buscar aluno..."
                       value={buscaAluno}
                       onChange={(e) => setBuscaAluno(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
                     />
                     {alunoIdForm && (
                       <div className="absolute right-2 top-1/2 -translate-y-1/2">
@@ -1009,7 +1009,7 @@ export default function CreditosReposicaoPage() {
                         min="1"
                         value={quantidade}
                         onChange={(e) => setQuantidade(e.target.value)}
-                        className="w-14 px-2 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-center text-lg font-semibold"
+                        className="w-14 px-2 py-2 border border-gray-300 rounded-lg text-center text-lg font-semibold"
                         required
                       />
                       <button
@@ -1031,7 +1031,7 @@ export default function CreditosReposicaoPage() {
                       value={validade}
                       onChange={(e) => setValidade(e.target.value)}
                       min={new Date().toISOString().split('T')[0]}
-                      className="w-full h-[42px] px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                      className="w-full h-[42px] px-3 py-2 border border-gray-300 rounded-lg"
                       required
                     />
                   </div>
@@ -1097,7 +1097,7 @@ export default function CreditosReposicaoPage() {
                     value={motivo}
                     onChange={(e) => setMotivo(e.target.value)}
                     rows={2}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
                     placeholder="Descreva o motivo da concessão..."
                     required
                   />

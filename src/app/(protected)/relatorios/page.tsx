@@ -1046,7 +1046,7 @@ export default function RelatoriosPage() {
                   }
                 }}
                 max="9999-12-31"
-                className={`w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-green-500 ${filtrosDesativados ? 'bg-gray-100 text-gray-400' : ''}`}
+                className={`w-full px-3 py-2 border border-gray-300 rounded-md text-sm ${filtrosDesativados ? 'bg-gray-100 text-gray-400' : ''}`}
               />
             </div>
 
@@ -1068,7 +1068,7 @@ export default function RelatoriosPage() {
                   }
                 }}
                 max="9999-12-31"
-                className={`w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-green-500 ${filtrosDesativados ? 'bg-gray-100 text-gray-400' : ''}`}
+                className={`w-full px-3 py-2 border border-gray-300 rounded-md text-sm ${filtrosDesativados ? 'bg-gray-100 text-gray-400' : ''}`}
               />
             </div>
 
@@ -1078,7 +1078,7 @@ export default function RelatoriosPage() {
                 value={filtros.professor}
                 disabled={filtrosDesativados}
                 onChange={(e) => setFiltros({ ...filtros, professor: e.target.value })}
-                className={`w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-green-500 ${filtrosDesativados ? 'bg-gray-100 text-gray-400' : ''}`}
+                className={`w-full px-3 py-2 border border-gray-300 rounded-md text-sm ${filtrosDesativados ? 'bg-gray-100 text-gray-400' : ''}`}
               >
                 <option value="">Todos</option>
                 {professores.map((prof) => (
@@ -1093,7 +1093,7 @@ export default function RelatoriosPage() {
                 value={filtros.modalidade}
                 disabled={filtrosDesativados}
                 onChange={(e) => setFiltros({ ...filtros, modalidade: e.target.value })}
-                className={`w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-green-500 ${filtrosDesativados ? 'bg-gray-100 text-gray-400' : ''}`}
+                className={`w-full px-3 py-2 border border-gray-300 rounded-md text-sm ${filtrosDesativados ? 'bg-gray-100 text-gray-400' : ''}`}
               >
                 <option value="">Todas</option>
                 {modalidades.map((mod) => (

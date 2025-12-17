@@ -652,7 +652,7 @@ const AlunoRowModal: React.FC<Props> = ({ isOpen, onClose, alunoId, onRefresh })
                 <button
                   type="button"
                   onClick={() => setShowEditModal(false)}
-                  className="text-gray-400 hover:text-gray-600 focus:outline-none"
+                  className="text-gray-400 hover:text-gray-600"
                   title="Fechar"
                 >
                   <i className="fas fa-times text-lg" aria-hidden="true" />
@@ -679,7 +679,7 @@ const AlunoRowModal: React.FC<Props> = ({ isOpen, onClose, alunoId, onRefresh })
                     type="text"
                     value={editFormData.nome}
                     onChange={(e) => setEditFormData({...editFormData, nome: e.target.value})}
-                    className="block w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-medium focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                    className="block w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-medium"
                     placeholder="Nome completo"
                     required
                   />
@@ -711,7 +711,7 @@ const AlunoRowModal: React.FC<Props> = ({ isOpen, onClose, alunoId, onRefresh })
                       }
                       setEditFormData({...editFormData, telefone: formatted});
                     }}
-                    className="block w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-medium focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                    className="block w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-medium"
                     placeholder="(11) 99999-9999 ou Não informado"
                   />
                 </div>
@@ -747,7 +747,7 @@ const AlunoRowModal: React.FC<Props> = ({ isOpen, onClose, alunoId, onRefresh })
                         }
                         setEditFormData({...editFormData, cpf: formatted});
                       }}
-                      className="block w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-medium focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                      className="block w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-medium"
                       placeholder="000.000.000-00"
                       maxLength={14}
                     />
@@ -758,7 +758,7 @@ const AlunoRowModal: React.FC<Props> = ({ isOpen, onClose, alunoId, onRefresh })
                       type="date"
                       value={editFormData.dataNascimento}
                       onChange={(e) => setEditFormData({...editFormData, dataNascimento: e.target.value})}
-                      className="block w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-medium focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                      className="block w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-medium"
                     />
                   </div>
                 </div>
@@ -769,7 +769,7 @@ const AlunoRowModal: React.FC<Props> = ({ isOpen, onClose, alunoId, onRefresh })
                 <textarea
                   value={editFormData.observacoes}
                   onChange={(e) => setEditFormData({...editFormData, observacoes: e.target.value})}
-                  className="block w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-medium h-10 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                  className="block w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-medium h-10"
                   rows={1}
                   placeholder="Observações sobre o aluno"
                 />
@@ -814,13 +814,13 @@ const AlunoRowModal: React.FC<Props> = ({ isOpen, onClose, alunoId, onRefresh })
                 <button
                   type="button"
                   onClick={() => setShowEditModal(false)}
-                  className="w-full sm:w-auto px-4 py-2.5 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 flex items-center justify-center gap-2"
+                  className="w-full sm:w-auto px-4 py-2.5 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 flex items-center justify-center gap-2"
                 >
                   <i className="fas fa-times text-black" aria-hidden="true" /> Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="w-full sm:w-auto px-4 py-2.5 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 flex items-center justify-center gap-2"
+                  className="w-full sm:w-auto px-4 py-2.5 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 flex items-center justify-center gap-2"
                 >
                   <i className="fas fa-save text-white" aria-hidden="true" /> Atualizar
                 </button>

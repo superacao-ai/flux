@@ -310,7 +310,7 @@ export default function AlteracoesHorarioPage() {
           <button
             type="button"
             onClick={() => setShowClearModal(true)}
-            className="inline-flex transition-colors duration-200 items-center justify-center rounded-full border border-red-300 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 shadow-sm hover:bg-red-100 focus:outline-none focus:ring-offset-2 sm:w-auto"
+            className="inline-flex transition-colors duration-200 items-center justify-center rounded-full border border-red-300 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 shadow-sm hover:bg-red-100 sm:w-auto"
             title="Limpar todo o histórico de alterações de horário"
           >
             <i className="fas fa-trash-alt mr-2"></i>
@@ -751,7 +751,7 @@ export default function AlteracoesHorarioPage() {
                 onChange={e => setMotivoRejeicao(e.target.value)}
                 placeholder="Ex: Não há vaga disponível no horário solicitado..."
                 rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 resize-none"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg resize-none"
               />
             </div>
 

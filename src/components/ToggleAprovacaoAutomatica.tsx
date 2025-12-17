@@ -64,7 +64,7 @@ export default function ToggleAprovacaoAutomatica({ chave, label = 'Aprovação 
       <button
         onClick={toggleConfig}
         disabled={saving}
-        className={`relative inline-flex h-6 w-12 items-center rounded-full transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 ${
+        className={`relative inline-flex h-6 w-12 items-center rounded-full transition-colors duration-200 ${
           ativo ? 'bg-green-500' : 'bg-gray-300'
         } ${saving ? 'opacity-50 cursor-wait' : 'cursor-pointer'}`}
       >

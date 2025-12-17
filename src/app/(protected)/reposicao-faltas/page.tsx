@@ -245,7 +245,7 @@ export default function ReposicaoFaltasPage() {
               placeholder="Buscar por aluno, modalidade ou professor..."
               value={busca}
               onChange={(e) => setBusca(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-0 focus:border-gray-300 outline-none"
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm outline-none"
             />
             {busca && (
               <button

@@ -663,7 +663,7 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
                   <input 
                     value={modalEditName} 
                     onChange={e => setModalEditName(e.target.value)} 
-                    className="w-full h-10 px-3 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent" 
+                    className="w-full h-10 px-3 text-sm border border-gray-300 rounded-md" 
                     placeholder="Nome do aluno"
                   />
                 </div>
@@ -676,7 +676,7 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
                   <textarea 
                     value={modalEditObservacoes} 
                     onChange={e => setModalEditObservacoes(e.target.value)} 
-                    className="w-full px-3 py-2 h-28 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent" 
+                    className="w-full px-3 py-2 h-28 text-sm border border-gray-300 rounded-md" 
                     rows={4}
                     placeholder="Adicione observações sobre o aluno..."
                   />
@@ -966,7 +966,7 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
                     min="1"
                     value={quantidadeCredito}
                     onChange={(e) => setQuantidadeCredito(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                     required
                   />
                 </div>
@@ -979,7 +979,7 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
                   <select
                     value={modalidadeCreditoId}
                     onChange={(e) => setModalidadeCreditoId(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                   >
                     <option value="">Qualquer modalidade</option>
                     {modalidades.filter(m => m.ativo).map(m => (
@@ -1000,7 +1000,7 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
                     value={motivoCredito}
                     onChange={(e) => setMotivoCredito(e.target.value)}
                     rows={3}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                     placeholder="Ex: Compensação por problema técnico"
                     required
                   />
@@ -1016,7 +1016,7 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
                     value={validadeCredito}
                     onChange={(e) => setValidadeCredito(e.target.value)}
                     min={new Date().toISOString().split('T')[0]}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                     required
                   />
                 </div>
@@ -1086,7 +1086,7 @@ const StudentDetailModal: React.FC<Props> = ({ isOpen, onClose, horario, modalid
                   placeholder="Digite o nome do aluno..."
                   value={mergeSearchText}
                   onChange={(e) => setMergeSearchText(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
                 />
               </div>
 

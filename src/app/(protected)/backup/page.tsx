@@ -368,7 +368,7 @@ export default function BackupPage() {
                       checked={selectedCollections.includes(col.id) || (col.id !== 'all' && selectedCollections.includes('all'))}
                       onChange={() => handleCollectionToggle(col.id)}
                       disabled={col.id !== 'all' && selectedCollections.includes('all')}
-                      className="w-3.5 h-3.5 md:w-4 md:h-4 text-primary-600 rounded focus:ring-primary-500"
+                      className="w-3.5 h-3.5 md:w-4 md:h-4 text-primary-600 rounded"
                     />
                     <i className={`fas ${col.icon} w-4 md:w-5 text-gray-400 text-xs md:text-sm`} />
                     <span className="text-xs md:text-sm text-gray-700 flex-1 truncate">{col.label}</span>
@@ -437,7 +437,7 @@ export default function BackupPage() {
                     value="merge"
                     checked={importMode === 'merge'}
                     onChange={() => setImportMode('merge')}
-                    className="w-3.5 h-3.5 md:w-4 md:h-4 text-blue-600 focus:ring-blue-500"
+                    className="w-3.5 h-3.5 md:w-4 md:h-4 text-blue-600"
                   />
                   <div className="min-w-0">
                     <div className="text-xs md:text-sm font-medium text-gray-700">Mesclar</div>
@@ -459,7 +459,7 @@ export default function BackupPage() {
                     value="replace"
                     checked={importMode === 'replace'}
                     onChange={() => setImportMode('replace')}
-                    className="w-3.5 h-3.5 md:w-4 md:h-4 text-red-600 focus:ring-red-500"
+                    className="w-3.5 h-3.5 md:w-4 md:h-4 text-red-600"
                   />
                   <div className="min-w-0">
                     <div className="text-xs md:text-sm font-medium text-gray-700">Substituir</div>

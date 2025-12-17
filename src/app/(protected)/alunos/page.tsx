@@ -1012,7 +1012,7 @@ export default function AlunosPage() {
               <button
                 type="button"
                 onClick={excluirSelecionados}
-                className="h-10 inline-flex items-center justify-center rounded-full border border-red-200 bg-red-50 px-4 text-sm font-medium text-red-700 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-500"
+                className="h-10 inline-flex items-center justify-center rounded-full border border-red-200 bg-red-50 px-4 text-sm font-medium text-red-700 hover:bg-red-100"
               >
                 <span className="hidden sm:inline"></span>
                 <span>Excluir ({selectedAlunos.length})</span>
@@ -1075,7 +1075,7 @@ export default function AlunosPage() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Pesquisar aluno..."
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-0 focus:border-gray-300 outline-none text-sm"
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg outline-none text-sm"
             />
           </div>
         </div>
@@ -1143,7 +1143,7 @@ export default function AlunosPage() {
               <select 
                 value={uiFilterModalidade} 
                 onChange={(e) => { setUiFilterModalidade(e.target.value); setAppliedFilterModalidade(e.target.value); setCurrentPage(1); }} 
-                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm"
+                className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
               >
                 <option value="">Todas as modalidades</option>
                 {modalidades.map(m => (
@@ -1154,7 +1154,7 @@ export default function AlunosPage() {
               <select 
                 value={uiFilterProfessor} 
                 onChange={(e) => { setUiFilterProfessor(e.target.value); setAppliedFilterProfessor(e.target.value); setCurrentPage(1); }} 
-                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm"
+                className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
               >
                 <option value="">Todos os professores</option>
                 {availableProfessores.map(prof => (
@@ -1165,7 +1165,7 @@ export default function AlunosPage() {
               <select 
                 value={uiFilterCaracteristica} 
                 onChange={(e) => { setUiFilterCaracteristica(e.target.value); setAppliedFilterCaracteristica(e.target.value); setCurrentPage(1); }} 
-                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm"
+                className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
               >
                 <option value="">Todas as características</option>
                 <option value="congelado">Congelado</option>
@@ -1218,7 +1218,7 @@ export default function AlunosPage() {
                       <th scope="col" className="w-12 px-2 py-2 text-center text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
                         <input
                           type="checkbox"
-                          className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                          className="h-4 w-4 rounded border-gray-300 text-primary-600"
                           checked={selectAll}
                           onChange={toggleSelectAll}
                         />
@@ -1274,7 +1274,7 @@ export default function AlunosPage() {
                             <td className="w-12 px-2 py-3 text-sm border-r border-b border-gray-200 text-center">
                               <input
                                 type="checkbox"
-                                className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                                className="h-4 w-4 rounded border-gray-300 text-primary-600"
                                 checked={selectedAlunos.includes(aluno._id)}
                                 onChange={() => toggleSelectAluno(aluno._id)}
                               />
@@ -1489,7 +1489,7 @@ export default function AlunosPage() {
                       <div className="flex items-center gap-3">
                         <input
                           type="checkbox"
-                          className="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500"
+                          className="h-4 w-4 rounded border-gray-300 text-green-600"
                           checked={selectedAlunos.includes(aluno._id)}
                           onChange={() => toggleSelectAluno(aluno._id)}
                         />
@@ -1692,7 +1692,7 @@ export default function AlunosPage() {
                 <button
                   type="button"
                   onClick={() => setShowEditModal(false)}
-                  className="text-gray-400 hover:text-gray-600 focus:outline-none"
+                  className="text-gray-400 hover:text-gray-600"
                   title="Fechar"
                 >
                   <i className="fas fa-times text-lg" aria-hidden="true" />
@@ -1719,7 +1719,7 @@ export default function AlunosPage() {
                     type="text"
                     value={editFormData.nome}
                     onChange={(e) => setEditFormData({...editFormData, nome: e.target.value})}
-                    className="block w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-medium focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                    className="block w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-medium"
                     placeholder="Nome completo"
                     required
                   />
@@ -1751,7 +1751,7 @@ export default function AlunosPage() {
                       }
                       setEditFormData({...editFormData, telefone: formatted});
                     }}
-                    className="block w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-medium focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                    className="block w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-medium"
                     placeholder="(11) 99999-9999 ou Não informado"
                   />
                 </div>
@@ -1787,7 +1787,7 @@ export default function AlunosPage() {
                         }
                         setEditFormData({...editFormData, cpf: formatted});
                       }}
-                      className="block w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-medium focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                      className="block w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-medium"
                       placeholder="000.000.000-00"
                       maxLength={14}
                     />
@@ -1798,7 +1798,7 @@ export default function AlunosPage() {
                       type="date"
                       value={editFormData.dataNascimento}
                       onChange={(e) => setEditFormData({...editFormData, dataNascimento: e.target.value})}
-                      className="block w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-medium focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                      className="block w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-medium"
                     />
                   </div>
                 </div>
@@ -1845,7 +1845,7 @@ export default function AlunosPage() {
                 <textarea
                   value={editFormData.observacoes}
                   onChange={(e) => setEditFormData({...editFormData, observacoes: e.target.value})}
-                  className="block w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-medium h-10 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                  className="block w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-medium h-10"
                   rows={1}
                   placeholder="Observações sobre o aluno"
                 />
@@ -1856,13 +1856,13 @@ export default function AlunosPage() {
                 <button
                   type="button"
                   onClick={() => setShowEditModal(false)}
-                  className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 flex items-center gap-2"
+                  className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 flex items-center gap-2"
                 >
                   <i className="fas fa-times text-black" aria-hidden="true" /> Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 flex items-center gap-2"
+                  className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 flex items-center gap-2"
                 >
                   <i className="fas fa-save text-white mr-2" aria-hidden="true" /> {editingAluno ? 'Atualizar' : 'Criar'}
                 </button>
