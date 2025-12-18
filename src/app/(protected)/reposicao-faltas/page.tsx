@@ -43,6 +43,7 @@ interface Falta {
   data: string;
   dataFormatada: string;
   modalidade: string;
+  modalidadeCor?: string;
   horarioInicio: string;
   horarioFim: string;
   horarioFixoId?: string;
@@ -159,6 +160,42 @@ export default function ReposicaoFaltasPage() {
     handleFecharReporModal();
     fetchFaltas(); // Recarregar faltas
     toast.success('Reposição agendada com sucesso!');
+  };
+
+  const handleCancelarReposicao = async (falta: Falta) => {
+    if (!falta.reposicao || !falta.reposicao._id) {
+      toast.error('Reposição não encontrada');
+      return;
+    }
+
+    if (!confirm(`Tem certeza que deseja cancelar a reposição agendada para ${formatarData(falta.reposicao.novaData)}?`)) {
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('token');
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      };
+
+      const res = await fetch(`/api/reagendamentos/${falta.reposicao._id}`, {
+        method: 'DELETE',
+        headers
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        toast.success('Reposição cancelada com sucesso!');
+        fetchFaltas();
+      } else {
+        toast.error(data.error || 'Erro ao cancelar reposição');
+      }
+    } catch (error) {
+      console.error('Erro ao cancelar reposição:', error);
+      toast.error('Erro ao cancelar reposição');
+    }
   };
 
   const getStatusInfo = (status: string, diasRestantes: number) => {
@@ -381,7 +418,10 @@ export default function ReposicaoFaltasPage() {
                                         <div className="flex flex-wrap gap-1 mt-0.5">
                                           {falta.modalidade && (
                                             <span className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[8px] font-medium bg-gray-200 text-gray-700">
-                                              <i className="fas fa-dumbbell text-[6px] text-gray-500"></i>
+                                              <div 
+                                                className="w-2 h-2 rounded-full"
+                                                style={{ backgroundColor: falta.modalidadeCor || '#999999' }}
+                                              />
                                               {falta.modalidade}
                                             </span>
                                           )}
@@ -414,6 +454,15 @@ export default function ReposicaoFaltasPage() {
                                           title="Agendar reposição"
                                         >
                                           <i className="fas fa-redo text-[10px]"></i>
+                                        </button>
+                                      )}
+                                      {(falta.statusReposicao === 'pendente' || falta.statusReposicao === 'aprovada') && falta.reposicao && (
+                                        <button
+                                          onClick={() => handleCancelarReposicao(falta)}
+                                          className="w-6 h-6 inline-flex items-center justify-center text-red-600 hover:text-red-700 rounded transition-colors"
+                                          title="Cancelar reposição"
+                                        >
+                                          <i className="fas fa-times text-[10px]"></i>
                                         </button>
                                       )}
                                     </div>
@@ -520,7 +569,10 @@ export default function ReposicaoFaltasPage() {
                                           <td className="px-3 py-2 text-xs">
                                             {falta.modalidade ? (
                                               <span className="inline-flex items-center gap-1.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-200 text-gray-700">
-                                                <i className="fas fa-dumbbell text-[8px] text-gray-500"></i>
+                                                <div 
+                                                  className="w-2.5 h-2.5 rounded-full"
+                                                  style={{ backgroundColor: falta.modalidadeCor || '#999999' }}
+                                                />
                                                 {falta.modalidade}
                                               </span>
                                             ) : (
@@ -553,15 +605,14 @@ export default function ReposicaoFaltasPage() {
                                                   <i className="fas fa-redo text-[10px]"></i>
                                                 </button>
                                               )}
-                                              {falta.statusReposicao === 'aprovada' && (
-                                                <span className="text-green-500">
-                                                  <i className="fas fa-check text-[10px]"></i>
-                                                </span>
-                                              )}
-                                              {falta.statusReposicao === 'pendente' && (
-                                                <span className="text-yellow-500">
-                                                  <i className="fas fa-hourglass-half text-[10px]"></i>
-                                                </span>
+                                              {(falta.statusReposicao === 'pendente' || falta.statusReposicao === 'aprovada') && falta.reposicao && (
+                                                <button
+                                                  onClick={() => handleCancelarReposicao(falta)}
+                                                  className="inline-flex items-center justify-center w-6 h-6 text-red-600 hover:text-red-700 hover:bg-red-50 rounded transition-colors"
+                                                  title="Cancelar reposição"
+                                                >
+                                                  <i className="fas fa-times text-[10px]"></i>
+                                                </button>
                                               )}
                                               {falta.statusReposicao === 'expirada' && (
                                                 <span className="text-gray-400">

@@ -151,6 +151,16 @@ export async function POST(request: NextRequest) {
         if (alunoId) {
           const aluno = await Aluno.findById(alunoId, 'nome congelado ausente emEspera');
 
+          // Determinar o tipo de reagendamento
+          let tipoReagendamento = 'reagendamento';
+          if (reag.isReposicao) {
+            if (reag.usoCreditoId) {
+              tipoReagendamento = 'reposicao_credito';
+            } else if (reag.aulaRealizadaId) {
+              tipoReagendamento = 'reposicao_falta';
+            }
+          }
+
           alunosReagendados.push({
             alunoId,
             nome: aluno?.nome || 'Aluno',
@@ -161,6 +171,7 @@ export async function POST(request: NextRequest) {
               emEspera: aluno?.emEspera ?? false,
             },
             era_reagendamento: true,
+            tipoReagendamento,
             observacoes: marcado?.observacoes || '',
             reagendamentoId: reag._id,
           });

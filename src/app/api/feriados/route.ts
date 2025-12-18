@@ -5,6 +5,7 @@ import Feriado from '@/models/Feriado';
 import { Reagendamento } from '@/models/Reagendamento';
 import UsoCredito from '@/models/UsoCredito';
 import CreditoReposicao from '@/models/CreditoReposicao';
+import { AvisoAusencia } from '@/models/AvisoAusencia';
 import { JWT_SECRET } from '@/lib/auth';
 
 // Helper para verificar token
@@ -86,7 +87,7 @@ export async function POST(request: NextRequest) {
     const dataFimVerificacao = new Date(dataInicioVerificacao);
     dataFimVerificacao.setDate(dataFimVerificacao.getDate() + 1);
     
-    // Verificar se já existe feriado nessa data
+    // Verificar se já existe feriado PERSONALIZADO nessa data (permitir sobrescrever feriados nacionais)
     const existente = await Feriado.findOne({ 
       data: {
         $gte: dataInicioVerificacao,
@@ -95,7 +96,7 @@ export async function POST(request: NextRequest) {
     });
     
     if (existente) {
-      return NextResponse.json({ success: false, error: 'Já existe um feriado cadastrado para esta data' }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'Já existe um feriado personalizado cadastrado para esta data' }, { status: 400 });
     }
     
     // Criar o feriado
@@ -110,7 +111,7 @@ export async function POST(request: NextRequest) {
     const dataFim = new Date(dataInicio);
     dataFim.setDate(dataFim.getDate() + 1);
     
-    // 1. Cancelar reagendamentos que têm novaData neste dia
+    // 1. Cancelar TODOS os reagendamentos que têm novaData neste dia (normais, reposições, etc)
     const reagendamentosCancelados = await Reagendamento.updateMany(
       {
         novaData: { $gte: dataInicio, $lt: dataFim },
@@ -119,12 +120,26 @@ export async function POST(request: NextRequest) {
       {
         $set: { 
           status: 'rejeitado',
-          motivo: `${motivo || 'Sem expediente'} - Cancelado automaticamente`
+          motivo: `${motivo || 'Sem expediente'} - Cancelado automaticamente por feriado`
         }
       }
     );
     
-    // 2. Reverter uso de créditos neste dia
+    // 2. Cancelar avisos de ausência para este dia (reverter para status 'pendente')
+    const avisosCancelados = await AvisoAusencia.updateMany(
+      {
+        dataAusencia: { $gte: dataInicio, $lt: dataFim },
+        status: { $in: ['confirmada', 'usada'] }
+      },
+      {
+        $set: { 
+          status: 'cancelada',
+          reposicoesUsadas: 0
+        }
+      }
+    );
+    
+    // 3. Reverter uso de créditos neste dia
     const usosCredito = await UsoCredito.find({
       dataUso: { $gte: dataInicio, $lt: dataFim }
     });
@@ -142,15 +157,17 @@ export async function POST(request: NextRequest) {
       dataUso: { $gte: dataInicio, $lt: dataFim }
     });
     
-    console.log(`Feriado criado: ${dataFeriado.toISOString()}`);
-    console.log(`Reagendamentos cancelados: ${reagendamentosCancelados.modifiedCount}`);
-    console.log(`Créditos revertidos: ${creditosRevertidos.deletedCount}`);
+    console.log(`🗓️  Feriado criado: ${dataFeriado.toISOString().split('T')[0]}`);
+    console.log(`   ↳ Reagendamentos cancelados: ${reagendamentosCancelados.modifiedCount}`);
+    console.log(`   ↳ Avisos de ausência cancelados: ${avisosCancelados.modifiedCount}`);
+    console.log(`   ↳ Créditos revertidos: ${creditosRevertidos.deletedCount}`);
     
     return NextResponse.json({ 
       success: true, 
       data: feriado,
       desfeitos: {
         reagendamentos: reagendamentosCancelados.modifiedCount,
+        avisos: avisosCancelados.modifiedCount,
         creditos: creditosRevertidos.deletedCount
       }
     }, { status: 201 });

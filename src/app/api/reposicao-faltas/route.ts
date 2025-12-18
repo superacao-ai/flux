@@ -38,7 +38,14 @@ export async function GET(request: NextRequest) {
         }
       }
     })
-    .populate('horarioFixoId', 'horarioInicio horarioFim diaSemana')
+    .populate({
+      path: 'horarioFixoId',
+      select: 'horarioInicio horarioFim diaSemana modalidadeId',
+      populate: {
+        path: 'modalidadeId',
+        select: 'nome cor'
+      }
+    })
     .populate({
       path: 'professorId',
       model: 'User',
@@ -57,11 +64,28 @@ export async function GET(request: NextRequest) {
     }).lean();
 
     // Criar um mapa de reposições por aulaRealizadaId + alunoId
+    // TAMBÉM criar por alunoId + dataOriginal para capturar reposições de avisos de ausência
     const reposicoesMap = new Map<string, any>();
     for (const rep of reposicoes) {
+      // Mapear por aulaRealizadaId + alunoId (quando vem de falta registrada)
       if (rep.aulaRealizadaId && rep.alunoId) {
-        const key = `${rep.aulaRealizadaId}_${rep.alunoId}`;
+        const aulaId = typeof rep.aulaRealizadaId === 'string' ? rep.aulaRealizadaId : rep.aulaRealizadaId.toString();
+        const alunoId = typeof rep.alunoId === 'string' ? rep.alunoId : rep.alunoId.toString();
+        const key = `${aulaId}_${alunoId}`;
         reposicoesMap.set(key, rep);
+      }
+      // NOVO: Mapear também por alunoId + dataOriginal (para avisos de ausência)
+      if (rep.alunoId && rep.dataOriginal) {
+        try {
+          const alunoId = typeof rep.alunoId === 'string' ? rep.alunoId : rep.alunoId.toString();
+          const dataStr = new Date(rep.dataOriginal).toISOString().split('T')[0];
+          const key2 = `${alunoId}_${dataStr}`;
+          if (!reposicoesMap.has(key2)) {
+            reposicoesMap.set(key2, rep);
+          }
+        } catch (e) {
+          // Ignorar se houver erro na conversão de data
+        }
       }
     }
 
@@ -95,7 +119,11 @@ export async function GET(request: NextRequest) {
 
           // Verificar se já existe reposição para esta falta específica
           const repoKey = `${aula._id}_${alunoId}`;
-          const reposicao = reposicoesMap.get(repoKey);
+          const dataStr = typeof aula.data === 'string' 
+            ? aula.data.split('T')[0] 
+            : new Date(aula.data).toISOString().split('T')[0];
+          const repoKey2 = `${alunoId}_${dataStr}`;
+          const reposicao = reposicoesMap.get(repoKey) || reposicoesMap.get(repoKey2);
 
           let statusReposicao: 'disponivel' | 'pendente' | 'aprovada' | 'rejeitada' | 'expirada' = 'disponivel';
           
@@ -121,8 +149,22 @@ export async function GET(request: NextRequest) {
               ativo: aluno.ativo
             },
             data: aula.data,
-            dataFormatada: new Date(aula.data).toLocaleDateString('pt-BR'),
+            dataFormatada: (() => {
+              if (typeof aula.data === 'string') {
+                const str = aula.data.split('T')[0];
+                const [ano, mes, dia] = str.split('-').map(Number);
+                const d = new Date(ano, mes - 1, dia, 12, 0, 0);
+                return d.toLocaleDateString('pt-BR');
+              } else {
+                const d = new Date(aula.data);
+                const str = d.toISOString().split('T')[0];
+                const [ano, mes, dia] = str.split('-').map(Number);
+                const d2 = new Date(ano, mes - 1, dia, 12, 0, 0);
+                return d2.toLocaleDateString('pt-BR');
+              }
+            })(),
             modalidade: aula.modalidade,
+            modalidadeCor: (aula.horarioFixoId as any)?.modalidadeId?.cor || '#999999',
             horarioInicio: aula.horarioInicio,
             horarioFim: aula.horarioFim,
             horarioFixoId: aula.horarioFixoId?._id || aula.horarioFixoId,

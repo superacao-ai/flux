@@ -42,6 +42,18 @@ interface UsoCredito {
   criadoEm: string;
 }
 
+interface AulaRealizada {
+  _id: string;
+  data: string;
+  horarioInicio: string;
+  horarioFim: string;
+  modalidade: string;
+  professorId?: {
+    nome: string;
+    cor?: string;
+  };
+}
+
 interface CreditoReposicao {
   _id: string;
   alunoId: Aluno;
@@ -53,6 +65,7 @@ interface CreditoReposicao {
   concedidoPor: User;
   ativo: boolean;
   criadoEm: string;
+  aulaRealizadaId?: AulaRealizada;
   usos?: UsoCredito[];
 }
 
@@ -690,10 +703,21 @@ export default function CreditosReposicaoPage() {
                                     </div>
                                   </div>
                                   {/* Justificativa */}
-                                  <p className="text-[9px] text-gray-500 italic mt-1 line-clamp-1" title={credito.motivo}>
-                                    <i className="fas fa-info-circle mr-0.5"></i>
-                                    {credito.motivo}
-                                  </p>
+                                  <div className="text-[9px] text-gray-500 italic mt-1">
+                                    <p className="line-clamp-1" title={credito.motivo}>
+                                      <i className="fas fa-info-circle mr-0.5"></i>
+                                      {credito.motivo}
+                                    </p>
+                                    {credito.aulaRealizadaId && (
+                                      <p className="text-[8px] text-gray-400 mt-0.5 flex items-center gap-1">
+                                        <i className="fas fa-calendar-times"></i>
+                                        <span>
+                                          Aula cancelada: {new Date(credito.aulaRealizadaId.data).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}{' '}
+                                          {credito.aulaRealizadaId.horarioInicio}
+                                        </span>
+                                      </p>
+                                    )}
+                                  </div>
                                 </div>
                               );
                             }
@@ -847,9 +871,21 @@ export default function CreditosReposicaoPage() {
                                             )}
                                           </td>
                                           <td className="px-3 py-2 text-xs text-gray-600">
-                                            <p className="text-[10px] italic text-gray-500 line-clamp-2" title={credito.motivo}>
-                                              {credito.motivo}
-                                            </p>
+                                            <div className="space-y-1">
+                                              <p className="text-[10px] italic text-gray-500 line-clamp-2" title={credito.motivo}>
+                                                {credito.motivo}
+                                              </p>
+                                              {credito.aulaRealizadaId && (
+                                                <p className="text-[9px] text-gray-400 flex items-center gap-1">
+                                                  <i className="fas fa-info-circle"></i>
+                                                  <span>
+                                                    Aula: {new Date(credito.aulaRealizadaId.data).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}{' '}
+                                                    {credito.aulaRealizadaId.horarioInicio} - {credito.aulaRealizadaId.modalidade}
+                                                    {credito.aulaRealizadaId.professorId?.nome && ` - ${credito.aulaRealizadaId.professorId.nome}`}
+                                                  </span>
+                                                </p>
+                                              )}
+                                            </div>
                                           </td>
                                           <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">
                                             <span className={`text-[10px] ${expirado ? 'text-red-500' : ''}`}>

@@ -234,8 +234,8 @@ export default function CalendarioPage() {
     // Buscar feriados personalizados da API
     const feriadosPersonalizados = await fetchFeriadosPersonalizados(inicioStr, fimStr);
     
-    // Combinar e remover duplicatas
-    const todosOsFeriados = [...feriadosNacionais, ...feriadosPersonalizados];
+    // Combinar e remover duplicatas - dar prioridade aos feriados PERSONALIZADOS
+    const todosOsFeriados = [...feriadosPersonalizados, ...feriadosNacionais];
     const feriadosUnicos = todosOsFeriados.filter((f, index, self) => 
       index === self.findIndex(t => t.data === f.data)
     );

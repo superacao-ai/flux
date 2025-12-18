@@ -20,6 +20,7 @@ interface AulaRealizada {
     nome: string;
     presente: boolean | null;
     era_reagendamento: boolean;
+    tipoReagendamento?: 'reagendamento' | 'reposicao_falta' | 'reposicao_credito';
     reagendou_para_outro?: boolean;
     reagendamento_info?: {
       novaData: string;
@@ -89,8 +90,19 @@ export default function AulasRealizadasPage() {
     return (mod && (mod.cor || mod.color)) || '#3B82F6';
   };
 
-  const getProfessorColor = (idOrName: string) => {
+  const getProfessorColor = (idOrName: any) => {
     if (!idOrName) return '#9CA3AF';
+    
+    // Se já é um objeto com cor, retorna direto
+    if (typeof idOrName === 'object' && idOrName !== null) {
+      if (idOrName.cor) return idOrName.cor;
+      // Se é objeto mas não tem cor, busca pelo _id
+      if (idOrName._id) {
+        const prof = professores.find(p => String(p._id) === String(idOrName._id));
+        return (prof && prof.cor) || '#9CA3AF';
+      }
+    }
+    
     const searchValue = String(idOrName || '').toLowerCase().trim();
     const prof = professores.find(p => 
       String(p._id) === String(idOrName) || 
@@ -164,10 +176,11 @@ export default function AulasRealizadasPage() {
   };
 
   const getProfessorLookupKey = (aula: any) => {
-    // Primeiro tentar pegar o ID do professorId da aula
+    // Primeiro tentar pegar o professorId da aula (retorna objeto inteiro para ter acesso à cor)
     if (aula.professorId) {
       if (typeof aula.professorId === 'object' && aula.professorId !== null) {
-        return aula.professorId._id || '';
+        // Retorna o objeto inteiro para que getProfessorColor possa pegar a cor direto
+        return aula.professorId;
       }
       if (typeof aula.professorId === 'string') {
         return aula.professorId;
@@ -185,14 +198,15 @@ export default function AulasRealizadasPage() {
       if (horario) {
         if (horario.professorId) {
           if (typeof horario.professorId === 'object' && horario.professorId._id) {
-            return horario.professorId._id;
+            // Retorna o objeto inteiro
+            return horario.professorId;
           }
           if (typeof horario.professorId === 'string') {
             return horario.professorId;
           }
         }
         if (horario.professor && horario.professor._id) {
-          return horario.professor._id;
+          return horario.professor;
         }
       }
     }
@@ -612,7 +626,7 @@ export default function AulasRealizadasPage() {
       const token = localStorage.getItem('token');
       const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
       
-      // Buscar reagendamentos aprovados que SAÍRAM deste horário nesta data
+      // Buscar reagendamentos aprovados
       const dataStr = aula.data ? localDateYMD(parseLocalDate(aula.data)) : '';
       
       const resReagendamentos = await fetch('/api/reagendamentos', { headers });
@@ -622,7 +636,7 @@ export default function AulasRealizadasPage() {
       // Filtrar apenas aprovados
       const reagendamentos = todosReagendamentos.filter((r: any) => r.status === 'aprovado');
       
-      // Criar mapa de alunos que reagendaram PARA outro horário (saíram deste horário)
+      // ========== ALUNOS QUE SAÍRAM DESTE HORÁRIO ==========
       const alunosQueReagendaram = new Map<string, { novaData: string; novoHorario: string }>();
       
       for (const reag of reagendamentos) {
@@ -630,10 +644,7 @@ export default function AulasRealizadasPage() {
         const horarioFixoIdReag = String(reag.horarioFixoId?._id || reag.horarioFixoId || '');
         const horarioFixoIdAula = String(aula.horarioFixoId || '');
         
-        // Se a dataOriginal do reagendamento bate com a data desta aula
-        // E o horarioFixoId de origem bate com o horário desta aula
         if (dataOriginalStr === dataStr && horarioFixoIdReag === horarioFixoIdAula) {
-          // Buscar o alunoId a partir da matricula
           let alunoId = '';
           
           if (reag.matriculaId) {
@@ -644,7 +655,6 @@ export default function AulasRealizadasPage() {
                   : String(reag.matriculaId.alunoId);
               }
             } else if (typeof reag.matriculaId === 'string') {
-              // Se só temos o ID da matrícula, precisamos buscar a matrícula
               try {
                 const resMatricula = await fetch(`/api/matriculas/${reag.matriculaId}`, { headers });
                 if (resMatricula.ok) {
@@ -675,23 +685,116 @@ export default function AulasRealizadasPage() {
         }
       }
       
-      // Enriquecer os alunos da aula com informação de reagendamento
+      // ========== ALUNOS QUE ENTRARAM NESTE HORÁRIO (Reagendamentos/Reposições) ==========
+      const alunosQueEntraram: Array<{
+        alunoId: string;
+        nome: string;
+        tipoReagendamento: 'reagendamento' | 'reposicao_falta' | 'reposicao_credito';
+        dataOriginal: string;
+      }> = [];
+      
+      for (const reag of reagendamentos) {
+        const novaDataStr = reag.novaData ? localDateYMD(parseLocalDate(reag.novaData)) : '';
+        const novoHorarioFixoId = String(reag.novoHorarioFixoId?._id || reag.novoHorarioFixoId || '');
+        const horarioFixoIdAula = String(aula.horarioFixoId || '');
+        
+        // Se a novaData do reagendamento bate com a data desta aula
+        // E o novoHorarioFixoId bate com o horário desta aula
+        if (novaDataStr === dataStr && novoHorarioFixoId === horarioFixoIdAula) {
+          let alunoId = '';
+          let alunoNome = '';
+          
+          // Tentar pegar alunoId diretamente do reagendamento
+          if (reag.alunoId) {
+            alunoId = typeof reag.alunoId === 'object' 
+              ? String(reag.alunoId._id || reag.alunoId)
+              : String(reag.alunoId);
+            alunoNome = typeof reag.alunoId === 'object' ? reag.alunoId.nome || '' : '';
+          }
+          
+          // Se não tem, buscar pela matrícula
+          if (!alunoId && reag.matriculaId) {
+            if (typeof reag.matriculaId === 'object' && reag.matriculaId !== null) {
+              if (reag.matriculaId.alunoId) {
+                alunoId = typeof reag.matriculaId.alunoId === 'object' 
+                  ? String(reag.matriculaId.alunoId._id || reag.matriculaId.alunoId)
+                  : String(reag.matriculaId.alunoId);
+              }
+            }
+          }
+          
+          if (alunoId) {
+            // Buscar nome do aluno se não temos
+            if (!alunoNome) {
+              try {
+                const resAluno = await fetch(`/api/alunos/${alunoId}`, { headers });
+                if (resAluno.ok) {
+                  const alunoData = await resAluno.json();
+                  alunoNome = alunoData.nome || 'Aluno';
+                }
+              } catch (e) {
+                alunoNome = 'Aluno';
+              }
+            }
+            
+            // Determinar o tipo de reagendamento
+            let tipoReagendamento: 'reagendamento' | 'reposicao_falta' | 'reposicao_credito' = 'reagendamento';
+            if (reag.isReposicao) {
+              if (reag.usoCreditoId) {
+                tipoReagendamento = 'reposicao_credito';
+              } else {
+                tipoReagendamento = 'reposicao_falta';
+              }
+            }
+            
+            alunosQueEntraram.push({
+              alunoId,
+              nome: alunoNome,
+              tipoReagendamento,
+              dataOriginal: reag.dataOriginal ? localDateYMD(parseLocalDate(reag.dataOriginal)) : ''
+            });
+          }
+        }
+      }
+      
+      // Enriquecer os alunos da aula com informação de reagendamento (saída)
       const alunosEnriquecidos = aula.alunos.map(aluno => {
         const alunoIdStr = typeof aluno.alunoId === 'object' 
           ? String((aluno.alunoId as any)._id || aluno.alunoId)
           : String(aluno.alunoId);
         const reagInfo = alunosQueReagendaram.get(alunoIdStr);
         
+        // Verificar se este aluno também entrou como reagendamento (não deve duplicar)
+        const entrou = alunosQueEntraram.find(a => a.alunoId === alunoIdStr);
+        
         return {
           ...aluno,
           reagendou_para_outro: !!reagInfo,
-          reagendamento_info: reagInfo || undefined
+          reagendamento_info: reagInfo || undefined,
+          // Se já está na lista e entrou, atualizar o tipo
+          tipoReagendamento: entrou?.tipoReagendamento || aluno.tipoReagendamento
         };
       });
       
+      // Adicionar alunos que entraram mas não estão na lista de alunos (não deveriam estar na aula original)
+      const alunoIdsExistentes = new Set(alunosEnriquecidos.map(a => 
+        typeof a.alunoId === 'object' ? String((a.alunoId as any)._id || a.alunoId) : String(a.alunoId)
+      ));
+      
+      const alunosExtras = alunosQueEntraram
+        .filter(a => !alunoIdsExistentes.has(a.alunoId))
+        .map(a => ({
+          alunoId: a.alunoId,
+          nome: a.nome,
+          presente: null,
+          era_reagendamento: true,
+          tipoReagendamento: a.tipoReagendamento,
+          reagendou_para_outro: false
+        }));
+      
       setAulaEditarEnriquecida({
         ...aula,
-        alunos: alunosEnriquecidos
+        alunos: [...alunosEnriquecidos, ...alunosExtras]
       });
     } catch (error) {
       console.error('Erro ao enriquecer aula:', error);
@@ -1717,9 +1820,19 @@ export default function AulasRealizadasPage() {
                                     <div className="text-sm font-medium text-gray-900 truncate flex items-center gap-2">
                                       {aluno.nome}
                                       {aluno.era_reagendamento ? (
-                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
-                                          <i className="fas fa-arrow-right text-[10px]"></i>
-                                          Reagendado para cá
+                                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+                                          aluno.tipoReagendamento === 'reposicao_falta' ? 'bg-purple-100 text-purple-700' :
+                                          aluno.tipoReagendamento === 'reposicao_credito' ? 'bg-orange-100 text-orange-700' :
+                                          'bg-blue-100 text-blue-700'
+                                        }`}>
+                                          <i className={`fas ${
+                                            aluno.tipoReagendamento === 'reposicao_falta' ? 'fa-redo' :
+                                            aluno.tipoReagendamento === 'reposicao_credito' ? 'fa-gift' :
+                                            'fa-arrow-right'
+                                          } text-[10px]`}></i>
+                                          {aluno.tipoReagendamento === 'reposicao_falta' ? 'Reposição de falta' :
+                                           aluno.tipoReagendamento === 'reposicao_credito' ? 'Reposição por crédito' :
+                                           'Reagendado para cá'}
                                         </span>
                                       ) : (
                                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">

@@ -10,6 +10,7 @@ export interface IAlunoAula {
     emEspera: boolean;
   };
   era_reagendamento: boolean;
+  tipoReagendamento?: 'reagendamento' | 'reposicao_falta' | 'reposicao_credito'; // Tipo de reagendamento
   observacoes?: string;
   avisouComAntecedencia?: boolean;
 }
@@ -79,6 +80,11 @@ const IAlunoAulaSchema = new Schema<IAlunoAula>(
     era_reagendamento: {
       type: Boolean,
       default: false,
+    },
+    tipoReagendamento: {
+      type: String,
+      enum: ['reagendamento', 'reposicao_falta', 'reposicao_credito'],
+      default: 'reagendamento',
     },
     observacoes: String,
     avisouComAntecedencia: {

@@ -66,6 +66,7 @@ interface Reagendamento {
   novoHorarioFim: string;
   status: 'pendente' | 'aprovado' | 'rejeitado';
   motivo?: string;
+  isReposicao?: boolean;
   criadoEm: string;
   horarioFixoId?: {
     _id: string;
@@ -143,6 +144,7 @@ interface AvisoAusencia {
   motivo: string;
   status: 'pendente' | 'confirmada' | 'cancelada' | 'usada';
   temDireitoReposicao: boolean;
+  reposicoesUsadas?: number;
   horarioFixoId?: {
     _id: string;
     horarioInicio: string;
@@ -403,33 +405,161 @@ export default function AlunoAreaPage() {
       .catch(() => {});
   }, []);
 
-  // Buscar feriados/sem expediente para o calendário de presenças
+  // Buscar feriados/sem expediente para o calendário de presenças e reagendamento
   useEffect(() => {
     const fetchFeriados = async () => {
       try {
-        // Buscar feriados do banco de dados (sem expediente personalizados)
-        const inicioAno = `${presencaCalAno}-01-01`;
-        const fimAno = `${presencaCalAno}-12-31`;
-        const res = await fetch(`/api/feriados?inicio=${inicioAno}&fim=${fimAno}`);
+        // Buscar feriados de todo o ano do calendário de reagendamento
+        const anos = [calAno, presencaCalAno, destinoAno];
+        const anosUnicos = [...new Set(anos)];
         
-        if (res.ok) {
-          const json = await res.json();
-          if (json.success && Array.isArray(json.data)) {
-            const feriadosPersonalizados: FeriadoInfo[] = json.data.map((f: any) => ({
-              data: new Date(f.data).toISOString().split('T')[0],
-              nome: f.motivo || 'Sem Expediente',
-              tipo: 'personalizado' as const
-            }));
-            setFeriados(feriadosPersonalizados);
+        const todasPromessas = anosUnicos.map(async (ano) => {
+          const inicioAno = `${ano}-01-01`;
+          const fimAno = `${ano}-12-31`;
+          const res = await fetch(`/api/feriados?inicio=${inicioAno}&fim=${fimAno}`);
+          
+          if (res.ok) {
+            const json = await res.json();
+            if (json.success && Array.isArray(json.data)) {
+              return json.data.map((f: any) => ({
+                data: new Date(f.data).toISOString().split('T')[0],
+                nome: f.motivo || 'Sem Expediente',
+                tipo: 'personalizado' as const
+              }));
+            }
           }
-        }
+          return [];
+        });
+        
+        const resultados = await Promise.all(todasPromessas);
+        const todosFeriados = resultados.flat();
+        
+        // Remover duplicatas
+        const feriadosUnicos = todosFeriados.filter((f, index, self) => 
+          index === self.findIndex(t => t.data === f.data)
+        );
+        
+        setFeriados(feriadosUnicos);
       } catch (err) {
         console.error('Erro ao buscar feriados:', err);
       }
     };
     
     fetchFeriados();
-  }, [presencaCalAno]);
+  }, [presencaCalAno, calAno, destinoAno]);
+
+  // Helper para verificar se uma data é feriado/sem expediente
+  const isFeriado = useCallback((data: Date): boolean => {
+    const dataStr = `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, '0')}-${String(data.getDate()).padStart(2, '0')}`;
+    return feriados.some(f => f.data === dataStr);
+  }, [feriados]);
+
+  // Helper para calcular a data limite (7 dias ÚTEIS - dias SEM aula do aluno)
+  // Calcula a data limite: o dia em que se completa 7 dias DISPONÍVEIS para reagendar
+  // Dias disponíveis = dias sem aula fixa, sem feriado, sem ocupação (crédito/reposição), COM horários disponíveis
+  const calcularLimite7DiasUteis = useCallback((dataInicial: Date): Date => {
+    const dataAtual = new Date(dataInicial);
+    dataAtual.setHours(0, 0, 0, 0);
+    
+    // Criar set de datas com reagendamentos/reposições na nova data (destino)
+    const datasOcupadas = new Set<string>();
+    reagendamentos.forEach(r => {
+      if (r.status === 'aprovado' || r.status === 'pendente') {
+        const dataStr = r.novaData.split('T')[0];
+        datasOcupadas.add(dataStr);
+      }
+    });
+    
+    // Adicionar usos de crédito às datas ocupadas
+    creditos.forEach(c => {
+      c.usos?.forEach(uso => {
+        if (uso.dataUso) {
+          const dataStr = uso.dataUso.split('T')[0];
+          datasOcupadas.add(dataStr);
+        }
+      });
+    });
+    
+    // Criar set de datas originais que foram reagendadas (libera o dia de aula fixa)
+    const datasOriginaisReagendadas = new Map<string, Set<string>>(); // data -> Set de horarioFixoIds
+    reagendamentos.forEach(r => {
+      if ((r.status === 'aprovado' || r.status === 'pendente') && r.horarioFixoId?._id) {
+        const dataOrigStr = r.dataOriginal.split('T')[0];
+        if (!datasOriginaisReagendadas.has(dataOrigStr)) {
+          datasOriginaisReagendadas.set(dataOrigStr, new Set());
+        }
+        datasOriginaisReagendadas.get(dataOrigStr)!.add(r.horarioFixoId._id);
+      }
+    });
+    
+    // Criar set de dias da semana que têm horários disponíveis
+    const diasComHorariosDisponiveis = new Set(horariosDisponiveis.map(h => h.diaSemana));
+    
+    let diasDisponiveisContados = 0;
+    let dataLimite = new Date(dataAtual);
+    let tentativas = 0;
+    const maxTentativas = 90;
+    
+    // Avançar até encontrar o 7º dia DISPONÍVEL (livre para reagendar)
+    while (diasDisponiveisContados < 7 && tentativas < maxTentativas) {
+      dataLimite.setDate(dataLimite.getDate() + 1);
+      tentativas++;
+      
+      const diaSemana = dataLimite.getDay();
+      const dataStr = `${dataLimite.getFullYear()}-${String(dataLimite.getMonth() + 1).padStart(2, '0')}-${String(dataLimite.getDate()).padStart(2, '0')}`;
+      
+      // Pular dias sem horários disponíveis (ex: sábado e domingo se não houver aulas)
+      if (!diasComHorariosDisponiveis.has(diaSemana)) {
+        continue;
+      }
+      
+      // Verificar se é dia de aula fixa (e não foi reagendada)
+      const horariosNoDia = horarios.filter(h => h.diaSemana === diaSemana);
+      const todasReagendadas = horariosNoDia.length > 0 && horariosNoDia.every(h => {
+        const horariosReagendados = datasOriginaisReagendadas.get(dataStr);
+        return horariosReagendados?.has(h._id);
+      });
+      const eDiaDeAulaFixa = horariosNoDia.length > 0 && !todasReagendadas;
+      
+      // Pular dias de aula fixa (não são exibidos nem contados)
+      if (eDiaDeAulaFixa) {
+        continue;
+      }
+      
+      // Verificar se é feriado ou ocupado
+      const eFeriadoData = feriados.some(f => f.data === dataStr);
+      const temOcupacao = datasOcupadas.has(dataStr);
+      
+      // Só contar como disponível se NÃO for feriado E NÃO tiver ocupação
+      if (!eFeriadoData && !temOcupacao) {
+        diasDisponiveisContados++;
+      }
+      // Se for feriado ou ocupado, o dia é EXIBIDO mas NÃO conta como disponível
+      // então continuamos o loop sem incrementar
+    }
+    
+    return dataLimite;
+  }, [horarios, horariosDisponiveis, feriados, reagendamentos, creditos]);
+
+  // Helper para verificar se uma data está dentro do período até completar 7 dias DISPONÍVEIS
+  // Retorna true se a data deve ser exibida no calendário (mesmo que bloqueada)
+  const estaDentroDosPróximos7DiasUteis = useCallback((dataInicial: Date, dataVerificar: Date): boolean => {
+    const dataAtual = new Date(dataInicial);
+    dataAtual.setHours(0, 0, 0, 0);
+    
+    const dataCheck = new Date(dataVerificar);
+    dataCheck.setHours(0, 0, 0, 0);
+    
+    // Se a data a verificar é antes ou igual à data inicial, não está dentro
+    if (dataCheck <= dataAtual) return false;
+    
+    // Calcular a data limite (o 7º dia disponível)
+    const dataLimite = calcularLimite7DiasUteis(dataInicial);
+    dataLimite.setHours(0, 0, 0, 0);
+    
+    // A data está dentro se for menor ou igual à data limite
+    return dataCheck <= dataLimite;
+  }, [calcularLimite7DiasUteis]);
 
   // Buscar todos os dados
   const fetchDados = useCallback(async () => {
@@ -1299,7 +1429,7 @@ export default function AlunoAreaPage() {
     
     const dias: { data: Date; diaDoMes: number; mesAtual: boolean }[] = [];
     
-    // Dias do mês anterior
+    // Dias do mês anterior (apenas para completar a primeira semana)
     for (let i = primeiroDiaSemana - 1; i >= 0; i--) {
       const data = new Date(calAno, calMes, -i);
       dias.push({ data, diaDoMes: data.getDate(), mesAtual: false });
@@ -1311,11 +1441,13 @@ export default function AlunoAreaPage() {
       dias.push({ data, diaDoMes: i, mesAtual: true });
     }
     
-    // Dias do próximo mês para completar a grid
-    const diasRestantes = 42 - dias.length;
-    for (let i = 1; i <= diasRestantes; i++) {
-      const data = new Date(calAno, calMes + 1, i);
-      dias.push({ data, diaDoMes: i, mesAtual: false });
+    // Dias do próximo mês (apenas para completar a última semana)
+    const ultimoDiaSemana = ultimoDia.getDay();
+    if (ultimoDiaSemana < 6) {
+      for (let i = 1; i <= (6 - ultimoDiaSemana); i++) {
+        const data = new Date(calAno, calMes + 1, i);
+        dias.push({ data, diaDoMes: i, mesAtual: false });
+      }
     }
     
     return dias;
@@ -1448,20 +1580,25 @@ export default function AlunoAreaPage() {
     
     const dias: { data: Date; diaDoMes: number; mesAtual: boolean }[] = [];
     
+    // Dias do mês anterior (apenas para completar a primeira semana)
     for (let i = primeiroDiaSemana - 1; i >= 0; i--) {
       const data = new Date(destinoAno, destinoMes, -i);
       dias.push({ data, diaDoMes: data.getDate(), mesAtual: false });
     }
     
+    // Dias do mês atual
     for (let i = 1; i <= diasNoMes; i++) {
       const data = new Date(destinoAno, destinoMes, i);
       dias.push({ data, diaDoMes: i, mesAtual: true });
     }
     
-    const diasRestantes = 42 - dias.length;
-    for (let i = 1; i <= diasRestantes; i++) {
-      const data = new Date(destinoAno, destinoMes + 1, i);
-      dias.push({ data, diaDoMes: i, mesAtual: false });
+    // Dias do próximo mês (apenas para completar a última semana)
+    const ultimoDiaSemana = ultimoDia.getDay();
+    if (ultimoDiaSemana < 6) {
+      for (let i = 1; i <= (6 - ultimoDiaSemana); i++) {
+        const data = new Date(destinoAno, destinoMes + 1, i);
+        dias.push({ data, diaDoMes: i, mesAtual: false });
+      }
     }
     
     return dias;
@@ -2545,6 +2682,7 @@ export default function AlunoAreaPage() {
                     hoje.setHours(0, 0, 0, 0);
                     const isHoje = diaObj.data.toDateString() === hoje.toDateString();
                     const isPassado = diaObj.data < hoje;
+                    const eFeriado = isFeriado(diaObj.data);
                     const aulas = diaObj.mesAtual ? getAulasNoDia(diaObj.data) : [];
                     const temAula = aulas.length > 0;
                     const aulasVisiveis = aulas.filter(aula => !aula.foiReagendada);
@@ -2554,7 +2692,7 @@ export default function AlunoAreaPage() {
                         key={idx}
                         className={`
                           relative min-h-[100px] max-h-[140px] p-1 rounded-lg border transition-all
-                          ${!diaObj.mesAtual ? 'bg-gray-50 opacity-40' : 'bg-white'}
+                          ${!diaObj.mesAtual ? 'bg-gray-50 opacity-40' : eFeriado ? 'bg-gray-100' : 'bg-white'}
                           ${isHoje ? 'ring-2 ring-primary-500 border-primary-500' : 'border-gray-200'}
                           ${isPassado && diaObj.mesAtual ? 'opacity-60' : ''}
                         `}
@@ -2564,8 +2702,16 @@ export default function AlunoAreaPage() {
                           {diaObj.diaDoMes}
                         </div>
                         
+                        {/* Mensagem de sem expediente */}
+                        {eFeriado && diaObj.mesAtual && (
+                          <div className="flex flex-col items-center justify-center h-[80px] text-gray-400">
+                            <i className="fas fa-calendar-times text-lg mb-1"></i>
+                            <span className="text-[9px] font-medium text-center">Sem Expediente</span>
+                          </div>
+                        )}
+                        
                         {/* Aulas do dia - com scroll se houver muitas */}
-                        {temAula && diaObj.mesAtual && (
+                        {!eFeriado && temAula && diaObj.mesAtual && (
                           <div className="overflow-y-auto max-h-[110px] space-y-0.5 pr-0.5 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent">
                             {aulasVisiveis.map((aula, aIdx) => {
                               // Verificar se a aula pode ser reagendada (15min antecedência)
@@ -2606,7 +2752,7 @@ export default function AlunoAreaPage() {
                                   style={{ backgroundColor: bgColor }}
                                   title={titulo}
                                 >
-                                  {icone ? <><i className={`${icone} mr-0.5`}></i>{aula.horarioInicio}</> : aula.horarioInicio}
+                                  {aula.horarioInicio}
                                 </button>
                               );
                             })}
@@ -2894,14 +3040,134 @@ export default function AlunoAreaPage() {
                   </section>
                 )}
 
-                {/* Ausências confirmadas (já ocorreram) */}
-                {avisosAusencia.filter(a => a.status === 'confirmada').length > 0 && (
+                {/* Reposições Solicitadas (pendentes de aprovação) */}
+                {reagendamentos.filter(r => r.isReposicao && r.status === 'pendente').length > 0 && (
+                  <section>
+                    <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wide mb-3">
+                      Reposições Solicitadas
+                    </h3>
+                    <div className="space-y-2">
+                      {reagendamentos.filter(r => r.isReposicao && r.status === 'pendente').map(reposicao => (
+                        <div key={reposicao._id} className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3 flex-1">
+                              <div className="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center">
+                                <i className="fas fa-clock text-white"></i>
+                              </div>
+                              <div className="flex-1">
+                                <p className="font-semibold text-gray-900">
+                                  Reposição agendada para {formatarData(reposicao.novaData)}
+                                </p>
+                                <p className="text-sm text-gray-600">
+                                  {reposicao.novoHorarioInicio} - {reposicao.novoHorarioFim}
+                                </p>
+                                {reposicao.novoHorarioFixoId?.modalidadeId && (
+                                  <p className="text-sm text-gray-500">
+                                    {reposicao.novoHorarioFixoId.modalidadeId.nome}
+                                  </p>
+                                )}
+                                {reposicao.novoHorarioFixoId?.professorId && (
+                                  <p className="text-xs text-gray-400">
+                                    <i className="fas fa-user-tie mr-1"></i>
+                                    Prof. {reposicao.novoHorarioFixoId.professorId.nome}
+                                  </p>
+                                )}
+                                <p className="text-xs text-blue-600 mt-1">
+                                  <i className="fas fa-info-circle mr-1"></i>
+                                  Referente à falta de {formatarData(reposicao.dataOriginal)}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex flex-col items-end gap-1">
+                              <span className="px-2 py-1 bg-yellow-100 text-yellow-700 text-xs font-medium rounded-full">
+                                <i className="fas fa-hourglass-half mr-1"></i>
+                                Pendente
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                )}
+
+                {/* Reposições Aprovadas (futuras) */}
+                {reagendamentos.filter(r => r.isReposicao && r.status === 'aprovado' && new Date(r.novaData) >= new Date()).length > 0 && (
+                  <section>
+                    <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wide mb-3">
+                      Reposições Aprovadas
+                    </h3>
+                    <div className="space-y-2">
+                      {reagendamentos.filter(r => r.isReposicao && r.status === 'aprovado' && new Date(r.novaData) >= new Date()).map(reposicao => (
+                        <div key={reposicao._id} className="bg-green-50 border border-green-200 rounded-xl p-4">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3 flex-1">
+                              <div className="w-10 h-10 bg-green-500 rounded-lg flex items-center justify-center">
+                                <i className="fas fa-check text-white"></i>
+                              </div>
+                              <div className="flex-1">
+                                <p className="font-semibold text-gray-900">
+                                  Reposição confirmada para {formatarData(reposicao.novaData)}
+                                </p>
+                                <p className="text-sm text-gray-600">
+                                  {reposicao.novoHorarioInicio} - {reposicao.novoHorarioFim}
+                                </p>
+                                {reposicao.novoHorarioFixoId?.modalidadeId && (
+                                  <p className="text-sm text-gray-500">
+                                    {reposicao.novoHorarioFixoId.modalidadeId.nome}
+                                  </p>
+                                )}
+                                {reposicao.novoHorarioFixoId?.professorId && (
+                                  <p className="text-xs text-gray-400">
+                                    <i className="fas fa-user-tie mr-1"></i>
+                                    Prof. {reposicao.novoHorarioFixoId.professorId.nome}
+                                  </p>
+                                )}
+                                <p className="text-xs text-green-600 mt-1">
+                                  <i className="fas fa-calendar-check mr-1"></i>
+                                  Referente à falta de {formatarData(reposicao.dataOriginal)}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex flex-col items-end gap-1">
+                              <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full">
+                                <i className="fas fa-check-circle mr-1"></i>
+                                Aprovado
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                )}
+
+                {/* Ausências confirmadas (já ocorreram) - exceto as que já têm reposição */}
+                {avisosAusencia.filter(a => {
+                  // Só mostrar ausências confirmadas que NÃO têm reposição (nem aprovada nem pendente)
+                  // Verificar tanto pelo status 'usada' quanto por reposicoesUsadas > 0 quanto pelos reagendamentos
+                  if (a.status === 'usada' || (a.reposicoesUsadas && a.reposicoesUsadas > 0)) {
+                    return false;
+                  }
+                  const temReposicaoAgendada = reagendamentos.some(
+                    r => r.isReposicao && (r.status === 'aprovado' || r.status === 'pendente') && r.motivo?.includes(a._id)
+                  );
+                  return a.status === 'confirmada' && !temReposicaoAgendada;
+                }).length > 0 && (
                   <section>
                     <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wide mb-3">
                       Ausências Confirmadas
                     </h3>
                     <div className="space-y-2">
-                      {avisosAusencia.filter(a => a.status === 'confirmada').slice(0, 5).map(aviso => (
+                      {avisosAusencia.filter(a => {
+                        if (a.status === 'usada' || (a.reposicoesUsadas && a.reposicoesUsadas > 0)) {
+                          return false;
+                        }
+                        const temReposicaoAgendada = reagendamentos.some(
+                          r => r.isReposicao && (r.status === 'aprovado' || r.status === 'pendente') && r.motivo?.includes(a._id)
+                        );
+                        return a.status === 'confirmada' && !temReposicaoAgendada;
+                      }).slice(0, 5).map(aviso => (
                         <div key={aviso._id} className="bg-gray-50 border border-gray-200 rounded-xl p-4">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3 flex-1">
@@ -2916,7 +3182,6 @@ export default function AlunoAreaPage() {
                                   <i className="fas fa-user-tie mr-1"></i>
                                   Prof. {aviso.horarioFixoId?.professorId?.nome}
                                 </p>
-                                <p className="text-sm text-gray-500">{aviso.motivo}</p>
                                 {aviso.temDireitoReposicao && (
                                   <p className="text-xs text-green-600 mt-1">
                                     <i className="fas fa-check-circle mr-1"></i>
@@ -2926,50 +3191,61 @@ export default function AlunoAreaPage() {
                               </div>
                             </div>
                             <div className="flex items-center gap-2">
-                              {aviso.temDireitoReposicao && aviso.horarioFixoId?.modalidadeId?.permiteReposicao !== false && (
-                                <button
-                                  onClick={() => {
-                                    // Converter AvisoAusencia para FaltaReposicao
-                                    const falta: FaltaReposicao = {
-                                      _id: aviso._id,
-                                      tipo: 'aviso_ausencia',
-                                      data: aviso.dataAusencia,
-                                      horarioFixoId: aviso.horarioFixoId?._id || '',
-                                      horarioInicio: aviso.horarioFixoId?.horarioInicio || '',
-                                      horarioFim: aviso.horarioFixoId?.horarioFim || '',
-                                      modalidade: aviso.horarioFixoId?.modalidadeId,
-                                      professorId: aviso.horarioFixoId?.professorId,
-                                      temDireitoReposicao: true,
-                                      motivo: aviso.motivo,
-                                      avisouComAntecedencia: true
-                                    };
-                                    abrirModalReposicao(falta);
-                                  }}
-                                  className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg text-sm transition-colors"
-                                >
-                                  <i className="fas fa-redo mr-1"></i>
-                                  Repor
-                                </button>
-                              )}
-                              {aviso.temDireitoReposicao && aviso.horarioFixoId?.modalidadeId?.permiteReposicao === false && (
-                                <span className="px-3 py-1.5 bg-gray-100 text-gray-500 font-medium rounded-lg text-sm">
-                                  <i className="fas fa-ban mr-1"></i>
-                                  Sem reposição
-                                </span>
-                              )}
-                              <button
-                                onClick={() => cancelarAvisoAusencia(aviso._id, true)}
-                                className="text-red-500 hover:text-red-700 text-sm px-2 py-1"
-                                title="Cancelar aviso (para testes)"
-                              >
-                                <i className="fas fa-trash"></i>
-                              </button>
+                              {(() => {
+                                // Só chega aqui se não tem reposição pendente nem aprovada
+                                if (aviso.temDireitoReposicao && aviso.horarioFixoId?.modalidadeId?.permiteReposicao !== false) {
+                                  return (
+                                    <button
+                                      onClick={() => {
+                                        // Converter AvisoAusencia para FaltaReposicao
+                                        const falta: FaltaReposicao = {
+                                          _id: aviso._id,
+                                          tipo: 'aviso_ausencia',
+                                          data: aviso.dataAusencia,
+                                          horarioFixoId: aviso.horarioFixoId?._id || '',
+                                          horarioInicio: aviso.horarioFixoId?.horarioInicio || '',
+                                          horarioFim: aviso.horarioFixoId?.horarioFim || '',
+                                          modalidade: aviso.horarioFixoId?.modalidadeId,
+                                          professorId: aviso.horarioFixoId?.professorId,
+                                          temDireitoReposicao: true,
+                                          motivo: aviso.motivo,
+                                          avisouComAntecedencia: true
+                                        };
+                                        abrirModalReposicao(falta);
+                                      }}
+                                      className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg text-sm transition-colors"
+                                    >
+                                      <i className="fas fa-redo mr-1"></i>
+                                      Repor
+                                    </button>
+                                  );
+                                }
+                                
+                                if (aviso.temDireitoReposicao && aviso.horarioFixoId?.modalidadeId?.permiteReposicao === false) {
+                                  return (
+                                    <span className="px-3 py-1.5 bg-gray-100 text-gray-500 font-medium rounded-lg text-sm">
+                                      <i className="fas fa-ban mr-1"></i>
+                                      Sem reposição
+                                    </span>
+                                  );
+                                }
+                                
+                                return null;
+                              })()}
                             </div>
                           </div>
                         </div>
                       ))}
                     </div>
-                    {avisosAusencia.filter(a => a.status === 'confirmada').length > 5 && (
+                    {avisosAusencia.filter(a => {
+                      if (a.status === 'usada' || (a.reposicoesUsadas && a.reposicoesUsadas > 0)) {
+                        return false;
+                      }
+                      const temReposicaoAgendada = reagendamentos.some(
+                        r => r.isReposicao && (r.status === 'aprovado' || r.status === 'pendente') && r.motivo?.includes(a._id)
+                      );
+                      return a.status === 'confirmada' && !temReposicaoAgendada;
+                    }).length > 5 && (
                       <p className="text-xs text-gray-500 text-center mt-2">
                         Mostrando últimas 5 ausências confirmadas
                       </p>
@@ -3010,7 +3286,7 @@ export default function AlunoAreaPage() {
                                 )}
                                 <span className="inline-block mt-1 px-2 py-0.5 text-xs font-medium rounded-full bg-green-100 text-green-700">
                                   <i className="fas fa-check mr-1"></i>
-                                  Avisou com antecêdência
+                                  Avisou com antecedência
                                 </span>
                               </div>
                             </div>
@@ -3067,7 +3343,7 @@ export default function AlunoAreaPage() {
                                 )}
                                 <span className="inline-block mt-1 px-2 py-0.5 text-xs font-medium rounded-full bg-orange-100 text-orange-700">
                                   <i className="fas fa-exclamation-triangle mr-1"></i>
-                                  Não avisou com antecêdência
+                                  Não avisou com antecedência
                                 </span>
                               </div>
                             </div>
@@ -3091,7 +3367,16 @@ export default function AlunoAreaPage() {
                 )}
 
                 {/* Mensagem quando não há nada */}
-                {faltasComDireito.length === 0 && faltasSemDireito.length === 0 && (
+                {faltasComDireito.length === 0 && faltasSemDireito.length === 0 && 
+                 avisosAusencia.filter(a => {
+                   if (a.status === 'usada' || (a.reposicoesUsadas && a.reposicoesUsadas > 0)) {
+                     return false;
+                   }
+                   const temReposicaoAgendada = reagendamentos.some(
+                     r => r.isReposicao && (r.status === 'aprovado' || r.status === 'pendente') && r.motivo?.includes(a._id)
+                   );
+                   return a.status === 'confirmada' && !temReposicaoAgendada;
+                 }).length === 0 && (
                   <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
                     <i className="fas fa-check-circle text-green-400 text-4xl mb-3"></i>
                     <p className="text-gray-600 font-medium">Nenhuma falta registrada!</p>
@@ -3396,16 +3681,57 @@ export default function AlunoAreaPage() {
                     const hoje = new Date();
                     hoje.setHours(0, 0, 0, 0);
                     
-                    // Calcular limite: a nova data deve ser entre a data da aula e 7 dias após
+                    // Verificar se é feriado
+                    const eFeriado = isFeriado(diaObj.data);
+                    
+                    // Data original da aula
                     const dataOriginalDate = aulaSelecionada ? new Date(aulaSelecionada.dataStr + 'T12:00:00') : new Date();
                     dataOriginalDate.setHours(0, 0, 0, 0);
                     
                     const limiteMinimo = dataOriginalDate; // A partir da data da aula
-                    const limiteMaximo = new Date(dataOriginalDate);
-                    limiteMaximo.setDate(limiteMaximo.getDate() + 7);
                     
                     const diaObjDate = new Date(diaObj.data);
                     diaObjDate.setHours(0, 0, 0, 0);
+                    
+                    // Verificar se é dia de aula FIXA do aluno
+                    const diaSemana = diaObj.data.getDay();
+                    const dataStr = `${diaObj.data.getFullYear()}-${String(diaObj.data.getMonth() + 1).padStart(2, '0')}-${String(diaObj.data.getDate()).padStart(2, '0')}`;
+                    
+                    // Verificar se as aulas fixas deste dia foram todas reagendadas (liberando o dia)
+                    const horariosNoDia = horarios.filter(h => h.diaSemana === diaSemana);
+                    const todasAulasReagendadas = horariosNoDia.length > 0 && horariosNoDia.every(h => {
+                      // Verificar se este horário foi reagendado para outra data
+                      return reagendamentos.some(r => 
+                        (r.status === 'aprovado' || r.status === 'pendente') &&
+                        r.horarioFixoId?._id === h._id &&
+                        r.dataOriginal.split('T')[0] === dataStr
+                      );
+                    });
+                    
+                    // É dia de aula fixa APENAS se tem aula e NÃO foi toda reagendada
+                    const eDiaDeAulaFixa = horariosNoDia.length > 0 && !todasAulasReagendadas;
+                    
+                    // Verificar se já tem reagendamento/reposição neste dia (nova data de destino)
+                    const temReagendamentoNoDia = reagendamentos.some(r => {
+                      if (r.status !== 'aprovado' && r.status !== 'pendente') return false;
+                      const novaDataStr = r.novaData.split('T')[0];
+                      return novaDataStr === dataStr;
+                    });
+                    
+                    // Verificar se tem uso de crédito agendado para este dia
+                    const temUsoCreditoNoDia = creditos.some(c => 
+                      c.usos?.some(uso => {
+                        if (!uso.dataUso) return false;
+                        const dataUso = uso.dataUso.split('T')[0];
+                        return dataUso === dataStr;
+                      })
+                    );
+                    
+                    // Dia ocupado = tem aula fixa não reagendada OU tem reagendamento de destino OU tem uso de crédito
+                    const diaOcupado = eDiaDeAulaFixa || temReagendamentoNoDia || temUsoCreditoNoDia;
+                    
+                    // Motivo do bloqueio
+                    const motivoBloqueio = eDiaDeAulaFixa ? 'Aula fixa' : temUsoCreditoNoDia ? 'Crédito usado' : temReagendamentoNoDia ? 'Reposição agendada' : '';
                     
                     // Verificar se é o mesmo dia da aula original (não permitido)
                     const isMesmoDia = aulaSelecionada && diaObj.data.toDateString() === new Date(aulaSelecionada.dataStr + 'T12:00:00').toDateString();
@@ -3414,30 +3740,64 @@ export default function AlunoAreaPage() {
                     const isPassado = diaObjDate < hoje;
                     // Não permitir datas antes da aula selecionada
                     const isAntesDoLimite = diaObjDate < limiteMinimo;
-                    // Não permitir datas mais de 7 dias após a aula
-                    const isForaDoLimite = diaObjDate > limiteMaximo;
+                    // Verificar se está dentro dos próximos 7 dias ÚTEIS de aula
+                    const estaDentroDoLimite = estaDentroDosPróximos7DiasUteis(dataOriginalDate, diaObj.data);
                     
-                    const horariosDisp = diaObj.mesAtual && !isPassado && !isAntesDoLimite && !isForaDoLimite && !isMesmoDia ? getHorariosDisponiveisNoDia(diaObj.data) : [];
+                    // Não mostrar horários se for feriado, dia ocupado, ou não estiver dentro dos 7 dias úteis
+                    const horariosDisp = !eFeriado && !diaOcupado && diaObj.mesAtual && !isPassado && !isAntesDoLimite && estaDentroDoLimite && !isMesmoDia ? getHorariosDisponiveisNoDia(diaObj.data) : [];
                     const temHorario = horariosDisp.length > 0;
+                    
+                    // Para dias do próximo mês: buscar horários disponíveis (para exibir em cinza)
+                    const horariosProximoMes = !diaObj.mesAtual && !isPassado && !eFeriado && !diaOcupado && estaDentroDoLimite && !isMesmoDia ? getHorariosDisponiveisNoDia(diaObj.data) : [];
+                    const isDiaProximoMesComHorarios = horariosProximoMes.length > 0;
                     
                     return (
                       <div
                         key={idx}
                         className={`
                           min-h-[80px] max-h-[120px] p-1 rounded-lg border transition-all text-center
-                          ${!diaObj.mesAtual ? 'bg-gray-50 opacity-40' : 'bg-white'}
-                          ${(isPassado || isAntesDoLimite || isForaDoLimite) && diaObj.mesAtual ? 'opacity-40' : ''}
+                          ${!diaObj.mesAtual && !isDiaProximoMesComHorarios && !eFeriado && !diaOcupado ? 'bg-gray-50 opacity-40' : ''}
+                          ${isDiaProximoMesComHorarios ? 'bg-gray-200 border-gray-400' : ''}
+                          ${eFeriado || diaOcupado ? 'bg-gray-100' : ''}
+                          ${diaObj.mesAtual && !eFeriado && !diaOcupado && !isPassado && !isAntesDoLimite && estaDentroDoLimite && !isMesmoDia ? 'bg-white' : ''}
+                          ${(isPassado || isAntesDoLimite) && diaObj.mesAtual ? 'bg-gray-300 opacity-70' : ''}
+                          ${!estaDentroDoLimite && diaObj.mesAtual && !isPassado && !isAntesDoLimite ? 'opacity-40' : ''}
                           ${isMesmoDia ? 'bg-red-50 border-red-300 opacity-60' : ''}
-                          ${temHorario ? 'border-green-300 bg-green-50 cursor-pointer hover:bg-green-100' : 'border-gray-200'}
+                          ${eFeriado || diaOcupado ? 'border-gray-300' : temHorario ? 'border-green-300 bg-green-50 cursor-pointer hover:bg-green-100' : 'border-gray-200'}
                         `}
-                        title={isMesmoDia ? 'Não é possível reagendar para o mesmo dia' : undefined}
+                        title={isMesmoDia ? 'Não é possível reagendar para o mesmo dia' : isDiaProximoMesComHorarios ? 'Avance para o próximo mês para selecionar' : eFeriado ? 'Sem expediente' : diaOcupado ? motivoBloqueio : undefined}
                       >
-                        <div className={`text-xs font-semibold ${temHorario ? 'text-green-700' : 'text-gray-500'}`}>
+                        <div className={`text-xs font-semibold ${isDiaProximoMesComHorarios ? 'text-gray-500' : eFeriado || diaOcupado ? 'text-gray-400' : temHorario ? 'text-green-700' : 'text-gray-500'}`}>
                           {diaObj.diaDoMes}
                         </div>
                         
+                        {/* Horários do próximo mês (cinza, não clicável) */}
+                        {isDiaProximoMesComHorarios && (
+                          <div className="mt-0.5 space-y-0.5 overflow-y-auto max-h-[44px] scrollbar-thin">
+                            {horariosProximoMes.map((h, hIdx) => (
+                              <div key={hIdx} className="w-full px-0.5 py-0.5 rounded text-[9px] font-medium bg-gray-400 text-white truncate cursor-not-allowed">{h.horarioInicio}</div>
+                            ))}
+                          </div>
+                        )}
+                        
+                        {/* Mensagem de sem expediente */}
+                        {eFeriado && !isDiaProximoMesComHorarios && (
+                          <div className="flex flex-col items-center justify-center h-[60px] text-gray-400">
+                            <i className="fas fa-calendar-times text-sm mb-0.5"></i>
+                            <span className="text-[8px] font-medium">Sem Expediente</span>
+                          </div>
+                        )}
+                        
+                        {/* Mensagem de dia ocupado (aula fixa, reagendamento ou crédito) */}
+                        {!eFeriado && diaOcupado && !isDiaProximoMesComHorarios && estaDentroDoLimite && !isPassado && (
+                          <div className="flex flex-col items-center justify-center h-[60px] text-gray-400">
+                            <i className={`fas ${eDiaDeAulaFixa ? 'fa-user-clock' : temUsoCreditoNoDia ? 'fa-gift' : 'fa-calendar-check'} text-sm mb-0.5`}></i>
+                            <span className="text-[8px] font-medium text-center">{motivoBloqueio}</span>
+                          </div>
+                        )}
+                        
                         {/* Horários disponíveis */}
-                        {temHorario && (
+                        {!eFeriado && temHorario && (
                           <div className="mt-0.5 space-y-0.5 overflow-y-auto max-h-[44px] scrollbar-thin">
                             {horariosDisp.map((h, hIdx) => (
                               <button
@@ -3457,7 +3817,7 @@ export default function AlunoAreaPage() {
                 
                 <div className="text-xs text-gray-500 text-center">
                   <i className="fas fa-info-circle mr-1"></i>
-                  Escolha uma data até 7 dias após a aula (não pode ser no mesmo dia). Dias verdes têm vagas.
+                  Escolha uma data dentro dos próximos 7 dias livres (dias sem aula). Dias verdes têm vagas.
                 </div>
               </>
             )}
@@ -3665,7 +4025,7 @@ export default function AlunoAreaPage() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Nova Data <span className="text-red-500">*</span>
-                  <span className="text-xs text-gray-400 font-normal ml-1">(até 7 dias após a original)</span>
+                  <span className="text-xs text-gray-400 font-normal ml-1">(próximos 7 dias livres)</span>
                 </label>
                 {(() => {
                   const hoje = new Date();
@@ -3931,6 +4291,7 @@ export default function AlunoAreaPage() {
           alunoNome={aluno?.nome || ''}
           falta={{
             aulaRealizadaId: faltaSelecionada._id,
+            avisoAusenciaId: faltaSelecionada.tipo === 'aviso_ausencia' ? faltaSelecionada._id : undefined,
             data: faltaSelecionada.data,
             horarioInicio: faltaSelecionada.horarioInicio,
             horarioFim: faltaSelecionada.horarioFim || '',
@@ -4318,7 +4679,7 @@ export default function AlunoAreaPage() {
               <i className="fas fa-ticket text-xl"></i>
               <span className="text-[10px] font-medium">Créditos</span>
               {creditos.reduce((sum, c) => sum + (c.quantidade - c.quantidadeUsada), 0) > 0 && (
-                <span className="absolute top-1 right-1/4 w-4 h-4 bg-teal-500 text-white text-[10px] rounded-full flex items-center justify-center">
+                <span className="absolute top-1 right-1/4 w-4 h-4 bg-purple-600 text-white text-[10px] rounded-full flex items-center justify-center">
                   {creditos.reduce((sum, c) => sum + (c.quantidade - c.quantidadeUsada), 0)}
                 </span>
               )}

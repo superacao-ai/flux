@@ -71,6 +71,15 @@ export async function GET(req: NextRequest) {
       .populate('alunoId', 'nome email')
       .populate('modalidadeId', 'nome cor')
       .populate('concedidoPor', 'nome email')
+      .populate({
+        path: 'aulaRealizadaId',
+        select: 'data modalidade horarioInicio horarioFim professorId',
+        populate: {
+          path: 'professorId',
+          model: 'User',
+          select: 'nome cor'
+        }
+      })
       .sort({ criadoEm: -1 })
       .lean() as any[];
 

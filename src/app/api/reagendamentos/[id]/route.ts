@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import { Reagendamento } from '@/models/Reagendamento';
 import { HorarioFixo } from '@/models/HorarioFixo';
+import { AvisoAusencia } from '@/models/AvisoAusencia';
 import fs from 'fs';
 import path from 'path';
 
@@ -97,6 +98,25 @@ export async function PUT(
         // controla quando ele aparece cinza (origem) e quando aparece no destino
         reagendamento.status = 'aprovado';
         await reagendamento.save();
+
+        // Se for reposição, atualizar o AvisoAusencia para marcar como usada
+        if ((reagendamento as any).isReposicao) {
+          try {
+            // Extrair o ID do aviso do campo motivo (formato: [ID: xxx])
+            const motivo = (reagendamento as any).motivo || '';
+            const idMatch = motivo.match(/\[ID:\s*([^\]]+)\]/);
+            if (idMatch && idMatch[1]) {
+              const avisoId = idMatch[1].trim();
+              await AvisoAusencia.findByIdAndUpdate(avisoId, {
+                status: 'usada',
+                $inc: { reposicoesUsadas: 1 }
+              });
+              console.log(`[API Reagendamentos] AvisoAusencia ${avisoId} marcado como usada`);
+            }
+          } catch (avisoErr: any) {
+            console.warn('Erro ao atualizar AvisoAusencia:', avisoErr?.message || avisoErr);
+          }
+        }
 
         // Log origin vs destination professor if available (informational)
         try {

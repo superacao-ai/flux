@@ -120,6 +120,28 @@ export async function POST(req: NextRequest) {
       );
     }
     
+    // ========== VERIFICAR LIMITE DE 1 ALTERAÇÃO POR MÊS ==========
+    const inicioMesAtual = new Date();
+    inicioMesAtual.setDate(1);
+    inicioMesAtual.setHours(0, 0, 0, 0);
+    
+    const alteracoesNestesMes = await AlteracaoHorario.countDocuments({
+      alunoId: aluno.id,
+      status: 'aprovado',
+      criadoEm: { $gte: inicioMesAtual }
+    });
+    
+    if (alteracoesNestesMes >= 1) {
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: 'Você já realizou uma alteração de horário este mês. Limite: 1 alteração por mês.' 
+        },
+        { status: 400 }
+      );
+    }
+    // ========== FIM VERIFICAÇÃO DE LIMITE ==========
+    
     // Buscar o horário atual
     const horarioAtual = await HorarioFixo.findById(horarioAtualId)
       .populate('modalidadeId', 'nome cor limiteAlunos');

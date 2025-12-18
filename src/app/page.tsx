@@ -16,14 +16,18 @@ export default function AlunoLoginPage() {
   const [showModalAjuda, setShowModalAjuda] = useState(false);
   const router = useRouter();
 
-  // Carregar CPF salvo se existir (lembrar-me)
+  // Carregar CPF e data de nascimento salvos se existir (lembrar-me)
   useEffect(() => {
     try {
       const savedCpf = localStorage.getItem('rememberedAlunoCpf');
+      const savedDataNascimento = localStorage.getItem('rememberedAlunoDataNascimento');
       const savedRemember = localStorage.getItem('rememberAlunoLogin') === 'true';
       if (savedCpf && savedRemember) {
         setCpf(savedCpf);
         setRemember(true);
+      }
+      if (savedDataNascimento && savedRemember) {
+        setDataNascimento(savedDataNascimento);
       }
     } catch (e) {
       // Ignorar erros de localStorage
@@ -95,12 +99,14 @@ export default function AlunoLoginPage() {
           localStorage.setItem('aluno', JSON.stringify(data.aluno)); 
           localStorage.setItem('alunoToken', data.token);
           
-          // Salvar CPF se lembrar-me estiver ativado
+          // Salvar CPF e data de nascimento se lembrar-me estiver ativado
           if (remember) {
             localStorage.setItem('rememberedAlunoCpf', cpf);
+            localStorage.setItem('rememberedAlunoDataNascimento', dataNascimento);
             localStorage.setItem('rememberAlunoLogin', 'true');
           } else {
             localStorage.removeItem('rememberedAlunoCpf');
+            localStorage.removeItem('rememberedAlunoDataNascimento');
             localStorage.removeItem('rememberAlunoLogin');
           }
         } catch (e) { /* ignore storage errors */ }
